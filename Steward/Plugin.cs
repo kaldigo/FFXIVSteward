@@ -59,7 +59,7 @@ public sealed class Plugin : IDalamudPlugin
         tracked=new(pi);
         dungeonSources=new(pi,data,config,Save);
         historyPath=Path.Combine(pi.GetPluginConfigDirectory(),"history.jsonl");
-        market=new(pi,board,view,config,new(gui),Judge,Record);
+        market=new(pi,board,view,config,new(gui),stock=>executionFault?new(Outcome.Wait,"Execution held for inventory review"):Judge(stock),Record);
         pi.GetIpcProvider<string,string>(Endpoint).RegisterFunc(Evaluate);
         pi.GetIpcSubscriber<string,object>("AutoRetainer.OnRetainerAdditionalTask").Subscribe(RequestPostprocess);
         pi.GetIpcSubscriber<string,string,object>("AutoRetainer.OnRetainerReadyForPostprocess").Subscribe(Postprocess);
