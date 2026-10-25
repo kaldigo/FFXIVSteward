@@ -3,7 +3,7 @@
     "Author": "kaldigo",
     "Name": "Steward",
     "InternalName": "Steward",
-    "AssemblyVersion": "0.1.0.10",
+    "AssemblyVersion": "0.1.0.11",
     "Description": "Collection-aware inventory decisions and market rules coordinated with the AutoRetainer integration fork. Starts in dry-run mode.",
     "ApplicableVersion": "any",
     "RepoUrl": "https://github.com/kaldigo/FFXIVSteward",
@@ -16,8 +16,8 @@
     "AcceptsFeedback": true,
     "IconUrl": "https://raw.githubusercontent.com/kaldigo/FFXIVSteward/main/assets/icon.png",
     "Changelog": "Second safety review: protocol-3 owned standalone control, final native market readback/rule checks, complete current-request snapshots on the framework thread, owned confirmations, one-shot GC commits, bilateral persisted review holds, existing YesAlready/TextAdvance pauses, owned prompt cancellation, planning/request failure holds, live-player/world guards and strict CSV flags. First load of this safety revision resets automatic execution to off. Prior collection/blue-marketability protections remain. Native acceptance and a verified cross-zone collection refresh path remain outstanding; this is not certified unattended cleanup.",
-    "DownloadLinkInstall": "https://github.com/kaldigo/FFXIVSteward/releases/download/v0.1.0.10/Steward.zip",
-    "DownloadLinkUpdate": "https://github.com/kaldigo/FFXIVSteward/releases/download/v0.1.0.10/Steward.zip",
-    "DownloadLinkTesting": "https://github.com/kaldigo/FFXIVSteward/releases/download/v0.1.0.10/Steward.zip"
+    "DownloadLinkInstall": "https://github.com/kaldigo/FFXIVSteward/releases/download/v0.1.0.11/Steward.zip",
+    "DownloadLinkUpdate": "https://github.com/kaldigo/FFXIVSteward/releases/download/v0.1.0.11/Steward.zip",
+    "DownloadLinkTesting": "https://github.com/kaldigo/FFXIVSteward/releases/download/v0.1.0.11/Steward.zip"
   }
 ]
