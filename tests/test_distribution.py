@@ -45,9 +45,9 @@ class Distribution(unittest.TestCase):
   self.assertIn('Queue.Advance(now);CheckFault();',source)
  def test_protocol_upgrade_returns_to_dry_run_before_registering_execution(self):
   source=(ROOT/'Steward/Plugin.cs').read_text()
-  migration=source.split('if(config.SafetyRevision<3)')[1].split('executionFault=config.ExecutionReviewRequired;')[0]
+  migration=source.split('if(config.SafetyRevision<4)')[1].split('executionFault=config.ExecutionReviewRequired;')[0]
   self.assertIn('config.Automatic=false;',migration)
-  self.assertLess(source.index('if(config.SafetyRevision<3)'),source.index('framework.Update+=Update'))
+  self.assertLess(source.index('if(config.SafetyRevision<4)'),source.index('framework.Update+=Update'))
  def test_packets_and_dialog_values_are_bound_to_live_state(self):
   source=(ROOT/'Steward/Services/MarketQueue.cs').read_text()
   self.assertIn('packet.RequestId',source)
@@ -66,4 +66,16 @@ class Distribution(unittest.TestCase):
   self.assertIn('ui.CancelOwnedConfirmation(addon->Id)',source)
   source=(ROOT/'Steward/Services/NativeUi.cs').read_text()
   self.assertIn('ClickButton(&addon->AtkUnitBase,addon->NoButton)',source)
+ def test_failed_save_cannot_enable_or_clear_review_in_memory(self):
+  source=(ROOT/'Steward/Plugin.cs').read_text()
+  self.assertIn('ExecutionMode.Enable(',source)
+  self.assertIn('try{Save();}catch{executionFault=config.ExecutionReviewRequired=true;throw;}',source)
+ def test_visible_unready_confirmation_is_not_absence(self):
+  source=(ROOT/'Steward/Services/NativeUi.cs').read_text()
+  self.assertIn('if(!addon->IsReady)return false;',source)
+ def test_own_execution_and_preview_use_upstream_protection(self):
+  source=(ROOT/'Steward/Plugin.cs').read_text()
+  judge=source.split('private Decision Judge(Stock stock)')[1].split('private void RefreshProtection()')[0]
+  self.assertIn('AutoRetainer.PluginState.IsItemProtected',judge)
+  self.assertIn('UpstreamProtection.Apply(decision,null)',judge)
 if __name__=='__main__':unittest.main()

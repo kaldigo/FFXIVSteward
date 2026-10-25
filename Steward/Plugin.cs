@@ -49,10 +49,10 @@ public sealed class Plugin : IDalamudPlugin
     {
         this.pi=pi;this.commands=commands;this.framework=framework;this.player=player;this.objects=objects;this.log=log;
         config=pi.GetPluginConfig() as Configuration??new();
-        if(config.SafetyRevision<3)
+        if(config.SafetyRevision<4)
         {
             config.Automatic=false;
-            config.SafetyRevision=3;
+            config.SafetyRevision=4;
             pi.SavePluginConfig(config);
         }
         executionFault=config.ExecutionReviewRequired;
@@ -93,7 +93,13 @@ public sealed class Plugin : IDalamudPlugin
         if(Environment.TickCount64>=nextImports){imports.Refresh();tracked.Refresh();nextImports=Environment.TickCount64+2000;}
     }
     private Decision Judge(Stock stock)
-    {var item=view.Facts(stock.ItemId);return item==null?new(Outcome.Wait,"Unknown game item"):Rules.Judge(item,stock,config.Rules,view.Evidence,view.World,DateTimeOffset.UtcNow);}
+    {
+        var item=view.Facts(stock.ItemId);
+        var decision=item==null?new Decision(Outcome.Wait,"Unknown game item"):Rules.Judge(item,stock,config.Rules,view.Evidence,view.World,DateTimeOffset.UtcNow);
+        if(decision.Outcome==Outcome.Ignore)return decision;
+        try{return UpstreamProtection.Apply(decision,pi.GetIpcSubscriber<uint,bool>("AutoRetainer.PluginState.IsItemProtected").InvokeFunc(stock.ItemId));}
+        catch{return UpstreamProtection.Apply(decision,null);}
+    }
     private void RefreshProtection()
     {
         view.World=objects.LocalPlayer?.CurrentWorld.RowId??0;
@@ -126,7 +132,7 @@ public sealed class Plugin : IDalamudPlugin
         try
         {
             using var doc=JsonDocument.Parse(request);var root=doc.RootElement;
-            if(!player.IsLoaded || root.GetProperty("Version").GetInt32()!=3 || root.GetProperty("Character").GetUInt64()!=player.ContentId || !config.Connected)return "Deny";
+            if(!player.IsLoaded || root.GetProperty("Version").GetInt32()!=4 || root.GetProperty("Character").GetUInt64()!=player.ContentId || !config.Connected)return "Deny";
             Refresh();
             // Protection imports are refreshed again before permission, even between regular refresh intervals.
             imports.Refresh();
@@ -170,7 +176,7 @@ public sealed class Plugin : IDalamudPlugin
                 if(config.Connected && player.ContentId!=0)
                 {
                     var version=pi.GetIpcSubscriber<int>("AutoRetainer.InventoryPolicy.Version").InvokeFunc();
-                    if(version!=3)throw new InvalidOperationException("Update both plugins: AutoRetainer integration version 3 is required");
+                    if(version!=4)throw new InvalidOperationException("Update both plugins: AutoRetainer integration version 4 is required");
                     if(attached==player.ContentId)
                     {if(!pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Heartbeat").InvokeFunc(attached,Endpoint))attached=0;}
                     if(attached==0 && pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Connect").InvokeFunc(player.ContentId,Endpoint))attached=player.ContentId;
@@ -261,6 +267,19 @@ public sealed class Plugin : IDalamudPlugin
         try{market.Stop();}finally{FinishPostprocess();}
     }
     private void Stop(){config.Automatic=false;try{StopQueue();}finally{Save();}Record("Automatic execution stopped; managed items remain held");}
+    private void SetAutomatic(bool enabled)
+    {
+        if(!enabled){Stop();return;}
+        try
+        {
+            var ready=player.IsLoaded && config.Connected && attached!=0 && attached==player.ContentId && !executionFault &&
+                !config.ExecutionReviewRequired && !market.Queue.Running && !ownsPostprocess &&
+                !pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.HasFault").InvokeFunc(player.ContentId);
+            if(!ExecutionMode.Enable(ready,value=>config.Automatic=value,Save))
+                Record("Automatic execution remains off: connect the current character and resolve the stopped run first");
+        }
+        catch(Exception ex){HoldExecution("Automatic execution could not be safely enabled: "+ex.Message);StopQueue();}
+    }
     private void Run(string operation)
     {
         if(executionFault){Record("Check inventory and clear the stopped run first");return;}
@@ -276,7 +295,7 @@ public sealed class Plugin : IDalamudPlugin
         if(!ImGui.Begin("Steward",ref open)){ImGui.End();return;}
         ImGui.TextWrapped(status);ImGui.TextWrapped(imports.Status);
         var automatic=config.Automatic;
-        if(ImGui.Checkbox("Enable automatic execution",ref automatic)){config.Automatic=automatic;if(!automatic)StopQueue();Save();}
+        if(ImGui.Checkbox("Enable automatic execution",ref automatic))SetAutomatic(automatic);
         ImGui.SameLine();if(ImGui.Button("Stop"))Stop();
         if(executionFault && ImGui.Button("I checked inventory — clear stopped run"))
         {
@@ -284,7 +303,12 @@ public sealed class Plugin : IDalamudPlugin
             {
                 if(!pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.ClearFault").InvokeFunc(player.ContentId))
                     Record("Close pending confirmations and release control before clearing the stopped run");
-                else{market.Queue.Begin();config.Automatic=false;executionFault=config.ExecutionReviewRequired=false;Save();Record("User cleared both stopped-run holds after inventory review; automatic execution remains off");}
+                else
+                {
+                    config.Automatic=false;executionFault=config.ExecutionReviewRequired=false;
+                    try{Save();}catch{executionFault=config.ExecutionReviewRequired=true;throw;}
+                    market.Queue.Begin();Record("User cleared both stopped-run holds after inventory review; automatic execution remains off");
+                }
             }
             catch(Exception ex){Record("Could not clear the integration hold: "+ex.Message);}
         }

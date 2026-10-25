@@ -59,3 +59,18 @@ Further review found and corrected additional execution-boundary gaps:
 The second read-only validation parsed all 286 saved Glamaholic IDs, 1,098 cached quotes and the saved Market Buddy settings. Cache growth since the first pass reflects changes in the existing files; the audit did not write them.
 
 Native acceptance is still a blocker for declaring unattended whole-inventory cleanup ready. In particular, zoning can clear required native collection data; a safe refresh path at every destination is not verified. New dialog ownership, price readback and request-completeness guards may deliberately hold unsupported native states. Crash recovery and server acknowledgements have not been tested in game. These limits must not be described as completed native verification.
+
+## Third review
+
+This pass traced permission through the final native target and explicitly reviewed failure recovery:
+
+- **Recovery could re-latch the old GC transaction.** Clearing persisted flags did not clear the previous pending item, acknowledgement timestamps and one-shot gates. Successful explicit recovery now resets that local transaction; it cannot reset an active, unfaulted pending journal.
+- **Failed saves could relax guards in memory.** Failed detach/review/acknowledgement writes now restore the previous ownership, review and pending markers. Recovery resets the local GC state only after persistence succeeds. Failed enable writes leave automatic execution off; failed frontend review writes restore the hold.
+- **Own market/dresser actions could miss AutoRetainer's explicit keep list.** The companion now queries the existing `AutoRetainer.PluginState.IsItemProtected` API for preview and action decisions. Protection overrides market/storage/disposal; unavailable results hold. Exclusions retain highest priority. AutoRetainer's final slot boundary also rechecks its explicit protection after calling Steward.
+- **Desynthesis confirmed an agent selection without binding it to the permitted source.** The final agent snapshot must match item, quantity, container, slot and flags. Source identity is checked again after the policy callback. The implementation compiles against the installed SDK's value-type `DesynthItemSlot`; the older pinned source's pointer shape is not assumed. Actual native population/timing of those fields is unverified, and a mismatch holds.
+- **A visible but unready confirmation was treated as absent during cancellation.** It now fails cancellation rather than acknowledging safe cleanup.
+- **A pause-manager exception could prevent fault notification.** The review marker remains set and peer notification is attempted even when the pause helper fails.
+
+Injected persistence failures, successful recovery, old commit-gate reset, changed desynthesis identities and upstream-protection decisions have automated regressions. Protocol/safety revision 4 requires both updated plugins and starts in dry-run mode. No installed plugin settings or native inventory actions were changed by this audit. The remaining native acceptance and cross-zone collection-refresh limits above are unchanged.
+
+Validation: both plugin builds passed; Steward passed 317 C# checks and 16 Python tests, and AutoRetainer passed 59 C# checks and 47 Python tests. Read-only saved imports yielded 286 Glamaholic item IDs, 1,098 market observations and parsed Market Buddy preferences. Installed game-sheet replay kept all 286 referenced IDs with no collected copy, and 629 ordinary marketable-blue rows received no blanket blue protection. Replay quotes and ownership were simulated; this is not live inventory verification.

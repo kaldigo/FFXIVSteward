@@ -24,8 +24,10 @@ public sealed unsafe class NativeUi(IGameGui gui)
     }
     public bool CancelOwnedConfirmation(ushort owner)
     {
-        var addon=(FFXIVClientStructs.FFXIV.Client.UI.AddonSelectYesno*)Get("SelectYesno");
-        if(addon==null)return true;
+        var reference=gui.GetAddonByName("SelectYesno");
+        if(reference.IsNull || !reference.IsVisible)return true;
+        var addon=(FFXIVClientStructs.FFXIV.Client.UI.AddonSelectYesno*)reference.Address;
+        if(!addon->IsReady)return false;
         return Steward.Core.ConfirmationOwnership.Matches(owner,addon->ParentId,addon->HostId) && ClickButton(&addon->AtkUnitBase,addon->NoButton);
     }
     public bool Callback(string name,params int[] values)

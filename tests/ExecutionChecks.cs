@@ -67,5 +67,21 @@ static class ExecutionChecks
         catch(InvalidDataException){check(true,"Malformed quality flags rejected");}
         try{Imports.MarketCache("header\n42,N,1,0,2026-10-25,1000,X\n");throw new Exception("Bad owner accepted");}
         catch(InvalidDataException){check(true,"Unknown own-price flags cannot become competitor prices");}
+        var automatic=false;var writes=0;
+        check(!ExecutionMode.Enable(false,value=>automatic=value,()=>writes++)&&!automatic&&writes==0,
+            "An unresolved hold or unavailable connection cannot enable automatic execution");
+        try{ExecutionMode.Enable(true,value=>automatic=value,()=>throw new IOException("disk"));throw new Exception("Enable save failure swallowed");}
+        catch(IOException){check(!automatic,"Failed settings save leaves automatic execution off");}
+        check(ExecutionMode.Enable(true,value=>automatic=value,()=>writes++)&&automatic&&writes==1,
+            "Automatic execution requires a successful settings save");
+        foreach(var outcome in Enum.GetValues<Outcome>())
+        {
+            var original=new Decision(outcome,"Original");
+            check(UpstreamProtection.Apply(original,true).Outcome==(outcome==Outcome.Ignore?Outcome.Ignore:Outcome.Keep),
+                "Explicit AutoRetainer keep overrides market, storage and disposal: "+outcome);
+            check(UpstreamProtection.Apply(original,null).Outcome==(outcome==Outcome.Ignore?Outcome.Ignore:Outcome.Wait),
+                "Unavailable AutoRetainer protection holds every active path: "+outcome);
+            check(UpstreamProtection.Apply(original,false)==original,"Unprotected AutoRetainer item retains Steward decision: "+outcome);
+        }
     }
 }
