@@ -1,1 +1,1 @@
-Initial Steward integration preview. Collection references, exclusions, sale rules, live policy gates, retainer withdrawals, market listing/repricing and dresser actions. AutoRetainer identity and existing workflows are preserved. Starts in dry run. Native game acceptance remains pending.
+Blue-rarity collection protection now applies only to nonmarketable equipment. Marketable blues can still be protected by glamour references, curated lists and the other existing rules. Missing prices do not make an item nonmarketable. Native game acceptance remains pending.

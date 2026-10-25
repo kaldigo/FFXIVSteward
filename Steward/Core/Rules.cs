@@ -54,14 +54,15 @@ public static class Rules
         if(settings.Keep.Contains(item.Id)) return new(Outcome.Keep, "Explicit keep override");
         if(!evidence.GearsetsReady || !evidence.ReferencesReady) return new(Outcome.Wait, "Glamour references or gear sets are unavailable");
         if(evidence.Gearsets.Contains(item.Id)) return new(Outcome.Keep, "Equipped or referenced by a gear set");
-        var collect = item.Equipment && (item.Rarity >= 3 || item.EquipLevel == 1 || item.DesignedForGlamour ||
+        var rarityProtected = item.Rarity > 3 || (item.Rarity == 3 && !item.Marketable);
+        var collect = item.Equipment && (rarityProtected || item.EquipLevel == 1 || item.DesignedForGlamour ||
             item.Source != SourceKind.Ordinary || settings.CommonGlamour.Contains(item.Id) || evidence.CuratedGlamour.Contains(item.Id) || evidence.References.Contains(item.Id));
         if(collect)
         {
             if(!evidence.Dresser.Contains(item.Id) && !evidence.Armoire.Contains(item.Id))
             {
                 if(!evidence.DresserKnown || !evidence.ArmoireKnown) return new(Outcome.Wait, "Open the dresser and armoire to verify collection ownership");
-                if(item.Source == SourceKind.Unknown && !evidence.References.Contains(item.Id) && !item.DesignedForGlamour && item.Rarity < 3 && item.EquipLevel != 1 && !settings.CommonGlamour.Contains(item.Id) && !evidence.CuratedGlamour.Contains(item.Id))
+                if(item.Source == SourceKind.Unknown && !evidence.References.Contains(item.Id) && !item.DesignedForGlamour && !rarityProtected && item.EquipLevel != 1 && !settings.CommonGlamour.Contains(item.Id) && !evidence.CuratedGlamour.Contains(item.Id))
                     return new(Outcome.Keep, "Acquisition source is uncertain; preserve for collection");
                 return new(item.ArmoireEligible ? Outcome.CollectArmoire : Outcome.CollectDresser, "An exact copy is missing from the collection");
             }

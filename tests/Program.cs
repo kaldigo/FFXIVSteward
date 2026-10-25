@@ -8,6 +8,24 @@ var e=new Evidence{ReferencesReady=true,GearsetsReady=true,DresserKnown=true,Arm
 var item=new ItemFacts(42,"Test",true,3,90,false,true,SourceKind.Special,1);
 var stock=new Stock(42,false,1,0,0);
 Decision Judge() => Rules.Judge(item,stock,settings,e,1,now);
+{
+    var blue=item with{Source=SourceKind.Ordinary,ArmoireEligible=false};
+    var proof=new Evidence{ReferencesReady=true,GearsetsReady=true,DresserKnown=true,ArmoireKnown=true};
+    var rules=new RuleSettings();
+    proof.Prices[(42,false)]=new(42,false,1,1000,now,"Test");
+    Decision Blue(ItemFacts facts)=>Rules.Judge(facts,stock,rules,proof,1,now);
+    Check(Blue(blue).Outcome==Outcome.CollectDresser,"Unmarketable blue protected by rarity alone");
+    blue=blue with{Marketable=true};
+    Check(Blue(blue).Outcome==Outcome.Dispose,"Marketable blue not protected by rarity alone");
+    proof.References.Add(42);Check(Blue(blue).Outcome==Outcome.CollectDresser,"Plate still protects marketable blue");proof.References.Clear();
+    proof.CuratedGlamour.Add(42);Check(Blue(blue).Outcome==Outcome.CollectDresser,"Curated list still protects marketable blue");proof.CuratedGlamour.Clear();
+    rules.CommonGlamour.Add(42);Check(Blue(blue).Outcome==Outcome.CollectDresser,"Imported glamour list still protects marketable blue");rules.CommonGlamour.Clear();
+    Check(Blue(blue with{Source=SourceKind.Special}).Outcome==Outcome.CollectDresser,"Special source still protects marketable blue");
+    Check(Blue(blue with{Source=SourceKind.Unknown}).Outcome==Outcome.Keep,"Unknown source holds marketable blue independently of rarity");
+    Check(Blue(blue with{EquipLevel=1}).Outcome==Outcome.CollectDresser,"Level-one rule still protects marketable blue");
+    proof.Dresser.Add(42);Check(Blue(blue with{Marketable=false}).Outcome==Outcome.Dispose,"Collected unmarketable blue duplicate still disposes");proof.Dresser.Clear();
+    proof.Prices.Clear();Check(Blue(blue).Outcome==Outcome.Wait,"Unavailable market price is not evidence that a blue is unmarketable");
+}
 Check(Judge().Outcome==Outcome.CollectArmoire,"Missing blue goes to armoire");
 e.Armoire.Add(42); Check(Judge().Outcome==Outcome.Dispose,"Collected blue duplicate disposes");
 e.Armoire.Clear();e.Dresser.Add(42);Check(Judge().Outcome==Outcome.Dispose,"Dresser copy satisfies collection");
