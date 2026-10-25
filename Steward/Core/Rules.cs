@@ -76,6 +76,7 @@ public static class Rules
         var rule = settings.Sales.FirstOrDefault(r => r.Matches(item, stock));
         if(item.Marketable)
         {
+            if(world==0)return new(Outcome.Wait,"Current world is unavailable; market valuation is blocked");
             var candidates = evidence.Prices.Values.Where(p => p.ItemId == item.Id && p.World == world && !p.Own &&
                 (settings.Quality == QualityMode.Combined || p.Hq == stock.Hq) && p.UnitPrice > 0 &&
                 p.Observed <= now && now-p.Observed <= TimeSpan.FromMinutes(settings.MaximumPriceAgeMinutes));

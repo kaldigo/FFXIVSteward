@@ -39,3 +39,21 @@ Automated checks cannot prove native UI identities, callbacks, memory layouts, p
 4. If data becomes unavailable after zoning, a confirmation does not match, an outcome is uncertain or a run stops, inspect inventory before clearing the review hold. A submitted game action may still finish after Stop. Unsupported bulk outfit operations remain held.
 
 This audit did not install, enable or run either plugin in FFXIV. Native acceptance remains outstanding.
+
+## Second review
+
+Further review found and corrected additional execution-boundary gaps:
+
+- Final market submission now waits a frame after changing inputs, reads back native agent and dialog price/quantity, verifies the source and existing listing price, and rechecks current rules and pricing. A successful callback alone is insufficient.
+- Market snapshots are queued on receipt and consumed on the framework thread. Only the active comparison is retained. Responses must match native item/request identifiers, finished loading state and expected listing count. Listings are keyed by their real listing IDs; a delayed page cannot overwrite a newer request merely because the item matches.
+- Standalone work uses protocol-3 owned control instead of a general suppression boolean. The bridge rejects acquisition while busy/suppressed, pauses its main loop while Steward owns control, denies AutoRetainer item actions during that control, and expires/relinquishes only its recorded owner. It never clears another plugin's general suppression flag. Failed release acknowledgements stop work and are retried.
+- A failed queue-building step cancels the partial plan and immediately persists the execution hold before releasing control. Direct UI requests cannot leave half a plan running. Menu timeouts and exceptions after a potentially partial AutoRetainer request also hold execution.
+- Dresser and HQ GC confirmations now require an expected nonzero parent/host identity as well as the existing source/item/protection checks. Unknown relationships hold; their native layout has not been validated in FFXIV.
+- Unloaded player state and unknown current worlds cannot authorize actions or market valuations. Invalid CSV quality/ownership flags are rejected rather than treated as NQ/competitor defaults.
+- Upgrading to safety revision/protocol 3 resets automatic execution to off before any execution handlers are registered.
+- GC Deliver/HQ confirmations now use one-shot commit gates; waiting for acknowledgement cannot repeat a native commit. An uncertain GC transaction persists a hold in AutoRetainer's own configuration and notifies Steward immediately. Both sides must clear their hold, and pending confirmation windows must be resolved first.
+- Standalone control and review holds reuse AutoRetainer's existing YesAlready/TextAdvance pause managers, including before opening a companion dialog. Pending owned dresser confirmations are declined on cancellation; an unknown or uncloseable prompt holds execution. Competing AutoRetainer disposal callbacks are denied while Steward owns an active queue/handoff, including the interval after a backend reload.
+
+The second read-only validation parsed all 286 saved Glamaholic IDs, 1,098 cached quotes and the saved Market Buddy settings. Cache growth since the first pass reflects changes in the existing files; the audit did not write them.
+
+Native acceptance is still a blocker for declaring unattended whole-inventory cleanup ready. In particular, zoning can clear required native collection data; a safe refresh path at every destination is not verified. New dialog ownership, price readback and request-completeness guards may deliberately hold unsupported native states. Crash recovery and server acknowledgements have not been tested in game. These limits must not be described as completed native verification.

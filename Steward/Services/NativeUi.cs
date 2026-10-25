@@ -6,17 +6,27 @@ namespace Steward.Services;
 public sealed unsafe class NativeUi(IGameGui gui)
 {
     public AtkUnitBase* Get(string name)
-    {var a=gui.GetAddonByName(name);return a.IsNull||!a.IsVisible?null:(AtkUnitBase*)a.Address;}
+    {var a=gui.GetAddonByName(name);if(a.IsNull||!a.IsVisible)return null;var native=(AtkUnitBase*)a.Address;return native->IsReady?native:null;}
     public bool Click(string name,uint id)
     {
         var addon=Get(name);if(addon==null)return false;
         var button=addon->GetComponentButtonById(id);
-        if(button==null || !button->IsEnabled || button->OwnerNode==null)return false;
+        return ClickButton(addon,button);
+    }
+    private static bool ClickButton(AtkUnitBase* addon,AtkComponentButton* button)
+    {
+        if(addon==null || button==null || !button->IsEnabled || button->OwnerNode==null)return false;
         var evt=button->OwnerNode->AtkResNode.AtkEventManager.Event;
         if(evt==null)return false;
         // Use the button's registered native event, as ECommons' ClickAddonButton does.
         addon->ReceiveEvent(evt->State.EventType,(int)evt->Param,evt);
         return true;
+    }
+    public bool CancelOwnedConfirmation(ushort owner)
+    {
+        var addon=(FFXIVClientStructs.FFXIV.Client.UI.AddonSelectYesno*)Get("SelectYesno");
+        if(addon==null)return true;
+        return Steward.Core.ConfirmationOwnership.Matches(owner,addon->ParentId,addon->HostId) && ClickButton(&addon->AtkUnitBase,addon->NoButton);
     }
     public bool Callback(string name,params int[] values)
     {

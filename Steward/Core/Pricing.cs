@@ -10,7 +10,7 @@ public sealed class PricingSettings
     public bool UseMaxStackSize { get; set; }
     public int MaximumStackSize { get; set; } = 99;
 }
-public sealed record Offering(uint ItemId, bool Hq, uint UnitPrice, uint Quantity, ulong RetainerId);
+public sealed record Offering(uint ItemId, bool Hq, uint UnitPrice, uint Quantity, ulong RetainerId, ulong ListingId = 0);
 public static class Pricing
 {
     public static uint? Undercut(uint competitor, PricingSettings settings, uint floor)

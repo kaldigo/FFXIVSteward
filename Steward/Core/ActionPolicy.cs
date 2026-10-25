@@ -2,9 +2,11 @@ namespace Steward.Core;
 
 public static class ActionPolicy
 {
-    public static bool Allows(string? action, Outcome outcome, bool automatic, bool connected, bool faulted)
+    public static bool Allows(string? action, Outcome outcome, bool automatic, bool connected, bool faulted,
+        bool reserved=false,bool ownsPostprocess=false)
     {
         if(!automatic || !connected || faulted)return false;
+        if(reserved && !(action=="Retrieve" && ownsPostprocess))return false;
         return action switch
         {
             "Armoire"=>outcome==Outcome.CollectArmoire,

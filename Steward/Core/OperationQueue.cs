@@ -12,6 +12,12 @@ public sealed class OperationQueue
     public int Completed { get; private set; }
     public void Begin(){if(Running)throw new InvalidOperationException("Queue is already running");Status="Idle";Completed=0;}
     public void Add(Operation operation)=>queue.Enqueue(operation);
+    public bool Plan(Action build)
+    {
+        if(Running || Status.StartsWith("Stopped:",StringComparison.Ordinal))return false;
+        try{build();return true;}
+        catch(Exception ex){Stop("Stopped: queue planning failed: "+ex.Message);return false;}
+    }
     public void Advance(long now)
     {
         if(current==null)

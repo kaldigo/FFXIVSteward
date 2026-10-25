@@ -7,6 +7,7 @@ public sealed class Configuration : IPluginConfiguration
 {
     public int Version { get; set; } = 1;
     public bool Automatic { get; set; }
+    public int SafetyRevision { get; set; }
     public bool ExecutionReviewRequired { get; set; }
     public bool Connected { get; set; } = true;
     public RuleSettings Rules { get; set; } = new();

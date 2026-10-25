@@ -49,6 +49,12 @@ public sealed class Plugin : IDalamudPlugin
     {
         this.pi=pi;this.commands=commands;this.framework=framework;this.player=player;this.objects=objects;this.log=log;
         config=pi.GetPluginConfig() as Configuration??new();
+        if(config.SafetyRevision<3)
+        {
+            config.Automatic=false;
+            config.SafetyRevision=3;
+            pi.SavePluginConfig(config);
+        }
         executionFault=config.ExecutionReviewRequired;
         if(!config.InitialExclusionsApplied)
         {
@@ -61,8 +67,9 @@ public sealed class Plugin : IDalamudPlugin
         tracked=new(pi);
         dungeonSources=new(pi,data,config,Save);
         historyPath=Path.Combine(pi.GetPluginConfigDirectory(),"history.jsonl");
-        market=new(pi,board,view,config,new(gui),JudgeLive,Record,RefreshProtection,()=>imports.MarketPreferencesReady);
+        market=new(pi,board,view,config,new(gui),JudgeLive,Record,RefreshProtection,()=>imports.MarketPreferencesReady,HoldExecution);
         pi.GetIpcProvider<string,string>(Endpoint).RegisterFunc(Evaluate);
+        pi.GetIpcProvider<ulong,string,object>("Steward.InventoryPolicy.Fault").RegisterAction(IntegrationFault);
         pi.GetIpcSubscriber<string,object>("AutoRetainer.OnRetainerAdditionalTask").Subscribe(RequestPostprocess);
         pi.GetIpcSubscriber<string,string,object>("AutoRetainer.OnRetainerReadyForPostprocess").Subscribe(Postprocess);
         commands.AddHandler("/steward",new CommandInfo(Command){HelpMessage="Open inventory decisions; /steward stop cancels Steward work."});
@@ -82,7 +89,7 @@ public sealed class Plugin : IDalamudPlugin
     private void Refresh()
     {
         view.World=objects.LocalPlayer?.CurrentWorld.RowId??0;
-        view.Refresh(player.ContentId);
+        view.Refresh(player.IsLoaded?player.ContentId:0);
         if(Environment.TickCount64>=nextImports){imports.Refresh();tracked.Refresh();nextImports=Environment.TickCount64+2000;}
     }
     private Decision Judge(Stock stock)
@@ -90,12 +97,12 @@ public sealed class Plugin : IDalamudPlugin
     private void RefreshProtection()
     {
         view.World=objects.LocalPlayer?.CurrentWorld.RowId??0;
-        view.Refresh(player.ContentId);
+        view.Refresh(player.IsLoaded?player.ContentId:0);
         imports.Refresh();
     }
     private Decision JudgeLive(Stock stock)
     {
-        if(executionFault || !config.Connected || attached==0 || attached!=player.ContentId)
+        if(!player.IsLoaded || executionFault || !config.Connected || attached==0 || attached!=player.ContentId)
             return new(Outcome.Wait,"Execution held: policy is disconnected or inventory review is required");
         RefreshProtection();
         return Judge(stock);
@@ -106,20 +113,27 @@ public sealed class Plugin : IDalamudPlugin
         executionFault=config.ExecutionReviewRequired=true;
         config.Automatic=false;
         try{Save();}catch(Exception ex){log.Error(ex,"Could not persist execution hold; this session remains stopped");}
+        try{if(attached!=0)pi.GetIpcSubscriber<ulong,string,object>("AutoRetainer.InventoryPolicy.Hold").InvokeAction(attached,reason);}
+        catch(Exception ex){log.Debug(ex,"AutoRetainer review hold could not be notified; Steward remains stopped");}
         Record("Execution held for inventory review: "+reason);
+    }
+    private void IntegrationFault(ulong character,string reason)
+    {
+        if(character!=0 && character==player.ContentId){HoldExecution("AutoRetainer: "+reason);StopQueue();}
     }
     private string Evaluate(string request)
     {
         try
         {
             using var doc=JsonDocument.Parse(request);var root=doc.RootElement;
-            if(root.GetProperty("Version").GetInt32()!=2 || root.GetProperty("Character").GetUInt64()!=player.ContentId || !config.Connected)return "Deny";
+            if(!player.IsLoaded || root.GetProperty("Version").GetInt32()!=3 || root.GetProperty("Character").GetUInt64()!=player.ContentId || !config.Connected)return "Deny";
             Refresh();
             // Protection imports are refreshed again before permission, even between regular refresh intervals.
             imports.Refresh();
             var id=root.GetProperty("ItemId").GetUInt32()%1000000;
             var quantity=root.GetProperty("Quantity").GetUInt32();
             var container=root.GetProperty("Container").GetInt32();var slot=root.GetProperty("Slot").GetInt32();
+            if(container<-1 || slot<-1 || slot>ushort.MaxValue || (container==-1)!=(slot==-1))return "Deny";
             Stock? stock;
             if(container>=0 && slot>=0)
             {
@@ -134,7 +148,8 @@ public sealed class Plugin : IDalamudPlugin
                 stock=copies[0];
             }
             var decision=Judge(stock);var action=root.GetProperty("Action").GetString();
-            var allow=ActionPolicy.Allows(action,decision.Outcome,config.Automatic,config.Connected,executionFault);
+            var allow=ActionPolicy.Allows(action,decision.Outcome,config.Automatic,config.Connected,executionFault,
+                market.Queue.Running||ownsPostprocess,ownsPostprocess);
             var key=$"{id}/{action}/{allow}/{decision.Reason}";
             if(!recentDecisions.TryGetValue(key,out var at)||Environment.TickCount64-at>60000)
             {recentDecisions[key]=Environment.TickCount64;Record($"{(allow?"Permitted":"Held")} {action} for {id}: {decision.Reason}. AutoRetainer owns execution/results.");}
@@ -147,6 +162,7 @@ public sealed class Plugin : IDalamudPlugin
         if(disposed)return;
         try
         {
+            if(!player.IsLoaded){StopQueue();return;}
             if(attached!=0 && attached!=player.ContentId){Stop();attached=0;}
             if(Environment.TickCount64>=nextRefresh)
             {
@@ -154,10 +170,11 @@ public sealed class Plugin : IDalamudPlugin
                 if(config.Connected && player.ContentId!=0)
                 {
                     var version=pi.GetIpcSubscriber<int>("AutoRetainer.InventoryPolicy.Version").InvokeFunc();
-                    if(version!=2)throw new InvalidOperationException("Update both plugins: AutoRetainer integration version 2 is required");
+                    if(version!=3)throw new InvalidOperationException("Update both plugins: AutoRetainer integration version 3 is required");
                     if(attached==player.ContentId)
                     {if(!pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Heartbeat").InvokeFunc(attached,Endpoint))attached=0;}
                     if(attached==0 && pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Connect").InvokeFunc(player.ContentId,Endpoint))attached=player.ContentId;
+                    if(pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.HasFault").InvokeFunc(player.ContentId))HoldExecution("AutoRetainer has an unresolved inventory transaction");
                     status=attached!=0?(config.Automatic?"Automatic decisions enabled":"Dry run: AutoRetainer item actions held"):"Waiting for AutoRetainer integration";
                 }
             }
@@ -168,7 +185,7 @@ public sealed class Plugin : IDalamudPlugin
                 HoldExecution(market.Queue.Status);
             if(openingInventory)
             {
-                if(Environment.TickCount64>marketOpenDeadline){openingInventory=false;Record("Retainer inventory timed out");FinishPostprocess();}
+                if(Environment.TickCount64>marketOpenDeadline){HoldExecution("Retainer inventory timed out");StopQueue();}
                 else if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Menu").InvokeFunc(player.ContentId,"Inventory"))
                 {openingInventory=false;Refresh();market.WithdrawForOtherActions(player.ContentId);withdrawing=true;}
             }
@@ -180,7 +197,7 @@ public sealed class Plugin : IDalamudPlugin
             }
             if(openingMarket)
             {
-                if(Environment.TickCount64>marketOpenDeadline){openingMarket=false;Record("Retainer market menu timed out");FinishPostprocess();}
+                if(Environment.TickCount64>marketOpenDeadline){HoldExecution("Retainer market menu timed out");StopQueue();}
                 else if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Menu").InvokeFunc(player.ContentId,"Market"))
                 {openingMarket=false;Refresh();market.Start(true);if(!market.Queue.Running)FinishPostprocess();}
             }
@@ -205,7 +222,7 @@ public sealed class Plugin : IDalamudPlugin
     }
     private void RequestPostprocess(string retainer)
     {
-        if(!config.Automatic||executionFault||attached!=player.ContentId||market.Queue.Running)return;
+        if(!player.IsLoaded||!config.Automatic||executionFault||attached!=player.ContentId||market.Queue.Running)return;
         try{pi.GetIpcSubscriber<string,object>("AutoRetainer.RequestPostprocess").InvokeAction("Steward");}
         catch(Exception ex){Record("Postprocess request failed: "+ex.Message);}
     }
@@ -217,7 +234,7 @@ public sealed class Plugin : IDalamudPlugin
         if(!config.Automatic || executionFault || !config.Connected || attached==0 || attached!=player.ContentId)
         {FinishPostprocess();return;}
         try{Refresh();openingInventory=true;marketOpenDeadline=Environment.TickCount64+15000;}
-        catch{FinishPostprocess();throw;}
+        catch(Exception ex){HoldExecution("Retainer postprocess planning failed: "+ex.Message);StopQueue();}
     }
     private void FinishPostprocess()
     {
@@ -250,7 +267,7 @@ public sealed class Plugin : IDalamudPlugin
         if(!config.Automatic){Record("Dry run: would request AutoRetainer "+operation);return;}
         if(market.Queue.Running){Record("Wait for the current operation to finish");return;}
         try{var result=pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,operation);Record(result?"Requested AutoRetainer "+operation:"AutoRetainer could not start "+operation+"; check its settings, dependencies and current task");}
-        catch(Exception ex){Record(ex.Message);}
+        catch(Exception ex){HoldExecution("AutoRetainer request failed after a possible partial enqueue: "+ex.Message);StopQueue();}
     }
     private void Draw()
     {
@@ -261,7 +278,16 @@ public sealed class Plugin : IDalamudPlugin
         var automatic=config.Automatic;
         if(ImGui.Checkbox("Enable automatic execution",ref automatic)){config.Automatic=automatic;if(!automatic)StopQueue();Save();}
         ImGui.SameLine();if(ImGui.Button("Stop"))Stop();
-        if(executionFault && ImGui.Button("I checked inventory — clear stopped run")){market.Queue.Begin();config.Automatic=false;executionFault=config.ExecutionReviewRequired=false;Save();Record("User cleared the stopped run after inventory review; automatic execution remains off");}
+        if(executionFault && ImGui.Button("I checked inventory — clear stopped run"))
+        {
+            try
+            {
+                if(!pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.ClearFault").InvokeFunc(player.ContentId))
+                    Record("Close pending confirmations and release control before clearing the stopped run");
+                else{market.Queue.Begin();config.Automatic=false;executionFault=config.ExecutionReviewRequired=false;Save();Record("User cleared both stopped-run holds after inventory review; automatic execution remains off");}
+            }
+            catch(Exception ex){Record("Could not clear the integration hold: "+ex.Message);}
+        }
         ImGui.TextWrapped("Collection: exact item IDs; dyes ignored. Open the dresser, plate editor and armoire to load evidence. Existing AutoRetainer protections and enabled actions still apply.");
         if(ImGui.BeginTabBar("Steward tabs"))
         {
@@ -361,6 +387,7 @@ public sealed class Plugin : IDalamudPlugin
         finally
         {
             pi.GetIpcProvider<string,string>(Endpoint).UnregisterFunc();
+            pi.GetIpcProvider<ulong,string,object>("Steward.InventoryPolicy.Fault").UnregisterAction();
             pi.GetIpcSubscriber<string,object>("AutoRetainer.OnRetainerAdditionalTask").Unsubscribe(RequestPostprocess);
             pi.GetIpcSubscriber<string,string,object>("AutoRetainer.OnRetainerReadyForPostprocess").Unsubscribe(Postprocess);
             pi.UiBuilder.Draw-=Draw;pi.UiBuilder.OpenMainUi-=Open;pi.UiBuilder.OpenConfigUi-=Open;commands.RemoveHandler("/steward");Save();

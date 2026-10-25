@@ -46,6 +46,7 @@ public static class Imports
         {
             var fields = raw.TrimEnd('\r').Split(',');
             if(fields.Length != 7) throw new InvalidDataException("Unexpected Allagan Market cache columns");
+            if(fields[1] is not ("Y" or "N") || fields[6] is not ("Y" or "N"))throw new InvalidDataException("Unknown Allagan Market quality or owner flag");
             var date = DateTime.Parse(fields[4].Trim('"'), CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal);
             result.Add(new(uint.Parse(fields[0]), fields[1] == "Y", uint.Parse(fields[2]), uint.Parse(fields[5]), new DateTimeOffset(date), "Allagan Market/"+fields[3], fields[6] == "Y"));
         }
