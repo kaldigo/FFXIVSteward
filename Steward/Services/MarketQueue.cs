@@ -253,7 +253,7 @@ public sealed unsafe class MarketQueue : IDisposable
                     // Never acknowledge an unrelated confirmation. The agent must still identify our exact source.
                     var selected=agent->Data->CrystallizeSelectedItem;
                     if(selected.ItemId%1000000!=source.ItemId||(uint)selected.Inventory!=source.Container||selected.Slot!=source.Slot)return StepResult.Failed;
-                    if(ui.Get("MiragePrismPrismSetConvert")!=null)return StepResult.Completed; // Outfit handling remains Glamour Log's existing workflow.
+                    if(ui.Get("MiragePrismPrismSetConvert")!=null)return StepResult.Failed; // Hold for review; never progress through an unsupported dialog.
                     var confirm=(FFXIVClientStructs.FFXIV.Client.UI.AddonSelectYesno*)ui.Get("SelectYesno");
                     if(confirm==null)return StepResult.Waiting;
                     var name=view.Facts(source.ItemId)?.Name;

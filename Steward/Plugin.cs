@@ -32,6 +32,7 @@ public sealed class Plugin : IDalamudPlugin
     private bool open=true;
     private bool disposed;
     private bool ownsPostprocess;
+    private bool executionFault;
     private string status="Starting in dry-run mode";
     private string itemText="";
     private string commonPath="";
@@ -110,7 +111,7 @@ public sealed class Plugin : IDalamudPlugin
                 stock=copies[0];
             }
             var decision=Judge(stock);var action=root.GetProperty("Action").GetString();
-            var allow=config.Automatic && action switch
+            var allow=config.Automatic && !executionFault && action switch
             {
                 "Armoire"=>decision.Outcome==Outcome.CollectArmoire,
                 "Dresser"=>decision.Outcome==Outcome.CollectDresser,
@@ -145,6 +146,8 @@ public sealed class Plugin : IDalamudPlugin
                 }
             }
             market.Advance(Environment.TickCount64);
+            if(config.Automatic && market.Queue.Status.StartsWith("Stopped",StringComparison.Ordinal) && !executionFault)
+            {executionFault=true;Record("Execution held for review: "+market.Queue.Status);}
             if(openingInventory)
             {
                 if(Environment.TickCount64>marketOpenDeadline){openingInventory=false;Record("Retainer inventory timed out");FinishPostprocess();}
@@ -171,19 +174,20 @@ public sealed class Plugin : IDalamudPlugin
                 if(!busy)
                 {
                     dungeonSources.Tick();
-                    if(config.Automatic)
+                    if(config.Automatic && !executionFault)
                     {
                         market.DepositOpenDresser();
                         if(!market.Queue.Running)market.CleanupDresser();
                     }
                 }
             }
+            if(executionFault)status="Execution held after an uncertain/failed operation. Check inventory and clear the stopped run before continuing.";
         }
         catch(Exception ex){status=ex.Message;StopQueue();}
     }
     private void RequestPostprocess(string retainer)
     {
-        if(!config.Automatic||attached!=player.ContentId||market.Queue.Running)return;
+        if(!config.Automatic||executionFault||attached!=player.ContentId||market.Queue.Running)return;
         try{pi.GetIpcSubscriber<string,object>("AutoRetainer.RequestPostprocess").InvokeAction("Steward");}
         catch(Exception ex){Record("Postprocess request failed: "+ex.Message);}
     }
@@ -205,6 +209,7 @@ public sealed class Plugin : IDalamudPlugin
     private void Stop(){config.Automatic=false;Save();StopQueue();Record("Automatic execution stopped; managed items remain held");}
     private void Run(string operation)
     {
+        if(executionFault){Record("Check inventory and clear the stopped run first");return;}
         if(!config.Automatic){Record("Dry run: would request AutoRetainer "+operation);return;}
         if(market.Queue.Running){Record("Wait for the current operation to finish");return;}
         try{var result=pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,operation);Record(result?"Requested AutoRetainer "+operation:"AutoRetainer could not start "+operation+"; check its settings, dependencies and current task");}
@@ -219,6 +224,7 @@ public sealed class Plugin : IDalamudPlugin
         var automatic=config.Automatic;
         if(ImGui.Checkbox("Enable automatic execution",ref automatic)){config.Automatic=automatic;Save();if(!automatic)StopQueue();}
         ImGui.SameLine();if(ImGui.Button("Stop"))Stop();
+        if(executionFault && ImGui.Button("I checked inventory — clear stopped run")){market.Queue.Begin();executionFault=false;Record("User cleared the stopped run after inventory review");}
         ImGui.TextWrapped("Collection: exact item IDs; dyes ignored. Open the dresser, plate editor and armoire to load evidence. Existing AutoRetainer protections and enabled actions still apply.");
         if(ImGui.BeginTabBar("Steward tabs"))
         {
