@@ -15,4 +15,5 @@ public sealed class Configuration : IPluginConfiguration
     public bool ImportMarketBuddy { get; set; } = true;
     public bool GlamaholicExpected { get; set; } = true;
     public bool UseBundledGlamourList { get; set; } = true;
+    public bool InitialExclusionsApplied { get; set; }
 }

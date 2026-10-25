@@ -47,6 +47,13 @@ public sealed class Plugin : IDalamudPlugin
     {
         this.pi=pi;this.commands=commands;this.framework=framework;this.player=player;this.objects=objects;this.log=log;
         config=pi.GetPluginConfig() as Configuration??new();
+        if(!config.InitialExclusionsApplied)
+        {
+            // Both exact names/IDs verified against installed English Item data.
+            config.Rules.Ignored.UnionWith([8743u,13116u]);
+            config.InitialExclusionsApplied=true;
+            pi.SavePluginConfig(config);
+        }
         view=new(data,config);imports=new(pi,config,view);
         tracked=new(pi);
         dungeonSources=new(pi,data,config,Save);
