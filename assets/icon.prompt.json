@@ -1,4 +1,15 @@
 {
-  "id": "Steward",
-  "prompt": "Use case: stylized-concept. Make ONE square native FFXIV UTILITY/MENU-style hotbar icon for Steward, a Kaldigo collection-aware inventory manager. Reference image 1 is the current shared AutoRetainer/Steward bell logo, for the turquoise-to-magenta brand palette ONLY: create a DISTINCT STEWARD SYMBOL rather than another bell. Reference image 2 is the approved Aetherworks utility icon: match its restrained raised-enamel relief, modest bevel, quiet shading, clarity at 40px and SAME INDIGO background. Subject: a SIMPLE OPEN INVENTORY CRATE / storage tray with THREE broad square compartments or folded item blocks, and ONE bold CHECK MARK centered above or integrated into the front. A compact coherent utility emblem conveying collected inventory, not a shopping basket. Keep broad clean silhouettes, a maximum of three internal compartments and no tiny decorative details. Foreground horizontal palette: turquoise/teal #11D197 LEFT through cyan/violet to magenta #FF00FF RIGHT, just like the reference family. Background: perfectly quiet flat solid INDIGO #272640 from edge to edge and through negative spaces. Center foreground around 75 percent of the canvas with balanced margins; full-bleed square, no outer app frame, no rounded canvas corners (runtime adds them). No background gradient, texture, glow, aura, sparkles, rays, streaks, magical effects, text, numbers, watermark, coins, faces, extra tools or props. Must read as a clean native utility/menu icon rather than a combat action."
+  "id": "Steward installer logo",
+  "tool": "built-in image generation",
+  "prompt": "Use case: style-transfer / logo-brand. Create ONE square Steward PLUGIN INSTALLER LOGO, newly generated from the two references. Image 1 (AutoRetainer) is the EXACT BRAND STYLE reference: a flat graphic cyan-to-magenta gradient symbol on a near-black charcoal square, surrounded by the same thin cyan-to-magenta rounded-inside square border running around all four edges. Image 2 (Steward's approved hotbar icon) is SUBJECT REFERENCE ONLY: an open inventory tray containing THREE broad item blocks, beneath ONE bold checkmark. Adapt that recognizable tray-and-checkmark into image 1's FLAT, clean, vector-like branding. Replace the bell/hood with the tray-and-checkmark; do not include any bell or hood. Preserve the clear subject relationship and broad readable silhouette, but redraw and simplify into flat shapes with tidy negative spaces. The symbol must have NO 3D depth, bevels, reflections, highlights, shadows, texture or glow. Use one smooth horizontal brand gradient across the entire emblem, from turquoise #11D197 at LEFT through cyan and violet to magenta #FF00FF at RIGHT, matching image 1. Background is flat near-black charcoal #101010, not indigo. Border should match image 1's understated thickness, edge placement and small inner corner radius. Center the symbol inside the border with generous breathing room, approximately 65-70 percent of canvas width and height. Subject must remain clear at 40 px. No words, letters, numbers, badges, extra objects, sparkles or decorative effects. This is a flat plugin-family logo, not a native FFXIV hotbar rendering. Produce the single finished square icon, full bleed, no mockup or surrounding UI.",
+  "references": [
+    {
+      "role": "flat plugin-family brand style",
+      "path": "AutoRetainer/assets/icon.png"
+    },
+    {
+      "role": "inventory/checkmark subject only",
+      "path": "ExpandedHotbars/ExpandedHotbars/images/plugin-overrides/Steward.png"
+    }
+  ]
 }
