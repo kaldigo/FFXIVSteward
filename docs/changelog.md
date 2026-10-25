@@ -1,0 +1,1 @@
+Initial Steward integration preview. Collection references, exclusions, sale rules, live policy gates, retainer withdrawals, market listing/repricing and dresser actions. AutoRetainer identity and existing workflows are preserved. Starts in dry run. Native game acceptance remains pending.

@@ -1,0 +1,54 @@
+using Steward.Core;
+
+var total=0;
+void Check(bool condition,string name) { total++; if(!condition) throw new Exception(name); }
+var now=DateTimeOffset.UtcNow;
+var settings=new RuleSettings();
+var e=new Evidence{ReferencesReady=true,GearsetsReady=true,DresserKnown=true,ArmoireKnown=true};
+var item=new ItemFacts(42,"Test",true,3,90,false,true,SourceKind.Special,1);
+var stock=new Stock(42,false,1,0,0);
+Decision Judge() => Rules.Judge(item,stock,settings,e,1,now);
+Check(Judge().Outcome==Outcome.CollectArmoire,"Missing blue goes to armoire");
+e.Armoire.Add(42); Check(Judge().Outcome==Outcome.Dispose,"Collected blue duplicate disposes");
+e.Armoire.Clear();e.Dresser.Add(42);Check(Judge().Outcome==Outcome.Dispose,"Dresser copy satisfies collection");
+e.Gearsets.Add(42);Check(Judge().Outcome==Outcome.Keep,"Gearset beats duplicate disposal");
+settings.Ignored.Add(42);Check(Judge().Outcome==Outcome.Ignore,"Ignore has highest priority");
+settings.Ignored.Clear();e.Gearsets.Clear();e.Dresser.Clear();e.ArmoireKnown=false;
+Check(Judge().Outcome==Outcome.Wait,"Unknown armoire is not empty");e.ArmoireKnown=true;
+item=item with{Rarity=1,EquipLevel=1,ArmoireEligible=false,Source=SourceKind.Ordinary};
+Check(Judge().Outcome==Outcome.CollectDresser,"Level one glamour collected");
+item=item with{EquipLevel=90};Check(Judge().Outcome==Outcome.Dispose,"Ordinary unreferenced gear disposes");
+e.CuratedGlamour.Add(42);Check(Judge().Outcome==Outcome.CollectDresser,"Curated dungeon glamour protected");e.CuratedGlamour.Clear();
+e.References.Add(42);Check(Judge().Outcome==Outcome.CollectDresser,"Plate protects ordinary gear");
+e.References.Clear();item=item with{Source=SourceKind.Unknown};Check(Judge().Outcome==Outcome.Keep,"Unknown source held");
+item=item with{Equipment=false,Marketable=true};
+Check(Judge().Outcome==Outcome.Wait,"Missing price blocks disposal");
+e.Prices[(42,false)]=new(42,false,1,1000,now,"Test");settings.Sales.Add(new(){MinimumUnit=1000,MinimumTotal=5000,MaximumStack=5});
+stock=stock with{Quantity=5};Check(Judge().Outcome==Outcome.Market,"Sale criteria match");
+stock=stock with{Quantity=4};Check(Judge().Outcome==Outcome.Dispose,"Listing total uses actual stack");
+e.Prices[(42,false)]=e.Prices[(42,false)] with{Observed=now.AddHours(-1)};Check(Judge().Outcome==Outcome.Wait,"Stale price held");
+e.Prices[(42,false)]=e.Prices[(42,false)] with{Observed=now.AddMinutes(1)};Check(Judge().Outcome==Outcome.Wait,"Future price held");
+e.Prices[(42,false)]=e.Prices[(42,false)] with{Observed=now,Own=true};Check(Judge().Outcome==Outcome.Wait,"Own quote is not competition");
+var mb=new PricingSettings();Check(Pricing.Undercut(100,mb,1)==99,"Fixed undercut");
+mb.UndercutUsePercent=true;mb.UndercutPercent=10;Check(Pricing.Undercut(100,mb,1)==90,"Percent undercut");
+mb.UndercutUsePercent=false;mb.EnablePriceRounding=true;Check(Pricing.Undercut(100,mb,1)==95,"Rounded undercut");
+Check(Pricing.Undercut(100,mb,96)==null,"Floor blocks rounded price");
+var own=new HashSet<ulong>{1};var offers=new[]{new Offering(42,false,100,1,1),new Offering(42,false,110,1,2)};
+Check(Pricing.Target(42,false,100,offers,own,QualityMode.Separate,mb,1)==null,"Do not undercut own cheapest");
+Check(Pricing.Target(42,true,null,offers,own,QualityMode.Separate,mb,1)==null,"Separate HQ and NQ");
+Check(Imports.Glamaholic("""{"Version":3,"Plates":[{"NodeType":"Folder","Children":[{"NodeType":"Plate","Plate":{"Items":{"Head":{"ItemId":42,"Stain1":5,"Stain2":7}}}}]}]}""").SetEquals(new uint[]{42}),"Nested Glamaholic with dyes ignored");
+Check(Imports.Glamaholic("""{"Version":1,"Plates":[{"Items":{"Head":{"ItemId":1000042}}}]}""").Contains(42),"Legacy HQ ID normalized");
+try{Imports.Glamaholic("""{"Version":4,"Plates":[]}""");throw new Exception("Accepted unsupported schema");}catch(InvalidDataException){total++;}
+try{Imports.Glamaholic("""{"Version":3,"Plates":[{"NodeType":"Unexpected"}]}""");throw new Exception("Accepted unknown node");}catch(InvalidDataException){total++;}
+Console.WriteLine($"{total} rule/import/market checks passed.");
+var queue=new OperationQueue();var released=0;var sent=0;
+queue.Add(new("One",()=>{sent++;return StepResult.Waiting;},()=>released++,100));
+queue.Add(new("Two",()=>StepResult.Completed,()=>released++));
+queue.Advance(1);queue.Advance(102);Check(!queue.Running&&sent==1&&released==2,"Timeout cancels dependants and releases locks");
+queue.Stop("Again");Check(released==2,"Cancellation cleanup is idempotent");
+queue.Add(new("Throw",()=>throw new InvalidOperationException("broken"),()=>released++));queue.Advance(200);
+Check(!queue.Running&&released==3&&queue.Status.Contains("broken"),"Exception releases owned locks");
+queue.Add(new("Throwing cleanup",()=>StepResult.Waiting,()=>throw new InvalidOperationException("cleanup failure")));
+queue.Add(new("Must still release",()=>StepResult.Completed,()=>released++));queue.Advance(300);queue.Stop("cancel");
+Check(released==4&&!queue.Running&&queue.Status.Contains("cleanup failure"),"One failed cleanup cannot strand later locks");
+Console.WriteLine($"{total} checks passed including cancellation/error paths.");

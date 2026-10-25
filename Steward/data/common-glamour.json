@@ -1,0 +1,55 @@
+{
+  "description": "Initial manually curated collection candidates, not an exhaustive popularity ranking.",
+  "items": [
+    {
+      "itemId": 20819,
+      "name": "Skallic Goggles of Fending",
+      "source": "https://ffxiv.eorzeacollection.com/gearset/skallic-fending"
+    },
+    {
+      "itemId": 20820,
+      "name": "Skallic Coat of Fending",
+      "source": "https://ffxiv.eorzeacollection.com/gearset/skallic-fending"
+    },
+    {
+      "itemId": 20821,
+      "name": "Skallic Armguards of Fending",
+      "source": "https://ffxiv.eorzeacollection.com/gearset/skallic-fending"
+    },
+    {
+      "itemId": 20822,
+      "name": "Skallic Trousers of Fending",
+      "source": "https://ffxiv.eorzeacollection.com/gearset/skallic-fending"
+    },
+    {
+      "itemId": 20823,
+      "name": "Skallic Boots of Fending",
+      "source": "https://ffxiv.eorzeacollection.com/gearset/skallic-fending"
+    },
+    {
+      "itemId": 20849,
+      "name": "Skallic Cap of Healing",
+      "source": "https://ffxiv.eorzeacollection.com/gearset/skallic-healing"
+    },
+    {
+      "itemId": 20850,
+      "name": "Skallic Jacket of Healing",
+      "source": "https://ffxiv.eorzeacollection.com/gearset/skallic-healing"
+    },
+    {
+      "itemId": 20851,
+      "name": "Skallic Gloves of Healing",
+      "source": "https://ffxiv.eorzeacollection.com/gearset/skallic-healing"
+    },
+    {
+      "itemId": 20852,
+      "name": "Skallic Bottoms of Healing",
+      "source": "https://ffxiv.eorzeacollection.com/gearset/skallic-healing"
+    },
+    {
+      "itemId": 20853,
+      "name": "Skallic Shoes of Healing",
+      "source": "https://ffxiv.eorzeacollection.com/gearset/skallic-healing"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+[
+  {
+    "Author": "kaldigo",
+    "Name": "Steward",
+    "InternalName": "Steward",
+    "AssemblyVersion": "0.1.0.0",
+    "Description": "Collection-aware inventory decisions and market rules coordinated with the AutoRetainer integration fork. Starts in dry-run mode.",
+    "ApplicableVersion": "any",
+    "RepoUrl": "https://github.com/kaldigo/FFXIVSteward",
+    "DalamudApiLevel": 15,
+    "LoadRequiredState": 0,
+    "LoadSync": false,
+    "CanUnloadAsync": false,
+    "LoadPriority": 0,
+    "Punchline": "Collect what matters. Sell the surplus.",
+    "AcceptsFeedback": true,
+    "IconUrl": "https://raw.githubusercontent.com/kaldigo/FFXIVSteward/main/assets/icon.png",
+    "Changelog": "Initial Steward integration preview. Collection references, exclusions, sale rules, live policy gates, retainer withdrawals, market listing/repricing and dresser actions. AutoRetainer identity and existing workflows are preserved. Starts in dry run. Native game acceptance remains pending.",
+    "DownloadLinkInstall": "https://github.com/kaldigo/FFXIVSteward/releases/download/v0.1.0.0/Steward.zip",
+    "DownloadLinkUpdate": "https://github.com/kaldigo/FFXIVSteward/releases/download/v0.1.0.0/Steward.zip",
+    "DownloadLinkTesting": "https://github.com/kaldigo/FFXIVSteward/releases/download/v0.1.0.0/Steward.zip"
+  }
+]

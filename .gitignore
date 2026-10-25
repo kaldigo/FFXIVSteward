@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+artifacts/
+__pycache__/
+*.pyc
+*.user
+
+# Local packaging and test outputs
+artifacts/
+__pycache__/
+*.pyc

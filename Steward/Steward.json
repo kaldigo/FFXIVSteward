@@ -1,0 +1,7 @@
+{
+  "Author": "kaldigo", "Name": "Steward", "InternalName": "Steward",
+  "Punchline": "Collect what matters. Sell the surplus.",
+  "Description": "Collection-aware inventory decisions and market rules coordinated with the AutoRetainer integration fork. Starts in dry-run mode.",
+  "ApplicableVersion": "any", "DalamudApiLevel": 15,
+  "RepoUrl": "https://github.com/kaldigo/FFXIVSteward", "LoadPriority": 0
+}

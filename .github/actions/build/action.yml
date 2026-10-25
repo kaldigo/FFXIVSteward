@@ -1,0 +1,32 @@
+name: Build and check plugin
+description: Build the planned plugin version and run its compatibility checks
+inputs:
+  release-version:
+    required: false
+    description: Planned four-part DLL version
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+    - name: Download Dalamud API 15 references
+      shell: pwsh
+      run: |
+        $referencePath=Join-Path $env:APPDATA 'XIVLauncher/addon/Hooks/dev'
+        $unpack=Join-Path $env:RUNNER_TEMP 'dalamud-unpack'
+        $archive=Join-Path $env:RUNNER_TEMP 'dalamud.zip'
+        Invoke-WebRequest https://goatcorp.github.io/dalamud-distrib/stg/latest.zip -OutFile $archive
+        Expand-Archive $archive -DestinationPath $unpack -Force
+        $dll=Get-ChildItem $unpack -Recurse -Filter Dalamud.dll | Select-Object -First 1
+        if (-not $dll) { throw 'Dalamud references missing' }
+        New-Item -ItemType Directory -Force -Path $referencePath | Out-Null
+        Copy-Item (Join-Path $dll.Directory.FullName '*') $referencePath -Recurse -Force
+        "DALAMUD_HOME=$referencePath\" | Out-File $env:GITHUB_ENV -Append
+    - name: Build exact source and run regressions
+      shell: pwsh
+      env:
+        RELEASE_VERSION: ${{ inputs.release-version }}
+      run: |
+        ./tools/build.ps1 -Version $env:RELEASE_VERSION
+        if ($LASTEXITCODE) { exit $LASTEXITCODE }

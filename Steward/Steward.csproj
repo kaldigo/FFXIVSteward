@@ -1,0 +1,9 @@
+<Project Sdk="Dalamud.NET.Sdk/15.0.0">
+  <PropertyGroup>
+    <Version>0.1.0.0</Version><Author>kaldigo</Author><Name>Steward</Name>
+    <Description>Collection-aware inventory decisions and market rules coordinated with AutoRetainer.</Description>
+    <Punchline>Collect what matters. Sell the surplus.</Punchline>
+    <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings><AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup><EmbeddedResource Include="data/*.json" /></ItemGroup>
+</Project>

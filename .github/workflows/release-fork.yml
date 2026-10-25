@@ -1,0 +1,89 @@
+name: Release plugin
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['pluginmaster.json']
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Exact source SHA; empty uses the workflow commit
+        required: false
+        type: string
+      base_commit:
+        description: Recorded pre-merge base for routine upstream publication
+        required: false
+        type: string
+      upstream_commit:
+        description: Recorded upstream tip for routine upstream publication
+        required: false
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: plugin-release
+  cancel-in-progress: false
+jobs:
+  release:
+    if: github.repository == 'kaldigo/FFXIVSteward'
+    runs-on: windows-latest
+    timeout-minutes: 35
+    env:
+      SOURCE_COMMIT: ${{ inputs.source_commit || github.sha }}
+      DEFAULT_BRANCH: main
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_commit || github.sha }}
+          fetch-depth: 0
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify source receipt
+        shell: pwsh
+        env:
+          BASE_COMMIT: ${{ inputs.base_commit }}
+          UPSTREAM_COMMIT: ${{ inputs.upstream_commit }}
+        run: |
+          git merge-base --is-ancestor $env:SOURCE_COMMIT origin/main
+          if ($LASTEXITCODE) { throw 'Release source is not on main' }
+          if ($env:BASE_COMMIT -or $env:UPSTREAM_COMMIT) {
+            if (-not $env:BASE_COMMIT -or -not $env:UPSTREAM_COMMIT) { throw 'Incomplete routine release receipt' }
+            python tools/upstream_policy.py --base $env:BASE_COMMIT --upstream $env:UPSTREAM_COMMIT --head $env:SOURCE_COMMIT --output "$env:RUNNER_TEMP/release-policy.json"
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            if (-not (Get-Content "$env:RUNNER_TEMP/release-policy.json" -Raw | ConvertFrom-Json).routine) { throw 'Sensitive upstream update requires manual review' }
+          }
+      - name: Plan immutable release version
+        id: plan
+        uses: kaldigo/DalamudPlugins/.github/actions/plan-release@b8b369ec2b8f45efa2a8eabb094b13226bc815b9
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          internal-name: Steward
+          minimum-version: '0.1.0.0'
+          source-commit: ${{ inputs.source_commit || github.sha }}
+          tag: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+      - name: Build and test exact source
+        if: steps.plan.outputs.skip != 'true'
+        uses: ./.github/actions/build
+        with:
+          release-version: ${{ steps.plan.outputs.version }}
+      - name: Package and validate
+        if: steps.plan.outputs.skip != 'true'
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ steps.plan.outputs.tag }}
+        run: |
+          python -m unittest discover -s tests -p 'test_*.py' -v
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python tools/package_release.py --tag $env:RELEASE_TAG --changelog-file docs/changelog.md
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python tools/check_package.py --tag $env:RELEASE_TAG
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Publish verified assets and source feed
+        uses: kaldigo/DalamudPlugins/.github/actions/publish-release@b8b369ec2b8f45efa2a8eabb094b13226bc815b9
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          default-branch: main
