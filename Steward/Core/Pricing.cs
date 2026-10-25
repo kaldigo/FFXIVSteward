@@ -32,6 +32,7 @@ public static class Pricing
     {
         var relevant = offerings.Where(p => p.ItemId == item && p.UnitPrice > 0 &&
             (quality == QualityMode.Combined || p.Hq == hq)).ToArray();
+        if(relevant.Any(p=>p.RetainerId==0))return null;
         var other = relevant.Where(p => !ownRetainers.Contains(p.RetainerId)).OrderBy(p => p.UnitPrice).FirstOrDefault();
         if(other == null) return null;
         var ownCheapest = relevant.Where(p => ownRetainers.Contains(p.RetainerId)).Select(p => (uint?)p.UnitPrice).Min();

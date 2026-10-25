@@ -11,6 +11,7 @@ public sealed class ExternalImports
     private readonly InventoryView view;
     private readonly HashSet<uint> bundled=[];
     public string Status { get; private set; } = "Waiting for imports";
+    public bool MarketPreferencesReady { get; private set; }
     public ExternalImports(IDalamudPluginInterface pi,Configuration config,InventoryView view)
     {
         directory=Directory.GetParent(pi.GetPluginConfigDirectory())!.FullName;this.config=config;this.view=view;
@@ -19,6 +20,7 @@ public sealed class ExternalImports
     }
     public void Refresh()
     {
+        MarketPreferencesReady=!config.ImportMarketBuddy;
         var errors=new List<string>();var references=new HashSet<uint>(view.NativeReferences);
         view.Evidence.CuratedGlamour=config.UseBundledGlamourList?bundled:[];
         var glamReady=!config.GlamaholicExpected;
@@ -32,7 +34,7 @@ public sealed class ExternalImports
         view.Evidence.References=references;view.Evidence.ReferencesReady=glamReady&&view.NativeReferencesKnown;
         if(config.ImportMarketBuddy)
         {
-            try{var path=Path.Combine(directory,"Marketbuddy.json");if(File.Exists(path))config.Pricing=Imports.MarketBuddy(File.ReadAllText(path));else errors.Add("Market Buddy settings not found; local pricing settings apply");}
+            try{var path=Path.Combine(directory,"Marketbuddy.json");if(File.Exists(path)){config.Pricing=Imports.MarketBuddy(File.ReadAllText(path));MarketPreferencesReady=true;}else errors.Add("Market Buddy settings not found; market execution held");}
             catch(Exception ex){errors.Add("Market Buddy: "+ex.Message);}
         }
         try

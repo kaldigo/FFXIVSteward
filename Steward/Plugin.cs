@@ -42,12 +42,14 @@ public sealed class Plugin : IDalamudPlugin
     private bool openingInventory;
     private bool withdrawing;
     private long marketOpenDeadline;
+    private long nextPostprocessRelease;
     private readonly Dictionary<string,long> recentDecisions=[];
     public Plugin(IDalamudPluginInterface pi,ICommandManager commands,IFramework framework,IPlayerState player,
         IObjectTable objects,IDataManager data,IGameGui gui,IMarketBoard board,IPluginLog log)
     {
         this.pi=pi;this.commands=commands;this.framework=framework;this.player=player;this.objects=objects;this.log=log;
         config=pi.GetPluginConfig() as Configuration??new();
+        executionFault=config.ExecutionReviewRequired;
         if(!config.InitialExclusionsApplied)
         {
             // Both exact names/IDs verified against installed English Item data.
@@ -59,7 +61,7 @@ public sealed class Plugin : IDalamudPlugin
         tracked=new(pi);
         dungeonSources=new(pi,data,config,Save);
         historyPath=Path.Combine(pi.GetPluginConfigDirectory(),"history.jsonl");
-        market=new(pi,board,view,config,new(gui),stock=>executionFault?new(Outcome.Wait,"Execution held for inventory review"):Judge(stock),Record);
+        market=new(pi,board,view,config,new(gui),JudgeLive,Record,RefreshProtection,()=>imports.MarketPreferencesReady);
         pi.GetIpcProvider<string,string>(Endpoint).RegisterFunc(Evaluate);
         pi.GetIpcSubscriber<string,object>("AutoRetainer.OnRetainerAdditionalTask").Subscribe(RequestPostprocess);
         pi.GetIpcSubscriber<string,string,object>("AutoRetainer.OnRetainerReadyForPostprocess").Subscribe(Postprocess);
@@ -79,18 +81,39 @@ public sealed class Plugin : IDalamudPlugin
     }
     private void Refresh()
     {
-        view.World=objects.LocalPlayer?.HomeWorld.RowId??0;
+        view.World=objects.LocalPlayer?.CurrentWorld.RowId??0;
         view.Refresh(player.ContentId);
         if(Environment.TickCount64>=nextImports){imports.Refresh();tracked.Refresh();nextImports=Environment.TickCount64+2000;}
     }
     private Decision Judge(Stock stock)
     {var item=view.Facts(stock.ItemId);return item==null?new(Outcome.Wait,"Unknown game item"):Rules.Judge(item,stock,config.Rules,view.Evidence,view.World,DateTimeOffset.UtcNow);}
+    private void RefreshProtection()
+    {
+        view.World=objects.LocalPlayer?.CurrentWorld.RowId??0;
+        view.Refresh(player.ContentId);
+        imports.Refresh();
+    }
+    private Decision JudgeLive(Stock stock)
+    {
+        if(executionFault || !config.Connected || attached==0 || attached!=player.ContentId)
+            return new(Outcome.Wait,"Execution held: policy is disconnected or inventory review is required");
+        RefreshProtection();
+        return Judge(stock);
+    }
+    private void HoldExecution(string reason)
+    {
+        if(executionFault && config.ExecutionReviewRequired && !config.Automatic)return;
+        executionFault=config.ExecutionReviewRequired=true;
+        config.Automatic=false;
+        try{Save();}catch(Exception ex){log.Error(ex,"Could not persist execution hold; this session remains stopped");}
+        Record("Execution held for inventory review: "+reason);
+    }
     private string Evaluate(string request)
     {
         try
         {
             using var doc=JsonDocument.Parse(request);var root=doc.RootElement;
-            if(root.GetProperty("Version").GetInt32()!=1 || root.GetProperty("Character").GetUInt64()!=player.ContentId || !config.Connected)return "Deny";
+            if(root.GetProperty("Version").GetInt32()!=2 || root.GetProperty("Character").GetUInt64()!=player.ContentId || !config.Connected)return "Deny";
             Refresh();
             // Protection imports are refreshed again before permission, even between regular refresh intervals.
             imports.Refresh();
@@ -111,14 +134,7 @@ public sealed class Plugin : IDalamudPlugin
                 stock=copies[0];
             }
             var decision=Judge(stock);var action=root.GetProperty("Action").GetString();
-            var allow=config.Automatic && !executionFault && action switch
-            {
-                "Armoire"=>decision.Outcome==Outcome.CollectArmoire,
-                "Dresser"=>decision.Outcome==Outcome.CollectDresser,
-                "Retrieve"=>decision.Outcome is Outcome.CollectArmoire or Outcome.CollectDresser or Outcome.Dispose,
-                "Vendor" or "Desynth" or "Gc"=>decision.Outcome==Outcome.Dispose,
-                _=>false // No discard automation was requested.
-            };
+            var allow=ActionPolicy.Allows(action,decision.Outcome,config.Automatic,config.Connected,executionFault);
             var key=$"{id}/{action}/{allow}/{decision.Reason}";
             if(!recentDecisions.TryGetValue(key,out var at)||Environment.TickCount64-at>60000)
             {recentDecisions[key]=Environment.TickCount64;Record($"{(allow?"Permitted":"Held")} {action} for {id}: {decision.Reason}. AutoRetainer owns execution/results.");}
@@ -138,16 +154,18 @@ public sealed class Plugin : IDalamudPlugin
                 if(config.Connected && player.ContentId!=0)
                 {
                     var version=pi.GetIpcSubscriber<int>("AutoRetainer.InventoryPolicy.Version").InvokeFunc();
-                    if(version!=1)throw new InvalidOperationException("AutoRetainer integration version mismatch");
+                    if(version!=2)throw new InvalidOperationException("Update both plugins: AutoRetainer integration version 2 is required");
                     if(attached==player.ContentId)
                     {if(!pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Heartbeat").InvokeFunc(attached,Endpoint))attached=0;}
                     if(attached==0 && pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Connect").InvokeFunc(player.ContentId,Endpoint))attached=player.ContentId;
                     status=attached!=0?(config.Automatic?"Automatic decisions enabled":"Dry run: AutoRetainer item actions held"):"Waiting for AutoRetainer integration";
                 }
             }
+            if(ownsPostprocess && !pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsHandoff").InvokeFunc(player.ContentId))
+            {HoldExecution("AutoRetainer handoff ownership was lost");StopQueue();return;}
             market.Advance(Environment.TickCount64);
-            if(config.Automatic && market.Queue.Status.StartsWith("Stopped",StringComparison.Ordinal) && !executionFault)
-            {executionFault=true;Record("Execution held for review: "+market.Queue.Status);}
+            if(market.Queue.Status.StartsWith("Stopped:",StringComparison.Ordinal) && !executionFault)
+                HoldExecution(market.Queue.Status);
             if(openingInventory)
             {
                 if(Environment.TickCount64>marketOpenDeadline){openingInventory=false;Record("Retainer inventory timed out");FinishPostprocess();}
@@ -183,7 +201,7 @@ public sealed class Plugin : IDalamudPlugin
             }
             if(executionFault)status="Execution held after an uncertain/failed operation. Check inventory and clear the stopped run before continuing.";
         }
-        catch(Exception ex){status=ex.Message;StopQueue();}
+        catch(Exception ex){status=ex.Message;if(config.Automatic || market.Queue.Running || ownsPostprocess)HoldExecution(ex.Message);StopQueue();}
     }
     private void RequestPostprocess(string retainer)
     {
@@ -195,18 +213,37 @@ public sealed class Plugin : IDalamudPlugin
     {
         if(plugin!="Steward")return;
         ownsPostprocess=true;
+        nextPostprocessRelease=0;
+        if(!config.Automatic || executionFault || !config.Connected || attached==0 || attached!=player.ContentId)
+        {FinishPostprocess();return;}
         try{Refresh();openingInventory=true;marketOpenDeadline=Environment.TickCount64+15000;}
         catch{FinishPostprocess();throw;}
     }
     private void FinishPostprocess()
     {
-        if(!ownsPostprocess)return;ownsPostprocess=false;
-        try{market.ReturnToRetainerMenu();}catch(Exception ex){Record("Retainer UI cleanup: "+ex.Message);}
-        try{pi.GetIpcSubscriber<object>("AutoRetainer.FinishPostprocessRequest").InvokeAction();}
-        catch(Exception ex){Record("AutoRetainer postprocess release failed: "+ex.Message);}
+        if(!ownsPostprocess || Environment.TickCount64<nextPostprocessRelease)return;
+        try
+        {
+            if(pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsHandoff").InvokeFunc(player.ContentId))
+            {
+                try{market.ReturnToRetainerMenu();}catch(Exception ex){Record("Retainer UI cleanup: "+ex.Message);}
+                pi.GetIpcSubscriber<object>("AutoRetainer.FinishPostprocessRequest").InvokeAction();
+            }
+            ownsPostprocess=false;
+        }
+        catch(Exception ex)
+        {
+            nextPostprocessRelease=Environment.TickCount64+1000;
+            HoldExecution("AutoRetainer postprocess release failed: "+ex.Message);
+        }
     }
-    private void StopQueue(){openingInventory=withdrawing=openingMarket=false;try{market.Stop();}finally{FinishPostprocess();}}
-    private void Stop(){config.Automatic=false;Save();StopQueue();Record("Automatic execution stopped; managed items remain held");}
+    private void StopQueue()
+    {
+        if(market.Queue.Running && !executionFault)HoldExecution("An active operation was cancelled; its last game action may still complete");
+        openingInventory=withdrawing=openingMarket=false;
+        try{market.Stop();}finally{FinishPostprocess();}
+    }
+    private void Stop(){config.Automatic=false;try{StopQueue();}finally{Save();}Record("Automatic execution stopped; managed items remain held");}
     private void Run(string operation)
     {
         if(executionFault){Record("Check inventory and clear the stopped run first");return;}
@@ -222,9 +259,9 @@ public sealed class Plugin : IDalamudPlugin
         if(!ImGui.Begin("Steward",ref open)){ImGui.End();return;}
         ImGui.TextWrapped(status);ImGui.TextWrapped(imports.Status);
         var automatic=config.Automatic;
-        if(ImGui.Checkbox("Enable automatic execution",ref automatic)){config.Automatic=automatic;Save();if(!automatic)StopQueue();}
+        if(ImGui.Checkbox("Enable automatic execution",ref automatic)){config.Automatic=automatic;if(!automatic)StopQueue();Save();}
         ImGui.SameLine();if(ImGui.Button("Stop"))Stop();
-        if(executionFault && ImGui.Button("I checked inventory — clear stopped run")){market.Queue.Begin();executionFault=false;Record("User cleared the stopped run after inventory review");}
+        if(executionFault && ImGui.Button("I checked inventory — clear stopped run")){market.Queue.Begin();config.Automatic=false;executionFault=config.ExecutionReviewRequired=false;Save();Record("User cleared the stopped run after inventory review; automatic execution remains off");}
         ImGui.TextWrapped("Collection: exact item IDs; dyes ignored. Open the dresser, plate editor and armoire to load evidence. Existing AutoRetainer protections and enabled actions still apply.");
         if(ImGui.BeginTabBar("Steward tabs"))
         {

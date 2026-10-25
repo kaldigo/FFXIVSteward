@@ -70,3 +70,12 @@ queue.Add(new("Throwing cleanup",()=>StepResult.Waiting,()=>throw new InvalidOpe
 queue.Add(new("Must still release",()=>StepResult.Completed,()=>released++));queue.Advance(300);queue.Stop("cancel");
 Check(released==4&&!queue.Running&&queue.Status.Contains("cleanup failure"),"One failed cleanup cannot strand later locks");
 Console.WriteLine($"{total} checks passed including cancellation/error paths.");
+SafetyChecks.Run(Check,now);
+Console.WriteLine($"{total} checks passed including disposal/protection safety regressions.");
+if(args.Length==3)
+{
+    var references=Imports.Glamaholic(File.ReadAllText(args[0]));
+    var cache=Imports.MarketCache(File.ReadAllText(args[1]));
+    _=Imports.MarketBuddy(File.ReadAllText(args[2]));
+    Console.WriteLine($"Read-only local import validation: {references.Count} protected glamour IDs, {cache.Count} cached quotes; Market Buddy settings parsed.");
+}

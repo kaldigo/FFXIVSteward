@@ -34,6 +34,10 @@ public sealed class RuleSettings
 }
 public sealed class Evidence
 {
+    public void InvalidateLive()
+    {
+        DresserKnown=ArmoireKnown=GearsetsReady=ReferencesReady=false;
+    }
     public bool ReferencesReady { get; set; }
     public HashSet<uint> References { get; set; } = [];
     public HashSet<uint> CuratedGlamour { get; set; } = [];
@@ -42,6 +46,7 @@ public sealed class Evidence
     public bool DresserKnown { get; set; }
     public bool ArmoireKnown { get; set; }
     public HashSet<uint> Dresser { get; set; } = [];
+    public uint? OmittedDresserItem { get; set; }
     public HashSet<uint> Armoire { get; set; } = [];
     public Dictionary<(uint, bool), Quote> Prices { get; set; } = [];
 }
@@ -50,19 +55,20 @@ public static class Rules
     public static Decision Judge(ItemFacts item, Stock stock, RuleSettings settings, Evidence evidence,
         uint world, DateTimeOffset now)
     {
+        if(item.Id==0 || stock.ItemId!=item.Id || stock.Quantity==0) return new(Outcome.Wait, "Invalid item or inventory evidence");
         if(settings.Ignored.Contains(item.Id)) return new(Outcome.Ignore, "Excluded from all Steward handling");
         if(settings.Keep.Contains(item.Id)) return new(Outcome.Keep, "Explicit keep override");
         if(!evidence.GearsetsReady || !evidence.ReferencesReady) return new(Outcome.Wait, "Glamour references or gear sets are unavailable");
         if(evidence.Gearsets.Contains(item.Id)) return new(Outcome.Keep, "Equipped or referenced by a gear set");
         var rarityProtected = item.Rarity > 3 || (item.Rarity == 3 && !item.Marketable);
-        var collect = item.Equipment && (rarityProtected || item.EquipLevel == 1 || item.DesignedForGlamour ||
+        var collect = item.ArmoireEligible || item.Equipment && (rarityProtected || item.EquipLevel == 1 || item.DesignedForGlamour ||
             item.Source != SourceKind.Ordinary || settings.CommonGlamour.Contains(item.Id) || evidence.CuratedGlamour.Contains(item.Id) || evidence.References.Contains(item.Id));
         if(collect)
         {
-            if(!evidence.Dresser.Contains(item.Id) && !evidence.Armoire.Contains(item.Id))
+            if(!evidence.DresserKnown || !evidence.ArmoireKnown) return new(Outcome.Wait, "Live dresser or armoire ownership is unavailable");
+            if((evidence.OmittedDresserItem==item.Id || !evidence.Dresser.Contains(item.Id)) && !evidence.Armoire.Contains(item.Id))
             {
-                if(!evidence.DresserKnown || !evidence.ArmoireKnown) return new(Outcome.Wait, "Open the dresser and armoire to verify collection ownership");
-                if(item.Source == SourceKind.Unknown && !evidence.References.Contains(item.Id) && !item.DesignedForGlamour && !rarityProtected && item.EquipLevel != 1 && !settings.CommonGlamour.Contains(item.Id) && !evidence.CuratedGlamour.Contains(item.Id))
+                if(item.Source == SourceKind.Unknown && !item.ArmoireEligible && !evidence.References.Contains(item.Id) && !item.DesignedForGlamour && !rarityProtected && item.EquipLevel != 1 && !settings.CommonGlamour.Contains(item.Id) && !evidence.CuratedGlamour.Contains(item.Id))
                     return new(Outcome.Keep, "Acquisition source is uncertain; preserve for collection");
                 return new(item.ArmoireEligible ? Outcome.CollectArmoire : Outcome.CollectDresser, "An exact copy is missing from the collection");
             }

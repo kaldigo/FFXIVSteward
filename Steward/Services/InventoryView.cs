@@ -39,6 +39,8 @@ public sealed unsafe class InventoryView
     }
     public void Refresh(ulong character)
     {
+        Evidence.InvalidateLive();
+        NativeReferencesKnown=false;
         if(Character!=character)
         {
             Character=character;Evidence.Dresser.Clear();Evidence.Armoire.Clear();Evidence.Prices.Clear();Evidence.References.Clear();
@@ -50,7 +52,8 @@ public sealed unsafe class InventoryView
         var im=InventoryManager.Instance();if(im==null)return;
         foreach(var type in InventoryTypes())Read(type,Items);
         var gear=RaptureGearsetModule.Instance();
-        if(gear!=null)
+        var equippedInventory=im->GetInventoryContainer(InventoryType.EquippedItems);
+        if(gear!=null && equippedInventory!=null && equippedInventory->IsLoaded)
         {
             foreach(var set in gear->Entries)
                 if(set.Flags.HasFlag(RaptureGearsetModule.GearsetFlag.Exists))
