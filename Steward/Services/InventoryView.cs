@@ -34,8 +34,9 @@ public sealed unsafe class InventoryView
         if(!data.GetExcelSheet<Sheets.Item>().TryGetRow(id,out var row))return null;
         var source=config.Sources.GetValueOrDefault(id,crafted.Contains(id)?SourceKind.Ordinary:SourceKind.Unknown);
         if(row.IsPvP)source=SourceKind.Special;
+        // IsGlamorous means dresser-compatible (almost all equipment), not cosmetic-purpose gear.
         return new(id,row.Name.ToString(),row.EquipSlotCategory.RowId!=0,row.Rarity,row.LevelEquip,
-            !row.IsUntradable && row.ItemSearchCategory.RowId!=0,cabinet.Any(c=>c.Item==id),source,row.ItemUICategory.RowId,row.PriceLow,row.IsGlamorous);
+            !row.IsUntradable && row.ItemSearchCategory.RowId!=0,cabinet.Any(c=>c.Item==id),source,row.ItemUICategory.RowId,row.PriceLow,row.LevelItem.RowId==1);
     }
     public void Refresh(ulong character)
     {

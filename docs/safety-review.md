@@ -20,6 +20,7 @@ The earlier build and contract checks were insufficient to establish safe in-gam
 | Bulk outfit IPC cannot revalidate each item after delegation. | Managed bulk transfers are blocked. AutoRetainer's original unmanaged workflow remains available. Individually checked native transfers remain. |
 | Some armoire-eligible items could bypass collection rules. | Armoire eligibility itself requires collection before surplus sale/disposal. |
 | Unknown offering owners could be treated as competitors. | Unknown seller identity holds repricing; own retainers remain excluded. Prices use the current world. |
+| `Item.IsGlamorous` was mistaken for a dedicated cosmetic-item flag. In installed data it is true for 28,614 of 29,058 equipment rows. | It is not used as purpose evidence. Item-level-one cosmetic gear, equipment-level-one gear, references, curated lists and source/rarity protections determine collection. The 639 marketable blue equipment rows do not receive a blanket dresser-compatibility protection. |
 
 ## Automated evidence
 

@@ -32,4 +32,8 @@ class Distribution(unittest.TestCase):
   source=(ROOT/'Steward/Services/ExternalImports.cs').read_text()
   self.assertIn('MarketPreferencesReady=!config.ImportMarketBuddy',source)
   self.assertNotIn('local pricing settings apply',source)
+ def test_dresser_compatibility_does_not_mean_designed_for_glamour(self):
+  source=(ROOT/'Steward/Services/InventoryView.cs').read_text()
+  self.assertNotIn('row.IsGlamorous',source)
+  self.assertIn('row.LevelItem.RowId==1',source)
 if __name__=='__main__':unittest.main()
