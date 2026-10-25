@@ -36,6 +36,7 @@ static class ExecutionChecks
         check(!Comparison(nativeRequest:8),"Another market request rejected");
         check(!Comparison(waiting:true),"Still-loading market pages rejected");
         check(!Comparison(received:10),"Missing market pages rejected");
+        check(!Comparison(received:21),"Extra or mixed market pages cannot acknowledge a complete request");
         check(!Comparison(expected:0,received:0),"Empty market result is not a price");
         check(!Comparison(observed:now.AddSeconds(-2)),"Packet older than the comparison rejected");
         check(!Comparison(observed:now.AddSeconds(1)),"Future market timestamp rejected");
@@ -83,5 +84,69 @@ static class ExecutionChecks
                 "Unavailable AutoRetainer protection holds every active path: "+outcome);
             check(UpstreamProtection.Apply(original,false)==original,"Unprotected AutoRetainer item retains Steward decision: "+outcome);
         }
+        var events=new List<string>();string? pending=null;
+        OperationQueue JournalQueue(bool failBegin=false,bool failEnd=false)=>new(
+            name=>ExecutionJournal.Begin(name,value=>pending=value,()=>{events.Add("saved-start");if(failBegin)throw new IOException("start disk");}),
+            ()=>ExecutionJournal.Complete(pending!,value=>pending=value,()=>{events.Add("saved-end");if(failEnd)throw new IOException("end disk");}));
+        var durable=JournalQueue();var attempts=0;
+        durable.Add(new("Durable item",()=>{events.Add("native");return ++attempts==1?StepResult.Waiting:StepResult.Completed;},()=>events.Add("cleanup")));
+        durable.Advance(1);check(pending=="Durable item","Submission retains a durable marker while awaiting acknowledgement");
+        durable.Advance(2);check(pending==null&&events.SequenceEqual(new[]{"saved-start","native","native","cleanup","saved-end"}),
+            "Journal is saved before native code, once only, and cleared after acknowledgement and cleanup");
+        events.Clear();pending=null;durable=JournalQueue(failBegin:true);
+        durable.Add(new("Must not submit",()=>{events.Add("native");return StepResult.Completed;}));durable.Advance(3);
+        check(pending!=null&&!events.Contains("native")&&durable.Status.StartsWith("Stopped:"),"Failed journal write prevents any native tick");
+        events.Clear();pending=null;durable=JournalQueue(failEnd:true);
+        durable.Add(new("Acknowledged",()=>StepResult.Completed));durable.Add(new("Dependent",()=>{events.Add("native");return StepResult.Completed;}));
+        durable.Advance(4);durable.Advance(5);
+        check(pending=="Acknowledged"&&!events.Contains("native")&&!durable.Running,"Failed acknowledgement save restores the marker and cancels dependent work");
+        events.Clear();pending=null;durable=JournalQueue();
+        durable.Add(new("Cleanup fails",()=>StepResult.Completed,()=>throw new IOException("cleanup")));durable.Advance(6);
+        check(pending!=null&&!events.Contains("saved-end"),"Failed cleanup cannot clear the recovery journal");
+        events.Clear();pending=null;durable=JournalQueue();
+        durable.Add(new("Cancelled",()=>{durable.Stop("Stopped: reentrant fault");return StepResult.Completed;}));durable.Advance(7);
+        check(pending=="Cancelled"&&!events.Contains("saved-end")&&durable.Completed==0,"Cancellation inside a native tick cannot acknowledge the cancelled operation");
+        events.Clear();pending=null;durable=JournalQueue();
+        durable.Add(new("Cancelled cleanup",()=>StepResult.Completed,()=>durable.Stop("Stopped: cleanup cancelled")));durable.Advance(8);
+        check(pending=="Cancelled cleanup"&&!events.Contains("saved-end")&&durable.Status.StartsWith("Stopped:")&&durable.Completed==0,
+            "Cancellation during cleanup preserves journal and stopped status");
+        OperationQueue? starting=null;var startedTicks=0;
+        starting=new(_=>starting!.Stop("Stopped: startup cancellation"),()=>throw new Exception("Must not acknowledge"));
+        starting.Add(new("Cancelled startup",()=>{startedTicks++;return StepResult.Completed;}));starting.Advance(9);
+        check(startedTicks==0&&starting.Status=="Stopped: startup cancellation","Cancellation inside the pre-start callback cannot invoke a native tick");
+        automatic=true;var review=false;
+        try{ExecutionMode.Persist(()=>throw new IOException("rule save"),()=>{automatic=false;review=true;});}
+        catch(IOException){}
+        check(!automatic&&review,"Any failed rule/settings save stops execution and requires review");
+        for(uint quantity=1;quantity<=5;quantity++)
+        for(uint removed=1;removed<=quantity;removed++)
+        {
+            var expected=stock with{Quantity=quantity};
+            Stock? remainder=removed==quantity?null:expected with{Quantity=quantity-removed};
+            check(StockTransition.Removed(expected,remainder,removed,true),"Exact source decrement accepted");
+            check(!StockTransition.Removed(expected,remainder,removed,false),"Unloaded source cannot acknowledge removal");
+            check(!StockTransition.Removed(expected,expected,removed,true),"An unchanged source cannot acknowledge removal");
+            check(!StockTransition.Removed(expected,expected with{Hq=!expected.Hq,Quantity=quantity-removed},removed,true),"Changed quality cannot acknowledge removal");
+        }
+        check(!StockTransition.Removed(stock,null,0,true),"Zero removal rejected");
+        check(!StockTransition.Removed(stock,null,stock.Quantity+1,true),"Excess removal rejected");
+        var folder=Path.Combine(Path.GetTempPath(),"steward-safety-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(folder);
+        var path=Path.Combine(folder,"state.json");var migrated=0;
+        try
+        {
+            check(AtomicState.ReadOrMigrate(path,()=>{migrated++;return "legacy";})=="legacy"&&migrated==1,"Only a missing private state uses legacy configuration");
+            AtomicState.Write(path,"pending");
+            check(AtomicState.ReadOrMigrate(path,()=>"unsafe")=="pending","Real disk reload retains a pending submission");
+            AtomicState.Write(path,"reviewed");
+            check(AtomicState.ReadOrMigrate(path,()=>"unsafe")=="reviewed","Atomic replacement reloads the latest state");
+            File.WriteAllText(path,"{");
+            try{AtomicState.ReadOrMigrate(path,()=>{migrated++;return "unsafe";});throw new Exception("Corrupt state accepted");}
+            catch(System.Text.Json.JsonException){check(migrated==1,"Corrupt private state cannot silently load defaults");}
+            var blocked=Path.Combine(folder,"blocked");Directory.CreateDirectory(blocked);
+            try{AtomicState.Write(blocked,"pending");throw new Exception("Write failure swallowed");}
+            catch(Exception ex) when(ex is IOException or UnauthorizedAccessException){check(true,"Actual filesystem write/replace failure propagates to the action guard");}
+            check(Directory.GetFiles(folder,"*.tmp").Length==0,"Failed replacements clean up only their own temporary file");
+        }
+        finally{foreach(var file in Directory.GetFiles(folder))File.Delete(file);Directory.Delete(Path.Combine(folder,"blocked"));Directory.Delete(folder);}
     }
 }

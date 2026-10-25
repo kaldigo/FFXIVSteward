@@ -5,6 +5,7 @@ namespace Steward.Services;
 
 public sealed unsafe class NativeUi(IGameGui gui)
 {
+    public bool Visible(string name){var addon=gui.GetAddonByName(name);return !addon.IsNull&&addon.IsVisible;}
     public AtkUnitBase* Get(string name)
     {var a=gui.GetAddonByName(name);if(a.IsNull||!a.IsVisible)return null;var native=(AtkUnitBase*)a.Address;return native->IsReady?native:null;}
     public bool Click(string name,uint id)

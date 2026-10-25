@@ -74,3 +74,36 @@ This pass traced permission through the final native target and explicitly revie
 Injected persistence failures, successful recovery, old commit-gate reset, changed desynthesis identities and upstream-protection decisions have automated regressions. Protocol/safety revision 4 requires both updated plugins and starts in dry-run mode. No installed plugin settings or native inventory actions were changed by this audit. The remaining native acceptance and cross-zone collection-refresh limits above are unchanged.
 
 Validation: both plugin builds passed; Steward passed 317 C# checks and 16 Python tests, and AutoRetainer passed 59 C# checks and 47 Python tests. Read-only saved imports yielded 286 Glamaholic item IDs, 1,098 market observations and parsed Market Buddy preferences. Installed game-sheet replay kept all 286 referenced IDs with no collected copy, and 629 ordinary marketable-blue rows received no blanket blue protection. Replay quotes and ownership were simulated; this is not live inventory verification.
+
+## Repeated review after the third pass
+
+The third pass did not establish the persistence contract of its real dependency. Inspection of the pinned ECommons `EzConfig.SaveConfiguration` showed that its writer catches and logs disk errors. Tests injecting an exception into a substitute save action therefore did not prove that production native submissions would stop on actual disk failure. That was a material gap in the earlier assurance.
+
+The policy now uses its own synchronous `steward-policy.json` ledger. Writes flush a new file before replacing the previous state, propagate failures and do not share a path with background configuration writes. Required ledger fields and schema are validated; corrupt records cannot become empty unmanaged defaults. Runtime ownership is held independently of ordinary config imports. First use migrates the old companion markers. Failed connections retry persistence even when an owner already exists in memory. Startup remains blocked if the safety ledger cannot be loaded. No policy save uses `EzConfig.Save`.
+
+Steward's own synchronous `steward-state.json` is authoritative for settings and pending queue work. The old Dalamud config is only a mirror after migration. Automatic execution is off on every load, covering a failed Stop write followed by restart. A pending operation records its character, remains pending on cancellation or failed acknowledgement writes, and requires review on that character.
+
+| Boundary rechecked after fixes | Result in source and automated coverage |
+| --- | --- |
+| Queue start, native tick, cleanup, acknowledgement | Journal before the first tick; only acknowledged, cleaned-up work clears it. Cancellation during startup, tick or cleanup cannot turn into completion. Failed writes cancel dependents. |
+| Vendor via NPC and retainer, including quick retainer sales | Shared guarded submission saves first, revalidates source/protection/lease after the write, submits once, and requires exact source and total quantity reduction. Original workflows wait for acknowledgement instead of dropping the remaining candidates. |
+| Desynthesis | Same guarded submission, one-item reduction, final selected-agent identity check, and native busy/dialog checks. |
+| GC | Existing one-shot journal retained, now using the throwing synchronous writer. Exact one-item acknowledgement, pending reward and HQ ownership checks remain. The obsolete waist inventory is excluded from strict loaded-inventory evidence. |
+| Armoire | One guarded submission instead of invoking the native store before the retry throttle. Requires source reduction and a positive loaded cabinet ownership result. |
+| New listings/repricing | Current retainer, source, form values, rules and current market request remain bound. Listing count must match exactly. Successful listing requires the expected source reduction and matching new listing; repricing requires the expected listing and price. The sell form must no longer be visible. |
+| Withdrawal | Character, retainer ID, source, quantity and HQ are checked; destination increase and source removal must match exactly. |
+| Dresser restore/deposit | Loaded source/destination evidence and exact quantity changes replace “anything changed” acknowledgement. Deposits require known dresser ownership and a closed confirmation. Last-copy/protection checks remain. |
+| Review, detach, restart, character switch | Backlogged AutoRetainer work and active transactions prevent review/detach. Pending work survives restart; a different character cannot clear the companion operation. Ordinary config imports do not detach the policy. |
+| Integrations and original behaviour | Other plugin files remain read-only. AutoRetainer retains selectors, travel/storage workflows and identity; unregistered characters bypass the optional policy after successful startup. Bulk conversion and managed discard remain held. |
+
+Additional tests exercise actual temporary-file writes, atomic replacement, failed replacement, damaged/missing ledger fields, reloads, and all one-to-five-item source-removal combinations. Source-wiring assertions supplement these executable tests; they are not native execution tests.
+
+### Remaining acceptance blockers
+
+- No native actions were run. Native callbacks, selected-item field population, UI closure timing, inventory update ordering, cancellation and other plugins' pause/lock behaviour remain unverified in FFXIV. Conservative guards may stop valid operations until these are measured.
+- A verified safe collection-data refresh after zoning is still absent. Unloaded collection/reference evidence blocks dependent work. Whole-inventory unattended cleanup is not established.
+- Recorded client inventory/UI acknowledgement is not proof of a server-side acknowledgement protocol. Saved-data replays do not establish that an item is currently owned or that a live action is safe.
+
+Repeated source review and passing tests cannot honestly remove these blockers. This remains a development preview, not a certification that unattended cleanup cannot lose items.
+
+Final local validation for this revision: Steward built with zero warnings/errors and passed 395 executable logic checks plus 18 Python contract tests. AutoRetainer built with zero errors and existing compiler warnings, passed 179 executable safety checks plus 53 Python integration/update tests. Real file I/O tests required normal filesystem access; the restricted runner rejected temporary-file renames, and those tests were rerun with that access. Read-only imports found 286 Glamaholic IDs and 1,112 cached quotes. The final source walks covered submission/protection/ownership and persistence/cancellation/recovery separately; they found no further code changes to make within those audited paths. This does not change the native blockers above.

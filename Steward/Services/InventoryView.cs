@@ -105,6 +105,12 @@ public sealed unsafe class InventoryView
     }
     public static Stock? ReadSlot(uint container,ushort slot)
     {List<Stock> items=[];Read((InventoryType)container,items);return items.FirstOrDefault(i=>i.Slot==slot);}
+    public static bool Loaded(uint type)
+    {
+        var manager=InventoryManager.Instance();if(manager==null)return false;
+        var container=manager->GetInventoryContainer((InventoryType)type);return container!=null&&container->IsLoaded;
+    }
+    public static bool PlayerLoaded()=>InventoryTypes().Where(t=>t!=InventoryType.ArmoryWaist).All(t=>Loaded((uint)t));
     public uint[]? OutfitPieces(uint id)=>outfits.GetValueOrDefault(id);
     public int DresserCopies(uint id)
     {

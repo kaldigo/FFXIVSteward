@@ -6,6 +6,9 @@ class Distribution(unittest.TestCase):
   text=(ROOT/'Steward/Configuration.cs').read_text()
   self.assertIn('public bool Automatic { get; set; }',text)
   self.assertNotIn('Automatic { get; set; } = true',text)
+  plugin=(ROOT/'Steward/Plugin.cs').read_text()
+  startup=plugin.split('config=AtomicState.ReadOrMigrate')[1].split('if(config.SafetyRevision')[0]
+  self.assertIn('config.Automatic=false;',startup)
  def test_no_universalis_client(self):
   for source in (ROOT/'Steward').rglob('*.cs'):
    if 'obj' in source.parts:continue
@@ -45,9 +48,9 @@ class Distribution(unittest.TestCase):
   self.assertIn('Queue.Advance(now);CheckFault();',source)
  def test_protocol_upgrade_returns_to_dry_run_before_registering_execution(self):
   source=(ROOT/'Steward/Plugin.cs').read_text()
-  migration=source.split('if(config.SafetyRevision<4)')[1].split('executionFault=config.ExecutionReviewRequired;')[0]
+  migration=source.split('if(config.SafetyRevision<5)')[1].split('executionFault=config.ExecutionReviewRequired;')[0]
   self.assertIn('config.Automatic=false;',migration)
-  self.assertLess(source.index('if(config.SafetyRevision<4)'),source.index('framework.Update+=Update'))
+  self.assertLess(source.index('if(config.SafetyRevision<5)'),source.index('framework.Update+=Update'))
  def test_packets_and_dialog_values_are_bound_to_live_state(self):
   source=(ROOT/'Steward/Services/MarketQueue.cs').read_text()
   self.assertIn('packet.RequestId',source)
@@ -69,7 +72,7 @@ class Distribution(unittest.TestCase):
  def test_failed_save_cannot_enable_or_clear_review_in_memory(self):
   source=(ROOT/'Steward/Plugin.cs').read_text()
   self.assertIn('ExecutionMode.Enable(',source)
-  self.assertIn('try{Save();}catch{executionFault=config.ExecutionReviewRequired=true;throw;}',source)
+  self.assertIn('catch{config.PendingOperation=pending;config.PendingCharacter=pendingCharacter;executionFault=config.ExecutionReviewRequired=true;throw;}',source)
  def test_visible_unready_confirmation_is_not_absence(self):
   source=(ROOT/'Steward/Services/NativeUi.cs').read_text()
   self.assertIn('if(!addon->IsReady)return false;',source)
@@ -78,4 +81,19 @@ class Distribution(unittest.TestCase):
   judge=source.split('private Decision Judge(Stock stock)')[1].split('private void RefreshProtection()')[0]
   self.assertIn('AutoRetainer.PluginState.IsItemProtected',judge)
   self.assertIn('UpstreamProtection.Apply(decision,null)',judge)
+ def test_all_queue_paths_use_durable_start_and_acknowledgement(self):
+  plugin=(ROOT/'Steward/Plugin.cs').read_text();queue=(ROOT/'Steward/Services/MarketQueue.cs').read_text()
+  self.assertIn('HoldExecution,BeginOperation,CompleteOperation)',plugin)
+  self.assertIn('Queue=new(begin,complete)',queue)
+  self.assertLess(plugin.index('if(!string.IsNullOrEmpty(config.PendingOperation))'),plugin.index('framework.Update+=Update'))
+  self.assertIn('ExecutionMode.Persist(()=>AtomicState.Write(statePath,config)',plugin)
+ def test_retainer_and_native_acknowledgements_are_exact(self):
+  source=(ROOT/'Steward/Services/MarketQueue.cs').read_text()
+  self.assertIn('currentRetainer->LastSelectedRetainerId!=retainer',source)
+  self.assertIn('StockTransition.Removed(expected,live',source)
+  self.assertIn('!view.Evidence.DresserKnown',source)
+  self.assertIn('ui.Visible("RetainerSell")',source)
+  self.assertIn('after!=before+1',source)
+  source=(ROOT/'Steward/Plugin.cs').read_text()
+  self.assertIn('config.PendingCharacter!=player.ContentId',source)
 if __name__=='__main__':unittest.main()

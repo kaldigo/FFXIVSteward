@@ -18,6 +18,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly IObjectTable objects;
     private readonly IPluginLog log;
     private readonly Configuration config;
+    private readonly string statePath;
     private readonly InventoryView view;
     private readonly ExternalImports imports;
     private readonly MarketQueue market;
@@ -48,26 +49,35 @@ public sealed class Plugin : IDalamudPlugin
         IObjectTable objects,IDataManager data,IGameGui gui,IMarketBoard board,IPluginLog log)
     {
         this.pi=pi;this.commands=commands;this.framework=framework;this.player=player;this.objects=objects;this.log=log;
-        config=pi.GetPluginConfig() as Configuration??new();
-        if(config.SafetyRevision<4)
+        statePath=Path.Combine(pi.GetPluginConfigDirectory(),"steward-state.json");
+        config=AtomicState.ReadOrMigrate(statePath,()=>pi.GetPluginConfig() as Configuration??new());
+        if(config.Version!=1)throw new InvalidDataException("Unsupported Steward settings; execution cannot start");
+        // A failed Stop write must never let a later process restore an old enabled flag.
+        config.Automatic=false;
+        if(config.SafetyRevision<5)
         {
             config.Automatic=false;
-            config.SafetyRevision=4;
-            pi.SavePluginConfig(config);
+            config.SafetyRevision=5;
+            Save();
         }
         executionFault=config.ExecutionReviewRequired;
+        if(!string.IsNullOrEmpty(config.PendingOperation))
+        {
+            executionFault=config.ExecutionReviewRequired=true;config.Automatic=false;Save();
+        }
+        Save();
         if(!config.InitialExclusionsApplied)
         {
             // Both exact names/IDs verified against installed English Item data.
             config.Rules.Ignored.UnionWith([8743u,13116u]);
             config.InitialExclusionsApplied=true;
-            pi.SavePluginConfig(config);
+            Save();
         }
         view=new(data,config);imports=new(pi,config,view);
         tracked=new(pi);
         dungeonSources=new(pi,data,config,Save);
         historyPath=Path.Combine(pi.GetPluginConfigDirectory(),"history.jsonl");
-        market=new(pi,board,view,config,new(gui),JudgeLive,Record,RefreshProtection,()=>imports.MarketPreferencesReady,HoldExecution);
+        market=new(pi,board,view,config,new(gui),JudgeLive,Record,RefreshProtection,()=>imports.MarketPreferencesReady,HoldExecution,BeginOperation,CompleteOperation);
         pi.GetIpcProvider<string,string>(Endpoint).RegisterFunc(Evaluate);
         pi.GetIpcProvider<ulong,string,object>("Steward.InventoryPolicy.Fault").RegisterAction(IntegrationFault);
         pi.GetIpcSubscriber<string,object>("AutoRetainer.OnRetainerAdditionalTask").Subscribe(RequestPostprocess);
@@ -78,7 +88,25 @@ public sealed class Plugin : IDalamudPlugin
     }
     private void Open()=>open=true;
     private void Command(string _,string args){if(args.Trim()=="stop")Stop();else Open();}
-    private void Save()=>pi.SavePluginConfig(config);
+    private void Save()
+    {
+        ExecutionMode.Persist(()=>AtomicState.Write(statePath,config),()=>{config.Automatic=false;executionFault=config.ExecutionReviewRequired=true;});
+        // This is a compatibility mirror; the synchronous private state above is authoritative.
+        try{pi.SavePluginConfig(config);}catch(Exception ex){log.Error(ex,"Could not mirror Steward settings; private safety state is saved");}
+    }
+    private void BeginOperation(string name)
+    {
+        if(!string.IsNullOrEmpty(config.PendingOperation))throw new InvalidOperationException("A previous operation requires inventory review");
+        if(!player.IsLoaded || player.ContentId==0)throw new InvalidOperationException("Operation character is unavailable");
+        var character=player.ContentId;
+        ExecutionJournal.Begin(name,value=>{config.PendingOperation=value;config.PendingCharacter=character;},Save);
+    }
+    private void CompleteOperation()
+    {
+        var pending=config.PendingOperation??throw new InvalidOperationException("Operation journal is missing");
+        var character=config.PendingCharacter;
+        ExecutionJournal.Complete(pending,value=>{config.PendingOperation=value;config.PendingCharacter=value==null?0:character;},Save);
+    }
     private void Record(string text)
     {
         var entry=$"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss} {text}";
@@ -132,7 +160,7 @@ public sealed class Plugin : IDalamudPlugin
         try
         {
             using var doc=JsonDocument.Parse(request);var root=doc.RootElement;
-            if(!player.IsLoaded || root.GetProperty("Version").GetInt32()!=4 || root.GetProperty("Character").GetUInt64()!=player.ContentId || !config.Connected)return "Deny";
+            if(!player.IsLoaded || attached==0 || attached!=player.ContentId || root.GetProperty("Version").GetInt32()!=5 || root.GetProperty("Character").GetUInt64()!=player.ContentId || !config.Connected)return "Deny";
             Refresh();
             // Protection imports are refreshed again before permission, even between regular refresh intervals.
             imports.Refresh();
@@ -176,7 +204,7 @@ public sealed class Plugin : IDalamudPlugin
                 if(config.Connected && player.ContentId!=0)
                 {
                     var version=pi.GetIpcSubscriber<int>("AutoRetainer.InventoryPolicy.Version").InvokeFunc();
-                    if(version!=4)throw new InvalidOperationException("Update both plugins: AutoRetainer integration version 4 is required");
+                    if(version!=5)throw new InvalidOperationException("Update both plugins: AutoRetainer integration version 5 is required");
                     if(attached==player.ContentId)
                     {if(!pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Heartbeat").InvokeFunc(attached,Endpoint))attached=0;}
                     if(attached==0 && pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Connect").InvokeFunc(player.ContentId,Endpoint))attached=player.ContentId;
@@ -294,6 +322,7 @@ public sealed class Plugin : IDalamudPlugin
         ImGui.SetNextWindowSize(new(850,640),ImGuiCond.FirstUseEver);
         if(!ImGui.Begin("Steward",ref open)){ImGui.End();return;}
         ImGui.TextWrapped(status);ImGui.TextWrapped(imports.Status);
+        if(config.PendingOperation!=null)ImGui.TextWrapped($"Unverified operation: {config.PendingOperation}; character {config.PendingCharacter}. Review that character's inventory before clearing.");
         var automatic=config.Automatic;
         if(ImGui.Checkbox("Enable automatic execution",ref automatic))SetAutomatic(automatic);
         ImGui.SameLine();if(ImGui.Button("Stop"))Stop();
@@ -301,12 +330,16 @@ public sealed class Plugin : IDalamudPlugin
         {
             try
             {
-                if(!pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.ClearFault").InvokeFunc(player.ContentId))
-                    Record("Close pending confirmations and release control before clearing the stopped run");
+                if(config.PendingCharacter!=0 && config.PendingCharacter!=player.ContentId)
+                    Record("Return to the character that owns the unverified operation before clearing it");
+                else if(!pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.ClearFault").InvokeFunc(player.ContentId))
+                    Record("Stop AutoRetainer's queued work, close pending confirmations and release control before clearing the stopped run");
                 else
                 {
-                    config.Automatic=false;executionFault=config.ExecutionReviewRequired=false;
-                    try{Save();}catch{executionFault=config.ExecutionReviewRequired=true;throw;}
+                    var pending=config.PendingOperation;
+                    var pendingCharacter=config.PendingCharacter;
+                    config.Automatic=false;executionFault=config.ExecutionReviewRequired=false;config.PendingOperation=null;config.PendingCharacter=0;
+                    try{Save();}catch{config.PendingOperation=pending;config.PendingCharacter=pendingCharacter;executionFault=config.ExecutionReviewRequired=true;throw;}
                     market.Queue.Begin();Record("User cleared both stopped-run holds after inventory review; automatic execution remains off");
                 }
             }
@@ -394,7 +427,7 @@ public sealed class Plugin : IDalamudPlugin
                 var expected=config.GlamaholicExpected;if(ImGui.Checkbox("Require Glamaholic configuration",ref expected)){config.GlamaholicExpected=expected;Save();}
                 if(ImGui.Button("Detach current character and restore original AutoRetainer rules"))
                 {
-                    Stop();try{if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Detach").InvokeFunc(player.ContentId,Endpoint)){config.Connected=false;attached=0;Save();}}catch(Exception ex){Record(ex.Message);}
+                    Stop();try{if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Detach").InvokeFunc(player.ContentId,Endpoint)){config.Connected=false;attached=0;Save();}else Record("Resolve the stopped run and stop AutoRetainer's queued work before detaching");}catch(Exception ex){Record(ex.Message);}
                 }
                 if(!config.Connected&&ImGui.Button("Connect Steward policy")){config.Connected=true;Save();}
                 ImGui.EndTabItem();

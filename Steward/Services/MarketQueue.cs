@@ -26,9 +26,9 @@ public sealed unsafe class MarketQueue : IDisposable
     private readonly Dictionary<uint,(DateTimeOffset At,int Request,List<Offering> Offers)> offers=[];
     private uint comparisonItem;
     private DateTimeOffset comparisonOpened;
-    public OperationQueue Queue { get; }=new();
-    public MarketQueue(IDalamudPluginInterface pi,IMarketBoard market,InventoryView view,Configuration config,NativeUi ui,Func<Stock,Decision> judge,Action<string> history,Action refreshProtection,Func<bool> marketPreferencesReady,Action<string> fault)
-    {this.pi=pi;this.market=market;this.view=view;this.config=config;this.ui=ui;this.judge=judge;this.history=history;this.refreshProtection=refreshProtection;this.marketPreferencesReady=marketPreferencesReady;this.fault=fault;market.OfferingsReceived+=Received;}
+    public OperationQueue Queue { get; }
+    public MarketQueue(IDalamudPluginInterface pi,IMarketBoard market,InventoryView view,Configuration config,NativeUi ui,Func<Stock,Decision> judge,Action<string> history,Action refreshProtection,Func<bool> marketPreferencesReady,Action<string> fault,Action<string> begin,Action complete)
+    {this.pi=pi;this.market=market;this.view=view;this.config=config;this.ui=ui;this.judge=judge;this.history=history;this.refreshProtection=refreshProtection;this.marketPreferencesReady=marketPreferencesReady;this.fault=fault;Queue=new(begin,complete);market.OfferingsReceived+=Received;}
     private void CheckFault(){if(Queue.Status.StartsWith("Stopped:",StringComparison.Ordinal))fault(Queue.Status);}
     private bool AcquireManualCoordination()
     {
@@ -172,6 +172,7 @@ public sealed unsafe class MarketQueue : IDisposable
                 if(!ui.Click("RetainerSell",21))return StepResult.Failed;
                 sent=DateTimeOffset.UtcNow;phase=4;return StepResult.Waiting;
             }
+            if(ui.Visible("RetainerSell") || !InventoryView.Loaded((uint)InventoryType.RetainerMarket))return StepResult.Waiting;
             if(reprice)
             {
                 if(live!=expected)return StepResult.Failed;
@@ -180,6 +181,7 @@ public sealed unsafe class MarketQueue : IDisposable
             else
             {
                 if(live!=null && live.ItemId==expected.ItemId && live.Quantity==expected.Quantity)return StepResult.Waiting;
+                if(!StockTransition.Removed(expected,live,(uint)quantity,InventoryView.Loaded(expected.Container)))return StepResult.Failed;
                 List<Stock> listed=[];InventoryView.Read(InventoryType.RetainerMarket,listed);
                 if(!listed.Any(s=>!occupiedBefore.Contains(s.Slot)&&s.ItemId==expected.ItemId&&s.Hq==expected.Hq&&s.Quantity==quantity&&
                     (uint)InventoryManager.Instance()->GetRetainerMarketPrice((short)s.Slot)==target))return StepResult.Waiting;
@@ -228,6 +230,9 @@ public sealed unsafe class MarketQueue : IDisposable
     public void WithdrawForOtherActions(ulong character)
     {
         Queue.Begin();
+        var manager=RetainerManager.Instance();
+        var retainer=manager==null?0:manager->LastSelectedRetainerId;
+        if(retainer==0 || !view.Retainers.Contains(retainer))throw new InvalidOperationException("Withdrawal retainer identity is unavailable");
         List<Stock> stored=[];foreach(var type in InventoryView.RetainerTypes())InventoryView.Read(type,stored);
         foreach(var stock in stored.Where(s=>judge(s).Outcome is Outcome.CollectArmoire or Outcome.CollectDresser or Outcome.Dispose))
         {
@@ -235,19 +240,24 @@ public sealed unsafe class MarketQueue : IDisposable
             Queue.Add(new("Withdraw "+stock.ItemId,()=>
             {
                 if(!config.Automatic||view.Character!=character)return StepResult.Failed;
+                var currentRetainer=RetainerManager.Instance();
+                if(currentRetainer==null || currentRetainer->LastSelectedRetainerId!=retainer)return StepResult.Failed;
                 if(!pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsHandoff").InvokeFunc(character))return StepResult.Failed;
                 if(!sent)
                 {
+                    if(!InventoryView.PlayerLoaded())return StepResult.Failed;
                     before=view.Items.Where(s=>s.ItemId==stock.ItemId&&s.Hq==stock.Hq).Sum(s=>(long)s.Quantity);
                     if(InventoryView.ReadSlot(stock.Container,stock.Slot)!=stock)return StepResult.Failed;
                     var decision=judge(stock);if(decision.Outcome is not (Outcome.CollectArmoire or Outcome.CollectDresser or Outcome.Dispose))return StepResult.Completed;
-                    var payload=System.Text.Json.JsonSerializer.Serialize(new{stock.Container,stock.Slot,stock.ItemId,stock.Quantity});
+                    var payload=System.Text.Json.JsonSerializer.Serialize(new{stock.Container,stock.Slot,stock.ItemId,stock.Quantity,stock.Hq,Retainer=retainer});
                     if(!pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Retrieve").InvokeFunc(character,payload))return StepResult.Failed;
                     sent=true;return StepResult.Waiting;
                 }
                 if(InventoryView.ReadSlot(stock.Container,stock.Slot)==stock)return StepResult.Waiting;
+                if(!InventoryView.PlayerLoaded() || !InventoryView.Loaded(stock.Container))return StepResult.Failed;
                 var after=view.Items.Where(s=>s.ItemId==stock.ItemId&&s.Hq==stock.Hq).Sum(s=>(long)s.Quantity);
                 if(after<before+stock.Quantity)return StepResult.Waiting;
+                if(after!=before+stock.Quantity || !StockTransition.Removed(stock,InventoryView.ReadSlot(stock.Container,stock.Slot),stock.Quantity,true))return StepResult.Failed;
                 history("Confirmed withdrawal of "+stock.ItemId+" x"+stock.Quantity);return StepResult.Completed;
             },TimeoutMs:10000));
         }
@@ -290,6 +300,7 @@ public sealed unsafe class MarketQueue : IDisposable
                 {
                     if(live->PrismBoxItemIds[slot]!=raw)return StepResult.Failed;
                     if(WithoutThisCopy().Outcome is not (Outcome.Dispose or Outcome.Market))return StepResult.Completed;
+                    if(!InventoryView.PlayerLoaded())return StepResult.Failed;
                     before=view.Items.Where(s=>s.ItemId==id).Sum(s=>(long)s.Quantity);
                     if(outfitPart>=0)
                     {
@@ -302,7 +313,10 @@ public sealed unsafe class MarketQueue : IDisposable
                     sent=true;return StepResult.Waiting;
                 }
                 if(outfitPart>=0 ? live->PrismBoxItemIds[slot]==raw&&live->IsSetSlotUnlocked((uint)slot,outfitPart) : live->PrismBoxItemIds[slot]==raw)return StepResult.Waiting;
-                if(view.Items.Where(s=>s.ItemId==id).Sum(s=>(long)s.Quantity)<=before)return StepResult.Waiting;
+                if(!InventoryView.PlayerLoaded())return StepResult.Failed;
+                var after=view.Items.Where(s=>s.ItemId==id).Sum(s=>(long)s.Quantity);
+                if(after==before)return StepResult.Waiting;
+                if(after!=before+1)return StepResult.Failed;
                 history("Confirmed dresser restoration of "+id);return StepResult.Completed;
             },TimeoutMs:10000));
         }
@@ -355,7 +369,10 @@ public sealed unsafe class MarketQueue : IDisposable
                     if(name==null||confirm->PromptText==null||!confirm->PromptText->NodeText.ToString().Contains(name,StringComparison.Ordinal))return StepResult.Failed;
                     if(!ui.Callback("SelectYesno",0))return StepResult.Failed;phase=2;return StepResult.Waiting;
                 }
-                if(live==source||!view.Evidence.Dresser.Contains(source.ItemId))return StepResult.Waiting;
+                if(live==source||ui.Visible("SelectYesno"))return StepResult.Waiting;
+                if(!InventoryView.Loaded(source.Container)||!view.Evidence.DresserKnown)return StepResult.Failed;
+                if(!StockTransition.Removed(source,live,1,true))return StepResult.Failed;
+                if(!view.Evidence.Dresser.Contains(source.ItemId))return StepResult.Waiting;
                 history("Confirmed dresser storage of "+source.ItemId);return StepResult.Completed;
             },()=>
             {
