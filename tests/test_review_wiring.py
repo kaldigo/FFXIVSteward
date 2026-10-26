@@ -22,7 +22,7 @@ class ReviewWiring(unittest.TestCase):
         self.assertIn('view.Evidence.GlamaholicReferences=imported;',imports)
 
     def test_refresh_failure_is_persistent_even_with_automatic_off(self):
-        plugin=(ROOT/'Steward/Plugin.cs').read_text(encoding='utf-8')
+        plugin=((ROOT/'Steward/Plugin.cs').read_text(encoding='utf-8')+(ROOT/'Steward/Plugin.Settings.cs').read_text(encoding='utf-8'))
         self.assertIn('Record("Steward refresh failed; review may be incomplete:',plugin)
         self.assertIn('Allow disposal of this non-equipment item',plugin)
 
@@ -32,7 +32,7 @@ class ReviewWiring(unittest.TestCase):
             self.assertNotIn('config.Automatic',text,path.name)
             if 'RestorePrismBox' in text or 'InventoryPolicy.Store' in text:
                 self.assertIn('!config.ExecutionEnabled',text,path.name)
-        plugin=(ROOT/'Steward/Plugin.cs').read_text(encoding='utf-8')
+        plugin=((ROOT/'Steward/Plugin.cs').read_text(encoding='utf-8')+(ROOT/'Steward/Plugin.Settings.cs').read_text(encoding='utf-8'))
         self.assertIn('ActionPolicy.Allows(action,decision.Outcome,config.ExecutionEnabled',plugin)
         self.assertIn('if(!config.ExecutionEnabled || !player.IsLoaded',plugin)
         self.assertIn('if(!config.ExecutionEnabled){Record("Dry run:',plugin)

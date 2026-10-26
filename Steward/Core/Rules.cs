@@ -34,6 +34,7 @@ public sealed class SaleRule
 }
 public sealed class RuleSettings
 {
+    public GlamourFilters Glamour { get; set; }=new();
     public HashSet<uint> Ignored { get; set; } = [];
     public HashSet<uint> IgnoredCategories { get; set; } = [];
     public bool IsIgnored(ItemFacts item)=>Ignored.Contains(item.Id)||IgnoredCategories.Contains(item.Category);
@@ -95,12 +96,8 @@ public static class Rules
         if(removable==null)return new(Outcome.Wait,"Quantity reserve needs live source inventory");
         if(removable==0)return new(Outcome.Keep,"Quantity reserve protects this stack");
         if(settings.CollectionKeep.Contains(item.Id)&&!item.Equipment&&!item.ArmoireEligible)return new(Outcome.Keep,"Supplemental collection item has no equipment storage destination");
-        var routineDuty = item.Source is SourceKind.NormalDungeon or SourceKind.NormalRaid;
-        var ordinary = routineDuty || item.Source == SourceKind.Ordinary;
-        var pending = evidence.PendingCollection.Contains(item.Id);
-        var rarityProtected = item.Rarity > 3 || (item.Rarity == 3 && !item.Marketable && !routineDuty);
-        var collect = item.ArmoireEligible || item.Equipment && (rarityProtected || item.EquipLevel == 1 || item.DesignedForGlamour ||
-            !ordinary || pending || settings.CollectionKeep.Contains(item.Id) || settings.CommonGlamour.Contains(item.Id) || evidence.CuratedGlamour.Contains(item.Id) || evidence.References.Contains(item.Id));
+        var protections=GlamourProtection.Match(item,settings,evidence);
+        var collect=protections!=GlamourMatch.None;
         if(collect)
         {
             if(!evidence.DresserKnown || !evidence.ArmoireKnown)
@@ -109,7 +106,7 @@ public static class Rules
                     :new(Outcome.Wait,"Live dresser or armoire ownership is unavailable");
             if(!evidence.Armoire.Contains(item.Id) && (item.ArmoireEligible || evidence.OmittedDresserItem==item.Id || !evidence.Dresser.Contains(item.Id)))
             {
-                if(item.Source == SourceKind.Unknown && !pending && !settings.CollectionKeep.Contains(item.Id) && !item.ArmoireEligible && !evidence.References.Contains(item.Id) && !item.DesignedForGlamour && !rarityProtected && item.EquipLevel != 1 && !settings.CommonGlamour.Contains(item.Id) && !evidence.CuratedGlamour.Contains(item.Id))
+                if(protections==GlamourMatch.Unknown)
                     return new(Outcome.Keep, "Acquisition source is uncertain; preserve for collection");
                 if(!item.ArmoireEligible && evidence.DresserFreeSlots is int free && free<=Math.Clamp(settings.DresserEmptySlots,0,800))
                     return new(Outcome.StoreRetainer,"Protected overflow: store in a retainer until dresser space is available");

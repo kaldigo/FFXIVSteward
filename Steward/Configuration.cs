@@ -10,6 +10,7 @@ public sealed class Configuration : IPluginConfiguration, IJsonOnDeserialized
     {
         legacy??=new();
         if(legacy.SafetyRevision>=6)throw new InvalidDataException("Authoritative Steward safety state is missing; restore it before executing managed item actions");
+        legacy.MigrateControls();
         return legacy;
     }
     [JsonRequired] public int Version { get; set; } = 1;
@@ -30,6 +31,7 @@ public sealed class Configuration : IPluginConfiguration, IJsonOnDeserialized
     public bool UseUniversalis { get; set; } = true;
     public bool GlamaholicExpected { get; set; } = true;
     public bool UseBundledGlamourList { get; set; } = true;
+    public int ControlsRevision { get; set; }
     public bool CleanDresser { get; set; }
     private Dictionary<ulong,HashSet<uint>> pendingCollection=[];
     private bool pendingCollectionRead;
@@ -37,8 +39,16 @@ public sealed class Configuration : IPluginConfiguration, IJsonOnDeserialized
     {get=>pendingCollection;set{pendingCollection=value;pendingCollectionRead=true;}}
     public Dictionary<uint,SourceKind> DutySources { get; set; } = [];
     public bool InitialExclusionsApplied { get; set; }
+    private void MigrateControls()
+    {
+        if(Rules==null||Rules.Glamour==null||Rules.Glamour.Categories==null||Rules.Glamour.ExcludedCategories==null)
+            throw new System.Text.Json.JsonException("Invalid glamour filter settings");
+        if(ControlsRevision<1)
+        {Rules.Glamour.Glamaholic=GlamaholicExpected;Rules.Glamour.EorzeaCollection=UseBundledGlamourList;ControlsRevision=1;}
+    }
     void IJsonOnDeserialized.OnDeserialized()
     {
+        MigrateControls();
         // Preserve legacy single-category rules when opening the multi-category editor.
         foreach(var rule in Rules.Sales)
             if(rule.Category!=0){rule.Categories.Add(rule.Category);rule.Category=0;}

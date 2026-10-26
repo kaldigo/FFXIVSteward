@@ -26,14 +26,23 @@ public sealed unsafe class InventoryView
     public HashSet<ulong> Retainers { get; } = [];
     public uint World { get; set; }
     public IReadOnlyDictionary<uint,string> Categories { get; }
+    public IReadOnlyDictionary<uint,(uint Icon,byte Major,byte Minor)> CategoryDetails { get; }
     public InventoryView(IDataManager data,Configuration config,InventoryMemory memory)
     {
         this.data=data;this.config=config;this.memory=memory;
+        CategoryDetails=data.GetExcelSheet<Sheets.ItemUICategory>().ToDictionary(r=>r.RowId,r=>((uint)Math.Max(0,r.Icon),r.OrderMajor,r.OrderMinor));
         Categories=data.GetExcelSheet<Sheets.ItemUICategory>().Where(r=>!string.IsNullOrWhiteSpace(r.Name.ToString())).ToDictionary(r=>r.RowId,r=>r.Name.ToString());
         cabinet=data.GetExcelSheet<Sheets.Cabinet>().Where(r=>r.Item.RowId!=0).Select(r=>(r.RowId,r.Item.RowId)).ToArray();
         cabinetItems=cabinet.Select(c=>c.Item).ToHashSet();
         outfits=data.GetExcelSheet<Sheets.MirageStoreSetItem>().ToDictionary(r=>r.RowId,r=>new[]{r.MainHand.RowId,r.OffHand.RowId,r.Head.RowId,r.Body.RowId,r.Hands.RowId,r.Legs.RowId,r.Feet.RowId,r.Earrings.RowId,r.Necklace.RowId,r.Bracelets.RowId,r.Ring.RowId});
         crafted=data.GetExcelSheet<Sheets.Recipe>().Where(r=>r.ItemResult.RowId!=0).Select(r=>r.ItemResult.RowId).ToHashSet();
+    }
+    private (uint Id,string Name)[]? searchableItems;
+    public IReadOnlyList<(uint Id,string Name)> SearchItems(string query)
+    {
+        if(query.Length<2)return [];
+        searchableItems??=data.GetExcelSheet<Sheets.Item>().Where(r=>r.RowId>0&&!string.IsNullOrWhiteSpace(r.Name.ToString())).Select(r=>(r.RowId,r.Name.ToString())).ToArray();
+        return searchableItems.Where(i=>i.Name.Contains(query,StringComparison.OrdinalIgnoreCase)||i.Id.ToString()==query).Take(30).ToArray();
     }
     public ItemFacts? Facts(uint id)
     {

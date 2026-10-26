@@ -33,18 +33,19 @@ public sealed class ExternalImports
     public void Refresh()
     {
         MarketPreferencesReady=!config.ImportMarketBuddy;
-        var errors=new List<string>();var references=new HashSet<uint>(view.NativeReferences);
-        view.Evidence.CuratedGlamour=config.UseBundledGlamourList?bundled:[];
-        var glamReady=!config.GlamaholicExpected;
+        var filters=config.Rules.Glamour;
+        var errors=new List<string>();var references=filters.NativePlates?new HashSet<uint>(view.NativeReferences):[];
+        view.Evidence.CuratedGlamour=filters.EorzeaCollection?bundled:[];
+        var glamReady=!filters.Glamaholic;
         view.Evidence.GlamaholicKnown=false;view.Evidence.GlamaholicReferences=[];
         try
         {
             var path=Path.Combine(directory,"Glamaholic.json");
-            if(File.Exists(path)){var imported=ReadCached(path,Imports.Glamaholic);references.UnionWith(imported);view.Evidence.GlamaholicReferences=imported;view.Evidence.GlamaholicKnown=true;glamReady=true;}
-            else if(config.GlamaholicExpected)errors.Add("Glamaholic config not found");
+            if(File.Exists(path)){var imported=ReadCached(path,Imports.Glamaholic);if(filters.Glamaholic)references.UnionWith(imported);view.Evidence.GlamaholicReferences=imported;view.Evidence.GlamaholicKnown=true;glamReady=true;}
+            else if(filters.Glamaholic)errors.Add("Glamaholic config not found");
         }
-        catch(Exception ex){glamReady=false;errors.Add("Glamaholic: "+ex.Message);}
-        view.Evidence.References=references;view.Evidence.ReferencesReady=glamReady&&view.NativeReferencesKnown;
+        catch(Exception ex){glamReady=!filters.Glamaholic;if(filters.Glamaholic)errors.Add("Glamaholic: "+ex.Message);}
+        view.Evidence.References=references;view.Evidence.ReferencesReady=GlamourProtection.ReferencesReady(filters,view.NativeReferencesKnown,glamReady);
         if(config.ImportMarketBuddy)
         {
             try{var path=Path.Combine(directory,"Marketbuddy.json");if(File.Exists(path)){config.Pricing=ReadCached(path,Imports.MarketBuddy);MarketPreferencesReady=true;}else errors.Add("Market Buddy settings not found; market execution held");}

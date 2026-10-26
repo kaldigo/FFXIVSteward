@@ -11,10 +11,10 @@ class CategoryWiring(unittest.TestCase):
         self.assertIn('view.Categories.OrderBy',ui)
         self.assertIn('Included categories',ui)
         self.assertIn('Excluded categories for this rule',ui)
-        self.assertIn('rule.Group=value',ui)
+        self.assertIn('rule.Group=ItemGroup.Any',ui)
 
     def test_global_exclusions_gate_prices_and_are_logged(self):
-        plugin=(ROOT/'Steward/Plugin.cs').read_text(encoding='utf-8')
+        plugin=((ROOT/'Steward/Plugin.cs').read_text(encoding='utf-8')+(ROOT/'Steward/Plugin.Settings.cs').read_text(encoding='utf-8'))
         self.assertIn('!config.Rules.IsIgnored(item)',plugin)
         self.assertIn('config.Rules.IgnoredCategories',plugin)
         review=(ROOT/'Steward/Plugin.Review.cs').read_text(encoding='utf-8')

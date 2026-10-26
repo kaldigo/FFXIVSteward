@@ -19,6 +19,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private readonly IPluginLog log;
     private readonly IChatGui chat;
     private readonly INotificationManager notifications;
+    private readonly ITextureProvider textures;
     private readonly Configuration config;
     private readonly string statePath;
     private readonly InventoryView view;
@@ -43,10 +44,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private bool ownsPostprocess;
     private bool executionFault;
     private string status="Starting in dry-run mode";
-    private string itemText="";
-    private string commonPath="";
     private string search="";
-    private string policyJson="";
     private bool openingMarket;
     private bool openingInventory;
     private bool withdrawing;
@@ -54,8 +52,9 @@ public sealed partial class Plugin : IDalamudPlugin
     private long nextPostprocessRelease;
     private readonly Dictionary<string,long> recentDecisions=[];
     public Plugin(IDalamudPluginInterface pi,ICommandManager commands,IFramework framework,IPlayerState player,
-        IObjectTable objects,IDataManager data,IGameGui gui,IMarketBoard board,IPluginLog log,IChatGui chat,INotificationManager notifications)
+        IObjectTable objects,IDataManager data,IGameGui gui,IMarketBoard board,IPluginLog log,IChatGui chat,INotificationManager notifications,ITextureProvider textures)
     {
+        this.textures=textures;
         this.pi=pi;this.commands=commands;this.framework=framework;this.player=player;this.objects=objects;this.log=log;this.chat=chat;this.notifications=notifications;
         statePath=Path.Combine(pi.GetPluginConfigDirectory(),"steward-state.json");
         config=AtomicState.ReadOrMigrate(statePath,()=>Configuration.FromLegacy(pi.GetPluginConfig() as Configuration));
@@ -349,7 +348,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private void SetAutomatic(bool enabled)
     {
         if(!enabled){Stop();return;}
-        if(config.LogOnly){Record("Log only is enabled. Turn it off in Rules before enabling automatic execution.");return;}
+        if(config.LogOnly){Record("Log only is enabled. Turn it off in Developer tools before enabling automatic execution.");return;}
         try
         {
             var ready=!config.LogOnly && player.IsLoaded && config.Connected && attached!=0 && attached==player.ContentId && !executionFault &&
@@ -367,154 +366,6 @@ public sealed partial class Plugin : IDalamudPlugin
         if(market.Queue.Running){Record("Wait for the current operation to finish");return;}
         try{var result=pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,operation);Record(result?"Requested AutoRetainer "+operation:"AutoRetainer could not start "+operation+"; check its settings, dependencies and current task");}
         catch(Exception ex){HoldExecution("AutoRetainer request failed after a possible partial enqueue: "+ex.Message);StopQueue();}
-    }
-    private void Draw()
-    {
-        if(!open)return;
-        ImGui.SetNextWindowSize(new(850,640),ImGuiCond.FirstUseEver);
-        if(!ImGui.Begin("Steward",ref open)){ImGui.End();return;}
-        ImGui.TextWrapped(status);ImGui.TextWrapped(imports.Status);ImGui.TextWrapped(universalis.Status);ImGui.TextWrapped(universalis.Freshness);
-        if(config.PendingOperation!=null)ImGui.TextWrapped($"Unverified operation: {config.PendingOperation}; character {config.PendingCharacter}. Review that character's inventory before clearing.");
-        var automatic=config.Automatic;
-        if(ImGui.Checkbox("Enable automatic execution",ref automatic))SetAutomatic(automatic);
-        ImGui.SameLine();if(ImGui.Button("Stop"))Stop();
-        if(executionFault && ImGui.Button("I checked inventory — clear stopped run"))
-        {
-            try
-            {
-                if(config.PendingCharacter!=0 && config.PendingCharacter!=player.ContentId)
-                    Record("Return to the character that owns the unverified operation before clearing it");
-                else if(!pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.ClearFault").InvokeFunc(player.ContentId))
-                    Record("Stop AutoRetainer's queued work, close pending confirmations and release control before clearing the stopped run");
-                else
-                {
-                    var pending=config.PendingOperation;
-                    var pendingCharacter=config.PendingCharacter;
-                    config.Automatic=false;executionFault=config.ExecutionReviewRequired=false;config.PendingOperation=null;config.PendingCharacter=0;
-                    try{Save();}catch{config.PendingOperation=pending;config.PendingCharacter=pendingCharacter;executionFault=config.ExecutionReviewRequired=true;throw;}
-                    market.Queue.Begin();Record("User cleared both stopped-run holds after inventory review; automatic execution remains off");
-                }
-            }
-            catch(Exception ex){Record("Could not clear the integration hold: "+ex.Message);}
-        }
-        ImGui.TextWrapped("Collection: exact item IDs; dyes ignored. Open the dresser, plate editor and armoire to load evidence. Existing AutoRetainer protections and enabled actions still apply.");
-        if(ImGui.BeginTabBar("Steward tabs"))
-        {
-            if(ImGui.BeginTabItem("Preview"))
-            {
-                ImGui.InputText("Search",ref search,128);
-                if(ImGui.Button("Refresh")){nextImports=0;Refresh();}
-                ImGui.SameLine();if(ImGui.Button("List / reprice current retainer")){if(config.LogOnly){reviewJournal.Reset();nextReview=0;}else market.Start();}
-                ImGui.SameLine();if(ImGui.Button("Clean open dresser"))market.CleanupDresser();
-                ImGui.TextWrapped($"Queue: {market.Queue.Status}; completed {market.Queue.Completed}");
-                foreach(var operation in new[]{"Armoire","Dresser","Gc","Desynth","Vendor"})
-                {ImGui.SameLine();if(ImGui.Button(operation))Run(operation);}
-                if(ImGui.BeginChild("Decisions",new(0,0),true))
-                    foreach(var stock in view.Items)
-                    {
-                        var facts=view.Facts(stock.ItemId);if(facts==null||(!string.IsNullOrWhiteSpace(search)&&!facts.Name.Contains(search,StringComparison.OrdinalIgnoreCase)&&!stock.ItemId.ToString().Contains(search)))continue;
-                        var decision=Judge(stock);
-                        ImGui.TextWrapped($"{facts.Name} [{stock.ItemId}] {(stock.Hq?"HQ":"NQ")} x{stock.Quantity}: {decision.Outcome} — {decision.Reason}");
-                    }
-                ImGui.EndChild();ImGui.EndTabItem();
-            }
-            if(ImGui.BeginTabItem("Rules"))
-            {
-                DrawStorageSettings();
-                DrawCategorySelection("Exclude item categories from all handling",config.Rules.IgnoredCategories,"None excluded");
-                ImGui.TextWrapped("Global category exclusions skip listing, disposal and collection moves. Sale-rule exclusions below affect only that rule.");
-                var combined=config.Rules.Quality==QualityMode.Combined;
-                if(ImGui.Checkbox("Compare HQ and NQ together",ref combined)){config.Rules.Quality=combined?QualityMode.Combined:QualityMode.Separate;Save();}
-                var days=config.Rules.SummaryHistoryDays;if(ImGui.InputInt("Sale history window (days)",ref days)){config.Rules.SummaryHistoryDays=Math.Clamp(days,7,90);Save();}
-                var age=config.Rules.SummaryRefreshHours;if(ImGui.InputInt("Refresh sale summaries every (hours)",ref age)){config.Rules.SummaryRefreshHours=Math.Clamp(age,1,2);Save();}
-                var publicPrices=config.UseUniversalis;
-                if(ImGui.Checkbox("Use Universalis prices",ref publicPrices)){config.UseUniversalis=publicPrices;Save();nextImports=0;}
-                ImGui.TextWrapped("Average sale value and units sold per day are prefetched and saved across restarts. Missing recent sales never mean zero value. Actual posting and repricing still use an in-game comparison.");
-                ImGui.InputText("Item ID",ref itemText,12);
-                if(uint.TryParse(itemText,out var id)&&id>0)
-                {
-                    if(ImGui.Button("Exclude item")){config.Rules.Ignored.Add(id);Save();}ImGui.SameLine();
-                    if(ImGui.Button("Remove exclusion")){config.Rules.Ignored.Remove(id);Save();}ImGui.SameLine();
-                    if(ImGui.Button("Keep item")){config.Rules.Keep.Add(id);Save();}ImGui.SameLine();
-                    if(ImGui.Button("Remove keep")){config.Rules.Keep.Remove(id);Save();}
-                    if(ImGui.Button("Collect glamour item")){config.Rules.CollectionKeep.Add(id);Save();}ImGui.SameLine();
-                    if(ImGui.Button("Remove supplemental collection")){config.Rules.CollectionKeep.Remove(id);Save();}
-                    var reserveQuantity=(int)Math.Min(config.Rules.QuantityReserves.GetValueOrDefault(id),999999);
-                    if(ImGui.InputInt("Keep quantity outside collection",ref reserveQuantity)){if(reserveQuantity<=0)config.Rules.QuantityReserves.Remove(id);else config.Rules.QuantityReserves[id]=(uint)Math.Clamp(reserveQuantity,1,999999);Save();}
-                    ImGui.TextWrapped("Quantity reserves keep live inventory copies; offline retainer caches never justify consuming the reserve. Whole-stack disposal is held when a stack includes reserved items.");
-                    if(ImGui.Button("Allow disposal of this non-equipment item")){config.Rules.NonEquipmentDisposal.Add(id);Save();}ImGui.SameLine();
-                    if(ImGui.Button("Remove non-equipment disposal permission")){config.Rules.NonEquipmentDisposal.Remove(id);Save();}
-                    if(ImGui.Button("Source: dungeon / crafting")){config.Sources[id]=SourceKind.Ordinary;Save();}ImGui.SameLine();
-                    if(ImGui.Button("Source: special")){config.Sources[id]=SourceKind.Special;Save();}
-                }
-                ImGui.TextWrapped("Excluded IDs: "+string.Join(", ",config.Rules.Ignored));
-                ImGui.TextWrapped("Non-equipment stays protected unless explicitly allowed by item ID; sale rules can still list it. AutoRetainer keeps its enabled methods and item-selection rules. Allowed non-equipment disposal IDs: "+string.Join(", ",config.Rules.NonEquipmentDisposal));
-                ImGui.InputText("Eorzea Collection list file",ref commonPath,1024);
-                if(ImGui.Button("Import curated glamour list"))try{ExternalImports.ImportCommon(commonPath,config.Rules);Save();Record("Imported curated glamour list");}catch(Exception ex){Record(ex.Message);}
-                if(ImGui.Button("Add auto-sell rule")){config.Rules.Sales.Add(new());Save();}
-                ImGui.TextWrapped("First matching enabled rule wins. Put specific gear/material rules above an all-items rule; each rule can have its own prices and stack size.");
-                for(var i=0;i<config.Rules.Sales.Count;i++)
-                {
-                    var rule=config.Rules.Sales[i];ImGui.PushID(i);
-                    var name=rule.Name;if(ImGui.InputText("Rule name",ref name,100)){rule.Name=name;Save();}
-                    var ruleEnabled=rule.Enabled;if(ImGui.Checkbox("Rule enabled",ref ruleEnabled)){rule.Enabled=ruleEnabled;Save();}
-                    DrawSaleRuleCategories(rule);
-                    var ruleQuality=rule.Hq==null?0:rule.Hq==false?1:2;
-                    if(ImGui.Combo("Rule quality",ref ruleQuality,"Any quality\0NQ only\0HQ only\0")){rule.Hq=ruleQuality==0?null:ruleQuality==2;Save();}
-                    var unit=(int)rule.MinimumUnit;var total=(int)rule.MinimumTotal;var stack=rule.MaximumStack;
-                    if(ImGui.InputInt("Minimum unit gil",ref unit)){rule.MinimumUnit=(uint)Math.Clamp(unit,1,999999999);Save();}
-                    if(ImGui.InputInt("Minimum stack gil",ref total)){rule.MinimumTotal=(uint)Math.Max(1,total);Save();}
-                    if(ImGui.InputInt("Maximum stack",ref stack)){rule.MaximumStack=Math.Clamp(stack,1,9999);Save();}
-                    var velocityEnabled=rule.MinimumDailySales.HasValue;
-                    if(ImGui.Checkbox("Require minimum units sold per day",ref velocityEnabled)){rule.MinimumDailySales=velocityEnabled?0.1:null;Save();}
-                    if(velocityEnabled){var velocity=(float)(rule.MinimumDailySales??0.1);if(ImGui.InputFloat("Minimum units sold per day",ref velocity,0.01f,0.1f,"%.3f")){rule.MinimumDailySales=float.IsFinite(velocity)?Math.Max(0,velocity):0;Save();}}
-                    var older=rule.AllowOlderSaleValue;
-                    if(ImGui.Checkbox("Allow older known values for slow sellers",ref older)){rule.AllowOlderSaleValue=older;Save();}
-                    ImGui.TextWrapped("Value floors apply to the average sale value and the actual posted price. An enabled sales threshold holds items when sales evidence is missing.");
-                    ImGui.TextWrapped("Item IDs: "+(rule.ItemIds.Count==0?"any within the selected group/categories":string.Join(",",rule.ItemIds)));
-                    if(uint.TryParse(itemText,out var ruleId)&&ruleId>0&&ImGui.Button("Restrict to entered item")){rule.ItemIds.Add(ruleId);Save();}
-                    if(i>0){ImGui.SameLine();if(ImGui.Button("Move up")){(config.Rules.Sales[i-1],config.Rules.Sales[i])=(rule,config.Rules.Sales[i-1]);Save();}}
-                    if(i<config.Rules.Sales.Count-1){ImGui.SameLine();if(ImGui.Button("Move down")){(config.Rules.Sales[i+1],config.Rules.Sales[i])=(rule,config.Rules.Sales[i+1]);Save();}}
-                    if(ImGui.Button("Remove rule")){config.Rules.Sales.RemoveAt(i);Save();ImGui.PopID();break;}ImGui.PopID();ImGui.Separator();
-                }
-                if(ImGui.Button("Edit all settings as JSON"))policyJson=JsonSerializer.Serialize(config,new JsonSerializerOptions{WriteIndented=true});
-                if(policyJson.Length>0)
-                {
-                    ImGui.InputTextMultiline("Settings JSON",ref policyJson,65536,new(0,180));
-                    if(ImGui.Button("Apply rules and source overrides"))try
-                    {var changed=JsonSerializer.Deserialize<Configuration>(policyJson)??throw new InvalidDataException("Empty settings");config.Rules=changed.Rules;config.Sources=changed.Sources;config.Pricing=changed.Pricing;config.ImportMarketBuddy=changed.ImportMarketBuddy;config.UseUniversalis=changed.UseUniversalis;Save();Record("Updated rules");}
-                    catch(Exception ex){Record(ex.Message);}
-                }
-                ImGui.EndTabItem();
-            }
-            if(ImGui.BeginTabItem("Tracked storage"))
-            {
-                ImGui.TextWrapped(tracked.Status);
-                foreach(var (owner,stock) in tracked.Items)
-                {
-                    var facts=view.Facts(stock.ItemId);var decision=Judge(stock);
-                    ImGui.TextWrapped($"{facts?.Name??stock.ItemId.ToString()} x{stock.Quantity} — owner {owner}, {AllaganRetainerPreview.Location(stock)}: {decision.Outcome} ({decision.Reason}); cached preview");
-                }
-                ImGui.EndTabItem();
-            }
-            DrawMarketPreviewTab();
-            if(ImGui.BeginTabItem("History")){foreach(var line in history)ImGui.TextWrapped(line);ImGui.EndTabItem();}
-            if(ImGui.BeginTabItem("Integration"))
-            {
-                ImGui.TextWrapped("AutoRetainer keeps its existing workflows and settings. Steward supplies permissions before item actions. Dry run holds managed actions. Unloading Steward leaves registered characters held until Steward reconnects or you explicitly detach.");
-                ImGui.TextWrapped(dungeonSources.Status);
-                var bundled=config.UseBundledGlamourList;if(ImGui.Checkbox("Use bundled curated glamour items",ref bundled)){config.UseBundledGlamourList=bundled;Save();nextImports=0;}
-                var expected=config.GlamaholicExpected;if(ImGui.Checkbox("Require Glamaholic configuration",ref expected)){config.GlamaholicExpected=expected;Save();}
-                if(ImGui.Button("Detach current character and restore original AutoRetainer rules"))
-                {
-                    Stop();if(config.PendingCollection.TryGetValue(player.ContentId,out var waiting)&&waiting.Count>0){Alert("Collect protected overflow before detaching; AutoRetainer cannot preserve these holds without Steward.");}else try{if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Detach").InvokeFunc(player.ContentId,Endpoint)){config.Connected=false;attached=0;Save();}else Record("Resolve the stopped run and stop AutoRetainer's queued work before detaching");}catch(Exception ex){Record(ex.Message);}
-                }
-                if(!config.Connected&&ImGui.Button("Connect Steward policy")){config.Connected=true;Save();}
-                ImGui.EndTabItem();
-            }
-            ImGui.EndTabBar();
-        }
-        ImGui.End();
     }
     public void Dispose()
     {

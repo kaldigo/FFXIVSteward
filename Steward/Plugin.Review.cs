@@ -33,7 +33,7 @@ public sealed partial class Plugin
         ImGui.TextWrapped("Logs collection destinations, overflow, proposed listings and prices, disposal, and enabled dresser cleanup. No managed item actions occur in log-only mode. Open a retainer selling list to load its market capacity; cached prices are labelled estimates.");
         ImGui.TextWrapped("Review log: "+ReviewPath);
         if(ImGui.Button("Write review snapshot now"))
-        {if(!config.LogOnly)Record("Enable Log only before recording a review session.");else{reviewJournal.Reset();nextReview=0;}}
+        {if(!config.LogOnly)Record("Enable Log only in Developer tools before recording a review session.");else{reviewJournal.Reset();nextReview=0;}}
     }
     private void LogPolicyProposal(string? action,Stock stock,Decision decision)
     {

@@ -108,19 +108,20 @@ public sealed partial class Plugin
     }
     private void DrawStorageSettings()
     {
-        DrawReviewSettings();
         var reserve=config.Rules.DresserEmptySlots;
-        if(ImGui.SliderInt("Leave empty dresser slots",ref reserve,0,800)){config.Rules.DresserEmptySlots=reserve;Save();}
+        if(ImGui.SliderInt("Leave empty dresser slots",ref reserve,0,800)){config.Rules.DresserEmptySlots=reserve;SavePolicy();}
         ImGui.TextWrapped("Armoire items do not use this allowance. Protected dresser overflow goes to retainers and remains protected until collection is confirmed.");
         var cleanup=config.CleanDresser;
-        if(ImGui.Checkbox("Clean dresser using all protection rules",ref cleanup)){config.CleanDresser=cleanup;cleanupVisited=false;Save();}
+        if(ImGui.Checkbox("Clean dresser using all protection rules",ref cleanup)){config.CleanDresser=cleanup;cleanupVisited=false;SavePolicy();}
         ImGui.TextWrapped("Cleanup restores items that no rule needs and moves eligible pieces to the armoire. Required last copies, unknown sources, exclusions, gear sets and AutoRetainer protections are preserved.");
         if(ImGui.Button("Preview dresser cleanup"))
         {
             cleanupPreview.Clear();RefreshProtection();
             foreach(var entry in market.PreviewDresserCleanup())cleanupPreview.Add(entry);
         }
-        ImGui.SameLine();if(ImGui.Button("Store protected overflow now"))StartOverflow();
+        ImGui.SameLine();ImGui.BeginDisabled(!config.ExecutionEnabled||executionFault);
+        if(ImGui.Button("Store protected overflow now"))StartOverflow();
+        ImGui.EndDisabled();
         foreach(var line in cleanupPreview)ImGui.TextWrapped(line);
         if(config.PendingCollection.TryGetValue(view.Character,out var pending))
             ImGui.TextWrapped($"Protected items waiting for collection: {pending.Count}. Dresser free slots: {view.Evidence.DresserFreeSlots?.ToString()??"unknown"}.");

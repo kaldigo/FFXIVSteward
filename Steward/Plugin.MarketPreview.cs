@@ -6,31 +6,27 @@ namespace Steward;
 public sealed partial class Plugin
 {
     private MarketQueue.MarketPreview? marketPreview;
-    private void DrawMarketPreviewTab()
+    private void DrawSalePreview()
     {
-        if(!ImGui.BeginTabItem("Market preview"))return;
-        ImGui.TextWrapped("Read-only plan for the current retainer. Open its selling list to load actual occupied slots. Universalis and other cached prices are estimates; live execution always checks the game again.");
-        ImGui.TextWrapped(universalis.Status);
-        ImGui.TextWrapped(universalis.Freshness);
-        if(ImGui.Button("Refresh listing preview"))
-        {RefreshProtection();marketPreview=market.PreviewMarket();if(config.LogOnly){reviewJournal.Reset();nextReview=0;}}
-        ImGui.TextWrapped(marketPreview?.Status??"Refresh the preview after opening a retainer's selling list.");
-        if(marketPreview?.Plan is {} plan)
+        Section("Current retainer preview");
+        ImGui.TextWrapped("Open a retainer's selling list to preview free slots, stack splits and prices. This preview does not change any items.");
+        if(ImGui.Button("Refresh proposed listings")){RefreshProtection();marketPreview=market.PreviewMarket();}
+        if(marketPreview==null)return;
+        ImGui.TextWrapped(marketPreview.Status);
+        if(marketPreview.Plan is not {} plan)return;
+        if(ImGui.BeginTable("ProposedSales",4,ImGuiTableFlags.RowBg|ImGuiTableFlags.BordersInnerH))
         {
-            if(ImGui.BeginChild("Proposed market work",new(0,0),true))
+            ImGui.TableSetupColumn("Item");ImGui.TableSetupColumn("Stack");ImGui.TableSetupColumn("Gil each");ImGui.TableSetupColumn("Total gil");ImGui.TableHeadersRow();
+            foreach(var listing in plan.Listings)
             {
-                foreach(var listing in plan.Listings)
-                {
-                    ImGui.TextWrapped($"Slot {listing.MarketSlot+1}: {view.Facts(listing.Source.ItemId)?.Name??listing.Source.ItemId.ToString()} {(listing.Source.Hq?"HQ":"NQ")} x{listing.Quantity} — {listing.UnitPrice:N0} gil each; {listing.Total:N0} gil total.");
-                    ImGui.TextWrapped($"Source {listing.Source.Container}:{listing.Source.Slot}; price: {listing.Reference.Source}, observed {listing.Reference.Observed.LocalDateTime:g}.");
-                    ImGui.TextWrapped("Sale rule: "+listing.RuleName);
-                }
-                foreach(var listing in marketPreview.Reprices)
-                    ImGui.TextWrapped($"Reprice slot {listing.Source.Slot+1}: {view.Facts(listing.Source.ItemId)?.Name} x{listing.Source.Quantity}, {listing.Before:N0} → {listing.After:N0} gil each.");
-                foreach(var held in plan.Held)ImGui.TextWrapped("Held: "+held);
+                ImGui.TableNextRow();ImGui.TableNextColumn();ImGui.TextUnformatted((view.Facts(listing.Source.ItemId)?.Name??"Unknown item")+(listing.Source.Hq?" (HQ)":""));
+                ImGui.TableNextColumn();ImGui.TextUnformatted(listing.Quantity.ToString());ImGui.TableNextColumn();ImGui.TextUnformatted(listing.UnitPrice.ToString("N0"));
+                ImGui.TableNextColumn();ImGui.TextUnformatted(listing.Total.ToString("N0"));
             }
-            ImGui.EndChild();
+            ImGui.EndTable();
         }
-        ImGui.EndTabItem();
+        foreach(var price in marketPreview.Reprices)ImGui.TextWrapped($"{view.Facts(price.Source.ItemId)?.Name??"Unknown item"}: {price.Before:N0} → {price.After:N0} gil each");
+        if(plan.Held.Count>0)ImGui.TextWrapped($"{plan.Held.Count} candidates are waiting for suitable prices or complete evidence.");
+        ImGui.TextWrapped("Estimates are rechecked against the market, your own listings and item protections before posting.");
     }
 }

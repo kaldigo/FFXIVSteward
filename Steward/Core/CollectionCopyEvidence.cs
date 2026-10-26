@@ -28,22 +28,11 @@ public sealed record CollectionCopyEvidence(
         if(rules.Ignored.Contains(item.Id))matches.Add("Excluded");
         if(rules.IgnoredCategories.Contains(item.Category))matches.Add("Excluded category");
         if(rules.Keep.Contains(item.Id))matches.Add("Explicit keep");
-        if(rules.CollectionKeep.Contains(item.Id))matches.Add("Supplemental glamour collection");
         if(rules.QuantityReserves.GetValueOrDefault(item.Id)>0)matches.Add("Quantity reserve: "+rules.QuantityReserves[item.Id]);
         if(evidence.GearsetsReady&&evidence.Gearsets.Contains(item.Id))matches.Add("Gearset/equipped");
-        if(nativeKnown&&nativeReference)matches.Add("Native glamour plate");
-        if(evidence.GlamaholicKnown&&evidence.GlamaholicReferences.Contains(item.Id))matches.Add("Glamaholic");
-        if(rules.CommonGlamour.Contains(item.Id)||evidence.CuratedGlamour.Contains(item.Id))matches.Add("Common glamour");
-        if(evidence.PendingCollection.Contains(item.Id))matches.Add("Pending collection hold");
-        if(item.ArmoireEligible)matches.Add("Armoire eligible");
-        if(item.Equipment)
-        {
-            if(item.Rarity>3)matches.Add("Higher rarity");
-            if(item.Rarity==3&&!item.Marketable&&item.Source is not (SourceKind.NormalDungeon or SourceKind.NormalRaid))matches.Add("Nonmarketable blue");
-            if(item.EquipLevel==1)matches.Add("Equip level 1");
-            if(item.DesignedForGlamour)matches.Add("Glamour design");
-            if(item.Source is not (SourceKind.Ordinary or SourceKind.NormalDungeon or SourceKind.NormalRaid))matches.Add("Special/unknown acquisition");
-        }
+        if(rules.Glamour.NativePlates&&nativeKnown&&nativeReference)matches.Add("Native glamour plate");
+        if(rules.Glamour.Glamaholic&&evidence.GlamaholicKnown&&evidence.GlamaholicReferences.Contains(item.Id))matches.Add("Glamaholic");
+        matches.AddRange(GlamourProtection.Describe(GlamourProtection.Match(item,rules,evidence)));
         if(!item.Equipment&&!rules.NonEquipmentDisposal.Contains(item.Id))matches.Add("Non-equipment disposal hold");
         return new(observedAt,"Live game collection observation; cached retainer source stacks remain unverified",
             evidence.DresserKnown,evidence.ArmoireKnown,copies,armoire,item.ArmoireEligible,removals,after,confirmed,valid,

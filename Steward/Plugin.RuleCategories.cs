@@ -1,41 +1,67 @@
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.Textures;
 using Steward.Core;
 
 namespace Steward;
 
 public sealed partial class Plugin
 {
-    private string categorySearch="";
+    private readonly Dictionary<string,string> categorySearches=[];
     private void DrawSaleRuleCategories(SaleRule rule)
     {
-        var group=rule.Group;
-        var label=group switch{ItemGroup.Gear=>"Gear",ItemGroup.Other=>"Other items (materials, consumables, etc.)",_=>"All items"};
-        if(ImGui.BeginCombo("Item group",label))
+        // Preserve old rule semantics without making the broad scope selector part of new setup.
+        if(rule.Group!=ItemGroup.Any)
         {
-            foreach(var value in Enum.GetValues<ItemGroup>())
-                if(ImGui.Selectable(value switch{ItemGroup.Gear=>"Gear",ItemGroup.Other=>"Other items (materials, consumables, etc.)",_=>"All items"},group==value))
-                {rule.Group=value;Save();}
-            ImGui.EndCombo();
+            ImGui.TextWrapped(rule.Group==ItemGroup.Gear?"This existing rule still has its previous equipment-only restriction.":"This existing rule still has its previous non-equipment restriction.");
+            if(ImGui.SmallButton("Use categories alone instead")){rule.Group=ItemGroup.Any;SavePolicy();}
         }
-        DrawCategorySelection("Included categories",rule.Categories,"All categories within the group");
+        DrawCategorySelection("Included categories",rule.Categories,"All categories");
         DrawCategorySelection("Excluded categories for this rule",rule.ExcludedCategories,"None excluded");
-        ImGui.TextWrapped("Choose material types such as cloth, leather, metal or reagents for a materials rule. Gear/other scope and categories both apply; exclusions win within this rule.");
     }
+    private static string CategorySection(byte major)=>major switch
+    {1=>"Weapons",2=>"Crafting and gathering tools",3=>"Armour and shields",4=>"Accessories",5=>"Consumables",6=>"Materials and components",_=>"Other items"};
     private void DrawCategorySelection(string label,HashSet<uint> selected,string emptyLabel)
     {
-        if(!ImGui.BeginCombo(label,selected.Count==0?emptyLabel:$"{selected.Count} categories selected",ImGuiComboFlags.HeightLarge))return;
+        var summary=selected.Count==0?emptyLabel:$"{selected.Count} selected";
+        if(!ImGui.CollapsingHeader($"{label} — {summary}###{label}"))return;
         ImGui.PushID(label);
-        ImGui.InputText("Find category",ref categorySearch,100);
-        if(ImGui.Button("Select all categories")){selected.UnionWith(view.Categories.Keys);Save();}
-        ImGui.SameLine();if(ImGui.Button("Clear selection")){selected.Clear();Save();}
-        foreach(var (id,name) in view.Categories.OrderBy(p=>p.Value))
+        if(ImGui.BeginChild("CategoryDetails",new(0,ImGui.GetTextLineHeightWithSpacing()*19),true))
         {
-            if(categorySearch.Length>0&&!name.Contains(categorySearch,StringComparison.OrdinalIgnoreCase)&&!id.ToString().Contains(categorySearch))continue;
-            var enabled=selected.Contains(id);
-            if(ImGui.Checkbox($"{name}##{id}",ref enabled)){if(enabled)selected.Add(id);else selected.Remove(id);Save();}
+            var query=categorySearches.GetValueOrDefault(label,"");
+            ImGui.SetNextItemWidth(-1);
+            if(ImGui.InputTextWithHint("##Search","Find a category...",ref query,100))categorySearches[label]=query;
+            ImGui.TextWrapped(selected.Count==0?emptyLabel:"Checked categories are selected. Exclusions take priority.");
+            if(ImGui.SmallButton("Select all")){selected.UnionWith(view.Categories.Keys.Where(id=>id!=39));SavePolicy();}
+            ImGui.SameLine();if(ImGui.SmallButton("Clear selection")){selected.Clear();SavePolicy();}
+            var visible=view.Categories.OrderBy(p=>view.CategoryDetails.GetValueOrDefault(p.Key).Major)
+                .ThenBy(p=>view.CategoryDetails.GetValueOrDefault(p.Key).Minor)
+                .Where(p=>(p.Key!=39||selected.Contains(p.Key))&&(query.Length==0||p.Value.Contains(query,StringComparison.OrdinalIgnoreCase)||CategorySection(view.CategoryDetails.GetValueOrDefault(p.Key).Major).Contains(query,StringComparison.OrdinalIgnoreCase)||p.Key.ToString().Contains(query))).ToArray();
+            if(visible.Length==0)ImGui.TextDisabled("No matching categories.");
+            var columns=Math.Clamp((int)(ImGui.GetContentRegionAvail().X/(ImGui.GetFontSize()*24)),1,3);
+            foreach(var group in visible.GroupBy(p=>view.CategoryDetails.GetValueOrDefault(p.Key).Major))
+            {
+                Section(CategorySection(group.Key));
+                if(ImGui.BeginTable($"Categories{group.Key}",columns,ImGuiTableFlags.SizingStretchSame|ImGuiTableFlags.NoSavedSettings))
+                {
+                    foreach(var (id,name) in group)
+                    {
+                        ImGui.TableNextColumn();ImGui.PushID((int)id);
+                        var enabled=selected.Contains(id);var changed=ImGui.Checkbox("##Selected",ref enabled);
+                        ImGui.SameLine();var size=ImGui.GetFrameHeight();
+                        var icon=view.CategoryDetails.GetValueOrDefault(id).Icon;
+                        if(icon!=0&&textures.GetFromGameIcon(new GameIconLookup(icon,hiRes:true)).TryGetWrap(out var wrap,out _))ImGui.Image(wrap.Handle,new(size,size));
+                        else ImGui.Dummy(new(size,size));
+                        ImGui.SameLine();ImGui.TextWrapped(name);
+                        if(ImGui.IsItemClicked()){enabled=!enabled;changed=true;}
+                        if(changed){if(enabled)selected.Add(id);else selected.Remove(id);SavePolicy();}
+                        ImGui.PopID();
+                    }
+                    ImGui.EndTable();
+                }
+            }
+            foreach(var id in selected.Where(id=>!view.Categories.ContainsKey(id)).ToArray())
+            {var enabled=true;if(ImGui.Checkbox($"Unavailable category {id}",ref enabled)){selected.Remove(id);SavePolicy();}}
         }
-        foreach(var id in selected.Where(id=>!view.Categories.ContainsKey(id)).ToArray())
-        {var enabled=true;if(ImGui.Checkbox($"Unavailable category {id}",ref enabled)){selected.Remove(id);Save();}}
-        ImGui.PopID();ImGui.EndCombo();
+        ImGui.EndChild();ImGui.PopID();
     }
 }

@@ -17,12 +17,12 @@ static class AggregateRecoveryChecks
             check(handler.Requests.SelectMany(r=>r.Ids).Distinct().Count()==80,"All in-flight IDs are unique");
             handler.Finish(0,HttpStatusCode.GatewayTimeout);
             for(var i=1;i<4;i++)handler.Finish(i,HttpStatusCode.OK);
-            await Process(()=>Tick(.5,[]),()=>evidence.SaleStatistics.ContainsKey((80,false))&&client.HeldItems(83).Count==20);
+            await Process(()=>Tick(.5,[]),()=>Enumerable.Range(21,60).All(id=>evidence.SaleStatistics.ContainsKey(((uint)id,false)))&&client.HeldItems(83).Count==20);
             check(evidence.SaleStatistics[(21,false)].Average==2100&&!evidence.SaleStatistics.ContainsKey((1,false)),"504 preserves successful siblings and holds failed items");
             Tick(.5);check(handler.Requests.Count==4,"Fast completions cannot exceed four starts per second");
             Tick(1);check(handler.Requests.Count==8&&handler.Requests.Skip(4).All(r=>r.Ids.Length==10&&r.Ids.All(id=>id>80)),"504 halves batch and advances to later IDs");
             for(var i=4;i<8;i++)handler.Finish(i,HttpStatusCode.OK);
-            await Process(()=>Tick(1,[]),()=>evidence.SaleStatistics.ContainsKey((120,false)));
+            await Process(()=>Tick(1,[]),()=>Enumerable.Range(81,40).All(id=>evidence.SaleStatistics.ContainsKey(((uint)id,false))));
             Tick(31,[1,2]);handler.Finish(8,HttpStatusCode.OK);
             await Process(()=>Tick(31,[]),()=>evidence.SaleStatistics.ContainsKey((1,false)));
             check(client.HeldItems(83).Count==18,"Recovered IDs clear only their errors");
