@@ -1,13 +1,14 @@
 {
   "internal_name": "Steward",
   "repository": "kaldigo/FFXIVSteward",
-  "minimum_version": "0.1.0.0",
+  "minimum_version": "0.1.0.16",
   "project": "Steward/Steward.csproj",
   "build": "Steward/bin/Release",
   "required_dlls": [
     "Steward.dll"
   ],
   "licenses": {
-    "LICENSE": "LICENSE"
+    "LICENSE": "LICENSE",
+    "licenses/Teamcraft.txt": "licenses/Teamcraft.txt"
   }
 }

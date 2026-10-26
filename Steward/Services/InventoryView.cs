@@ -14,6 +14,7 @@ public sealed unsafe class InventoryView
     private readonly Dictionary<uint,uint[]> outfits;
     private readonly (uint Row,uint Item)[] cabinet;
     private readonly HashSet<uint> crafted;
+    private readonly IReadOnlyDictionary<uint,SourceKind> acquisitionSources=AcquisitionSources.Load();
     public Evidence Evidence { get; } = new();
     public List<Stock> Items { get; } = [];
     public HashSet<uint> NativeReferences { get; private set; } = [];
@@ -33,6 +34,8 @@ public sealed unsafe class InventoryView
         id%=1000000;
         if(!data.GetExcelSheet<Sheets.Item>().TryGetRow(id,out var row))return null;
         var source=config.Sources.GetValueOrDefault(id,crafted.Contains(id)?SourceKind.Ordinary:SourceKind.Unknown);
+        source=AcquisitionSources.Merge(source,acquisitionSources.GetValueOrDefault(id));
+        source=AcquisitionSources.Merge(source,config.DutySources.GetValueOrDefault(id));
         if(row.IsPvP)source=SourceKind.Special;
         // IsGlamorous means dresser-compatible (almost all equipment), not cosmetic-purpose gear.
         return new(id,row.Name.ToString(),row.EquipSlotCategory.RowId!=0,row.Rarity,row.LevelEquip,
@@ -41,6 +44,8 @@ public sealed unsafe class InventoryView
     public void Refresh(ulong character)
     {
         Evidence.InvalidateLive();
+        Evidence.DresserFreeSlots=null;
+        Evidence.PendingCollection=CollectionHolds.ForCharacter(config.PendingCollection,character);
         NativeReferencesKnown=false;
         if(Character!=character)
         {
@@ -66,6 +71,8 @@ public sealed unsafe class InventoryView
         var mm=MirageManager.Instance();
         if(mm!=null && mm->PrismBoxLoaded)
         {
+            var empty=0;foreach(var id in mm->PrismBoxItemIds)if(id==0)empty++;
+            Evidence.DresserFreeSlots=empty;
             var collected=new HashSet<uint>();
             for(var i=0;i<mm->PrismBoxItemIds.Length;i++)
             {
@@ -111,6 +118,26 @@ public sealed unsafe class InventoryView
         var container=manager->GetInventoryContainer((InventoryType)type);return container!=null&&container->IsLoaded;
     }
     public static bool PlayerLoaded()=>InventoryTypes().Where(t=>t!=InventoryType.ArmoryWaist).All(t=>Loaded((uint)t));
+    public static bool CanListStock(Stock stock)
+    {
+        if(ReadSlot(stock.Container,stock.Slot)!=stock)return false;
+        var manager=InventoryManager.Instance();if(manager==null)return false;
+        var inventory=manager->GetInventoryContainer((InventoryType)stock.Container);
+        if(inventory==null||!inventory->IsLoaded||stock.Slot>=inventory->Size)return false;
+        var item=inventory->GetInventorySlot(stock.Slot);
+        return item!=null&&item->SpiritbondOrCollectability==0&&item->GlamourId==0&&!item->Flags.HasFlag(InventoryItem.ItemFlags.Collectable);
+    }
+    public static int FreeBagSlots()
+    {
+        var manager=InventoryManager.Instance();if(manager==null)return 0;
+        var count=0;
+        foreach(var type in new[]{InventoryType.Inventory1,InventoryType.Inventory2,InventoryType.Inventory3,InventoryType.Inventory4})
+        {
+            var bag=manager->GetInventoryContainer(type);if(bag==null||!bag->IsLoaded)return 0;
+            for(var i=0;i<bag->Size;i++)if(bag->GetInventorySlot(i)->ItemId==0)count++;
+        }
+        return count;
+    }
     public uint[]? OutfitPieces(uint id)=>outfits.GetValueOrDefault(id);
     public int DresserCopies(uint id)
     {

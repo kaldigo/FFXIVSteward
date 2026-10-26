@@ -1,7 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
  <ItemGroup><Compile Include="../Steward/Core/*.cs" Link="Core/%(Filename)%(Extension)" /></ItemGroup>
+ <ItemGroup><Compile Include="../Steward/Configuration.cs" Link="Configuration.cs" /></ItemGroup>
  <ItemGroup>
+  <EmbeddedResource Include="../Steward/data/acquisition-sources.json" LogicalName="acquisition-sources.json" />
   <EmbeddedResource Include="../Steward/data/common-glamour.json" LogicalName="CommonGlamourBundle" />
   <EmbeddedResource Include="../docs/data/common-glamour-evidence.json" LogicalName="CommonGlamourEvidence" />
  </ItemGroup>

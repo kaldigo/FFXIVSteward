@@ -48,9 +48,9 @@ class Distribution(unittest.TestCase):
   self.assertIn('Queue.Advance(now);CheckFault();',source)
  def test_protocol_upgrade_returns_to_dry_run_before_registering_execution(self):
   source=(ROOT/'Steward/Plugin.cs').read_text()
-  migration=source.split('if(config.SafetyRevision<5)')[1].split('executionFault=config.ExecutionReviewRequired;')[0]
+  migration=source.split('if(config.SafetyRevision<6)')[1].split('executionFault=config.ExecutionReviewRequired;')[0]
   self.assertIn('config.Automatic=false;',migration)
-  self.assertLess(source.index('if(config.SafetyRevision<5)'),source.index('framework.Update+=Update'))
+  self.assertLess(source.index('if(config.SafetyRevision<6)'),source.index('framework.Update+=Update'))
  def test_packets_and_dialog_values_are_bound_to_live_state(self):
   source=(ROOT/'Steward/Services/MarketQueue.cs').read_text()
   self.assertIn('packet.RequestId',source)
@@ -83,7 +83,7 @@ class Distribution(unittest.TestCase):
   self.assertIn('UpstreamProtection.Apply(decision,null)',judge)
  def test_all_queue_paths_use_durable_start_and_acknowledgement(self):
   plugin=(ROOT/'Steward/Plugin.cs').read_text();queue=(ROOT/'Steward/Services/MarketQueue.cs').read_text()
-  self.assertIn('HoldExecution,BeginOperation,CompleteOperation)',plugin)
+  self.assertIn('HoldExecution,BeginOperation,CompleteOperation,ProtectCollection,Alert,Judge)',plugin)
   self.assertIn('Queue=new(begin,complete)',queue)
   self.assertLess(plugin.index('if(!string.IsNullOrEmpty(config.PendingOperation))'),plugin.index('framework.Update+=Update'))
   self.assertIn('ExecutionMode.Persist(()=>AtomicState.Write(statePath,config)',plugin)

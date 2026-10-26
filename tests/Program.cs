@@ -28,7 +28,7 @@ Decision Judge() => Rules.Judge(item,stock,settings,e,1,now);
 }
 Check(Judge().Outcome==Outcome.CollectArmoire,"Missing blue goes to armoire");
 e.Armoire.Add(42); Check(Judge().Outcome==Outcome.Dispose,"Collected blue duplicate disposes");
-e.Armoire.Clear();e.Dresser.Add(42);Check(Judge().Outcome==Outcome.Dispose,"Dresser copy satisfies collection");
+e.Armoire.Clear();e.Dresser.Add(42);Check(Judge().Outcome==Outcome.CollectArmoire,"Dresser copy eligible for armoire is migrated to preferred storage");
 e.Gearsets.Add(42);Check(Judge().Outcome==Outcome.Keep,"Gearset beats duplicate disposal");
 settings.Ignored.Add(42);Check(Judge().Outcome==Outcome.Ignore,"Ignore has highest priority");
 settings.Ignored.Clear();e.Gearsets.Clear();e.Dresser.Clear();e.ArmoireKnown=false;
@@ -73,6 +73,9 @@ Console.WriteLine($"{total} checks passed including cancellation/error paths.");
 SafetyChecks.Run(Check,now);
 ExecutionChecks.Run(Check,now);
 CommonGlamourChecks.Run(Check,now);
+StorageChecks.Run(Check,now);
+ReviewSafetyChecks.Run(Check,now);
+ListingChecks.Run(Check,now);
 Console.WriteLine($"{total} checks passed including disposal/protection safety regressions.");
 if(args.Length==3)
 {

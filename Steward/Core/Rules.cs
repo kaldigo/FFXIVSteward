@@ -1,8 +1,8 @@
 namespace Steward.Core;
 
-public enum Outcome { Ignore, Keep, CollectArmoire, CollectDresser, Market, Dispose, Wait }
+public enum Outcome { Ignore, Keep, CollectArmoire, CollectDresser, Market, Dispose, Wait, StoreRetainer }
 public enum QualityMode { Separate, Combined }
-public enum SourceKind { Unknown, Ordinary, Special }
+public enum SourceKind { Unknown, Ordinary, Special, NormalDungeon, NormalRaid, AllianceRaid, SavageRaid, HighEnd }
 public sealed record ItemFacts(uint Id, string Name, bool Equipment, byte Rarity, int EquipLevel,
     bool Marketable, bool ArmoireEligible, SourceKind Source, uint Category, uint NpcPrice = 0, bool DesignedForGlamour = false);
 public sealed record Stock(uint ItemId, bool Hq, uint Quantity, uint Container, ushort Slot);
@@ -31,6 +31,7 @@ public sealed class RuleSettings
     public List<SaleRule> Sales { get; set; } = [];
     public int MaximumPriceAgeMinutes { get; set; } = 30;
     public QualityMode Quality { get; set; } = QualityMode.Separate;
+    public int DresserEmptySlots { get; set; } = 20;
 }
 public sealed class Evidence
 {
@@ -48,6 +49,8 @@ public sealed class Evidence
     public HashSet<uint> Dresser { get; set; } = [];
     public uint? OmittedDresserItem { get; set; }
     public HashSet<uint> Armoire { get; set; } = [];
+    public HashSet<uint> PendingCollection { get; set; } = [];
+    public int? DresserFreeSlots { get; set; }
     public Dictionary<(uint, bool), Quote> Prices { get; set; } = [];
 }
 public static class Rules
@@ -60,16 +63,21 @@ public static class Rules
         if(settings.Keep.Contains(item.Id)) return new(Outcome.Keep, "Explicit keep override");
         if(!evidence.GearsetsReady || !evidence.ReferencesReady) return new(Outcome.Wait, "Glamour references or gear sets are unavailable");
         if(evidence.Gearsets.Contains(item.Id)) return new(Outcome.Keep, "Equipped or referenced by a gear set");
-        var rarityProtected = item.Rarity > 3 || (item.Rarity == 3 && !item.Marketable);
+        var routineDuty = item.Source is SourceKind.NormalDungeon or SourceKind.NormalRaid;
+        var ordinary = routineDuty || item.Source == SourceKind.Ordinary;
+        var pending = evidence.PendingCollection.Contains(item.Id);
+        var rarityProtected = item.Rarity > 3 || (item.Rarity == 3 && !item.Marketable && !routineDuty);
         var collect = item.ArmoireEligible || item.Equipment && (rarityProtected || item.EquipLevel == 1 || item.DesignedForGlamour ||
-            item.Source != SourceKind.Ordinary || settings.CommonGlamour.Contains(item.Id) || evidence.CuratedGlamour.Contains(item.Id) || evidence.References.Contains(item.Id));
+            !ordinary || pending || settings.CommonGlamour.Contains(item.Id) || evidence.CuratedGlamour.Contains(item.Id) || evidence.References.Contains(item.Id));
         if(collect)
         {
             if(!evidence.DresserKnown || !evidence.ArmoireKnown) return new(Outcome.Wait, "Live dresser or armoire ownership is unavailable");
-            if((evidence.OmittedDresserItem==item.Id || !evidence.Dresser.Contains(item.Id)) && !evidence.Armoire.Contains(item.Id))
+            if(!evidence.Armoire.Contains(item.Id) && (item.ArmoireEligible || evidence.OmittedDresserItem==item.Id || !evidence.Dresser.Contains(item.Id)))
             {
-                if(item.Source == SourceKind.Unknown && !item.ArmoireEligible && !evidence.References.Contains(item.Id) && !item.DesignedForGlamour && !rarityProtected && item.EquipLevel != 1 && !settings.CommonGlamour.Contains(item.Id) && !evidence.CuratedGlamour.Contains(item.Id))
+                if(item.Source == SourceKind.Unknown && !pending && !item.ArmoireEligible && !evidence.References.Contains(item.Id) && !item.DesignedForGlamour && !rarityProtected && item.EquipLevel != 1 && !settings.CommonGlamour.Contains(item.Id) && !evidence.CuratedGlamour.Contains(item.Id))
                     return new(Outcome.Keep, "Acquisition source is uncertain; preserve for collection");
+                if(!item.ArmoireEligible && evidence.DresserFreeSlots is int free && free<=Math.Clamp(settings.DresserEmptySlots,0,800))
+                    return new(Outcome.StoreRetainer,"Protected overflow: store in a retainer until dresser space is available");
                 return new(item.ArmoireEligible ? Outcome.CollectArmoire : Outcome.CollectDresser, "An exact copy is missing from the collection");
             }
         }

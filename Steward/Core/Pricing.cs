@@ -13,6 +13,13 @@ public sealed class PricingSettings
 public sealed record Offering(uint ItemId, bool Hq, uint UnitPrice, uint Quantity, ulong RetainerId, ulong ListingId = 0);
 public static class Pricing
 {
+    public static uint? ListingTarget(uint competitor,uint? ownMinimum,PricingSettings settings,uint floor)
+    {
+        if(competitor==0)return null;
+        if(ownMinimum is uint own && own<=competitor)
+            return own>=Math.Max(1,floor)&&own<=999999999?own:null;
+        return Undercut(competitor,settings,floor);
+    }
     public static uint? Undercut(uint competitor, PricingSettings settings, uint floor)
     {
         // Match Market Buddy's percent truncation and next-lower-multiple rounding.
