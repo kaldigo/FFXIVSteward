@@ -9,7 +9,9 @@ public sealed partial class Plugin
     private void DrawMarketPreviewTab()
     {
         if(!ImGui.BeginTabItem("Market preview"))return;
-        ImGui.TextWrapped("Read-only plan for the current retainer. Open its selling list to load actual occupied slots. Fresh cached prices and manually observed market comparisons are estimates; live execution always checks the game again.");
+        ImGui.TextWrapped("Read-only plan for the current retainer. Open its selling list to load actual occupied slots. Universalis and other cached prices are estimates; live execution always checks the game again.");
+        ImGui.TextWrapped(universalis.Status);
+        ImGui.TextWrapped(universalis.Freshness);
         if(ImGui.Button("Refresh listing preview"))
         {RefreshProtection();marketPreview=market.PreviewMarket();if(config.LogOnly){reviewJournal.Reset();nextReview=0;ReviewTick();}}
         ImGui.TextWrapped(marketPreview?.Status??"Refresh the preview after opening a retainer's selling list.");

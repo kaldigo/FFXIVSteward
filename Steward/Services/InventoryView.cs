@@ -49,7 +49,7 @@ public sealed unsafe class InventoryView
         NativeReferencesKnown=false;
         if(Character!=character)
         {
-            Character=character;Evidence.Dresser.Clear();Evidence.Armoire.Clear();Evidence.Prices.Clear();Evidence.References.Clear();
+            Character=character;Evidence.Dresser.Clear();Evidence.Armoire.Clear();Evidence.Prices.Clear();Evidence.PublicOwnPrices.Clear();Evidence.References.Clear();
             Evidence.DresserKnown=Evidence.ArmoireKnown=Evidence.GearsetsReady=Evidence.ReferencesReady=false;
             NativeReferencesKnown=false;NativeReferences.Clear();Retainers.Clear();
         }
@@ -73,15 +73,16 @@ public sealed unsafe class InventoryView
         {
             var empty=0;foreach(var id in mm->PrismBoxItemIds)if(id==0)empty++;
             Evidence.DresserFreeSlots=empty;
-            var collected=new HashSet<uint>();
+            var collected=new HashSet<uint>();var copies=new Dictionary<uint,int>();
+            void AddCollected(uint id){collected.Add(id);copies[id]=copies.GetValueOrDefault(id)+1;}
             for(var i=0;i<mm->PrismBoxItemIds.Length;i++)
             {
                 var id=mm->PrismBoxItemIds[i]%1000000;if(id==0)continue;
                 if(outfits.TryGetValue(id,out var pieces))
-                {for(var p=0;p<pieces.Length;p++)if(pieces[p]!=0 && mm->IsSetSlotUnlocked((uint)i,p))collected.Add(pieces[p]);}
-                else collected.Add(id);
+                {for(var p=0;p<pieces.Length;p++)if(pieces[p]!=0 && mm->IsSetSlotUnlocked((uint)i,p))AddCollected(pieces[p]);}
+                else AddCollected(id);
             }
-            Evidence.Dresser=collected;Evidence.DresserKnown=true;
+            Evidence.Dresser=collected;Evidence.DresserCopyCounts=copies;Evidence.DresserKnown=true;
         }
         if(mm!=null && mm->GlamourPlatesLoaded)
         {

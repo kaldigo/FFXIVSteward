@@ -1,7 +1,7 @@
 {
   "internal_name": "Steward",
   "repository": "kaldigo/FFXIVSteward",
-  "minimum_version": "0.1.0.16",
+  "minimum_version": "0.1.0.18",
   "project": "Steward/Steward.csproj",
   "build": "Steward/bin/Release",
   "required_dlls": [

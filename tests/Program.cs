@@ -43,7 +43,9 @@ item=item with{Equipment=false,Marketable=true};
 Check(Judge().Outcome==Outcome.Wait,"Missing price blocks disposal");
 e.Prices[(42,false)]=new(42,false,1,1000,now,"Test");settings.Sales.Add(new(){MinimumUnit=1000,MinimumTotal=5000,MaximumStack=5});
 stock=stock with{Quantity=5};Check(Judge().Outcome==Outcome.Market,"Sale criteria match");
-stock=stock with{Quantity=4};Check(Judge().Outcome==Outcome.Dispose,"Listing total uses actual stack");
+stock=stock with{Quantity=4};Check(Judge().Outcome==Outcome.Keep,"Below-floor non-equipment stays protected by default");
+settings.NonEquipmentDisposal.Add(42);Check(Judge().Outcome==Outcome.Dispose,"Explicit non-equipment disposal still respects actual sale thresholds");
+settings.NonEquipmentDisposal.Clear();
 e.Prices[(42,false)]=e.Prices[(42,false)] with{Observed=now.AddHours(-1)};Check(Judge().Outcome==Outcome.Wait,"Stale price held");
 e.Prices[(42,false)]=e.Prices[(42,false)] with{Observed=now.AddMinutes(1)};Check(Judge().Outcome==Outcome.Wait,"Future price held");
 e.Prices[(42,false)]=e.Prices[(42,false)] with{Observed=now,Own=true};Check(Judge().Outcome==Outcome.Wait,"Own quote is not competition");
@@ -76,6 +78,8 @@ CommonGlamourChecks.Run(Check,now);
 StorageChecks.Run(Check,now);
 ReviewSafetyChecks.Run(Check,now);
 ListingChecks.Run(Check,now);
+DisposalEvidenceChecks.Run(Check,now);
+await UniversalisChecks.Run(Check,now);
 Console.WriteLine($"{total} checks passed including disposal/protection safety regressions.");
 if(args.Length==3)
 {

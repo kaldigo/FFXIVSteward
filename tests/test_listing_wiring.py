@@ -34,6 +34,9 @@ class ListingWiring(unittest.TestCase):
     def test_log_only_records_prices_and_never_starts_a_listing(self):
         source=(ROOT/'Steward/Plugin.Review.cs').read_text(encoding='utf-8')
         self.assertIn('market.PreviewMarket()',source)
+        preview=(ROOT/'Steward/Services/MarketQueue.Listing.cs').read_text(encoding='utf-8')
+        self.assertIn('if(!view.Evidence.ReferencesReady||!view.Evidence.GearsetsReady)',preview)
+        self.assertIn('Protection references unavailable; listing proposals held.',preview)
         self.assertIn('"WouldList"',source)
         self.assertIn('listing.UnitPrice,listing.Total,marketPreview.World',source)
         self.assertIn('listing.Reference.Source,listing.Reference.Observed',source)

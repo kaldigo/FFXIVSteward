@@ -27,6 +27,7 @@ public sealed class RuleSettings
 {
     public HashSet<uint> Ignored { get; set; } = [];
     public HashSet<uint> Keep { get; set; } = [];
+    public HashSet<uint> NonEquipmentDisposal { get; set; } = [];
     public HashSet<uint> CommonGlamour { get; set; } = [];
     public List<SaleRule> Sales { get; set; } = [];
     public int MaximumPriceAgeMinutes { get; set; } = 30;
@@ -47,11 +48,15 @@ public sealed class Evidence
     public bool DresserKnown { get; set; }
     public bool ArmoireKnown { get; set; }
     public HashSet<uint> Dresser { get; set; } = [];
+    public Dictionary<uint,int> DresserCopyCounts { get; set; } = [];
+    public HashSet<uint> GlamaholicReferences { get; set; } = [];
+    public bool GlamaholicKnown { get; set; }
     public uint? OmittedDresserItem { get; set; }
     public HashSet<uint> Armoire { get; set; } = [];
     public HashSet<uint> PendingCollection { get; set; } = [];
     public int? DresserFreeSlots { get; set; }
     public Dictionary<(uint, bool), Quote> Prices { get; set; } = [];
+    public Dictionary<(uint, bool), Quote> PublicOwnPrices { get; set; } = [];
 }
 public static class Rules
 {
@@ -97,6 +102,8 @@ public static class Rules
                     return new(Outcome.Market, "Matches sale rule: " + rule.Name, rule, quote.UnitPrice);
             }
         }
+        if(!item.Equipment && !settings.NonEquipmentDisposal.Contains(item.Id))
+            return new(Outcome.Keep, "Non-equipment disposal requires explicit item permission",rule);
         return new(Outcome.Dispose, collect ? "Exact copy already collected; surplus may use AutoRetainer disposal rules" : "Outside collection rules; use AutoRetainer disposal rules",rule);
     }
 }

@@ -9,10 +9,22 @@ class Distribution(unittest.TestCase):
   plugin=(ROOT/'Steward/Plugin.cs').read_text()
   startup=plugin.split('config=AtomicState.ReadOrMigrate')[1].split('if(config.SafetyRevision')[0]
   self.assertIn('config.Automatic=false;',startup)
- def test_no_universalis_client(self):
-  for source in (ROOT/'Steward').rglob('*.cs'):
-   if 'obj' in source.parts:continue
-   self.assertNotIn('HttpClient',source.read_text())
+ def test_universalis_is_read_only_and_native_comparisons_still_gate_submission(self):
+  source=(ROOT/'Steward/Services/UniversalisPrices.cs').read_text(encoding='utf-8')
+  self.assertIn('HttpMethod.Get',source)
+  self.assertIn('https://universalis.app/api/v2/',source)
+  self.assertNotIn('HttpMethod.Post',source)
+  self.assertNotIn('InventoryPolicy.',source)
+  self.assertIn('ComparisonReady(', (ROOT/'Steward/Services/MarketQueue.cs').read_text(encoding='utf-8'))
+ def test_universalis_preview_prices_do_not_replace_live_own_prices(self):
+  source=(ROOT/'Steward/Services/MarketQueue.Listing.cs').read_text(encoding='utf-8')
+  self.assertNotIn('PublicOwnPrices',source.split('private MarketReference? PreviewReference')[0])
+  self.assertIn('PublicOwnPrices',source.split('private MarketReference? PreviewReference')[1])
+  plugin=(ROOT/'Steward/Plugin.cs').read_text(encoding='utf-8')
+  self.assertIn('universalis.Tick(',plugin)
+  self.assertIn('universalis.Apply(',plugin)
+  self.assertIn('universalis.Dispose();',plugin)
+  self.assertIn('view.Retainers.Count==0?noPriceOwners:config.OwnRetainers',plugin)
  def test_history_does_not_claim_permission_is_execution(self):
   self.assertIn('AutoRetainer owns execution/results',(ROOT/'Steward/Plugin.cs').read_text())
  def test_source_package_is_separate(self):

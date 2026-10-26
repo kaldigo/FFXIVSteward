@@ -61,7 +61,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         with:
           internal-name: Steward
-          minimum-version: '0.1.0.16'
+          minimum-version: '0.1.0.18'
           source-commit: ${{ inputs.source_commit || github.sha }}
           tag: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
       - name: Build and test exact source

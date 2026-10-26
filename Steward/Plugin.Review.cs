@@ -9,6 +9,9 @@ public sealed partial class Plugin
     private readonly ReviewJournal reviewJournal=new();
     private long nextReview;
     private string ReviewPath=>Path.Combine(pi.GetPluginConfigDirectory(),"review.jsonl");
+    private CollectionCopyEvidence? CopyEvidence(uint id,int removals=0)=>view.Facts(id) is {} item?
+        CollectionCopyEvidence.Capture(item,config.Rules,view.Evidence,view.NativeReferencesKnown,
+            view.NativeReferences.Contains(id),DateTimeOffset.UtcNow,removals):null;
     private void DrawReviewSettings()
     {
         var enabled=config.LogOnly;
@@ -29,7 +32,7 @@ public sealed partial class Plugin
         if(!config.LogOnly||decision.Outcome!=Outcome.Dispose||action is not ("Vendor" or "Desynth" or "Gc"))return;
         var key=$"review/{player.ContentId}/{stock.Container}/{stock.Slot}/{stock.ItemId}/{stock.Quantity}/{action}/{decision.Reason}";
         if(recentDecisions.TryGetValue(key,out var at)&&Environment.TickCount64-at<60000)return;
-        var entry=new ReviewEntry(player.ContentId,$"Live policy request: container {stock.Container}, slot {stock.Slot}",stock.ItemId,stock.Quantity,stock.Hq,"WouldPermit "+action,decision.Reason);
+        var entry=new ReviewEntry(player.ContentId,$"Live policy request: container {stock.Container}, slot {stock.Slot}",stock.ItemId,stock.Quantity,stock.Hq,"WouldPermit "+action,decision.Reason,Collection:CopyEvidence(stock.ItemId));
         try
         {
             File.AppendAllText(ReviewPath,System.Text.Json.JsonSerializer.Serialize(new{at=DateTimeOffset.UtcNow,mode="LogOnly",proposal=entry})+Environment.NewLine);
@@ -51,7 +54,9 @@ public sealed partial class Plugin
                 var decision=Judge(stock);
                 if(decision.Outcome==Outcome.Wait){unavailable++;holdReasons.Add(decision.Reason);}
                 if(decision.Outcome==Outcome.Dispose)
-                    entries.Add(new(player.ContentId,location,stock.ItemId,stock.Quantity,stock.Hq,"WouldDispose",$"{view.Facts(stock.ItemId)?.Name}: {decision.Reason}. AutoRetainer chooses the available enabled disposal method."));
+                    entries.Add(new(player.ContentId,location,stock.ItemId,stock.Quantity,stock.Hq,"WouldDispose",$"{view.Facts(stock.ItemId)?.Name}: {decision.Reason}. Steward eligibility only; AutoRetainer still applies its enabled methods and item-selection rules.",Collection:CopyEvidence(stock.ItemId)));
+                if(decision is {Outcome:Outcome.Keep,Reason:"Non-equipment disposal requires explicit item permission"})
+                    entries.Add(new(player.ContentId,location,stock.ItemId,stock.Quantity,stock.Hq,"ProtectedNonEquipment",$"{view.Facts(stock.ItemId)?.Name}: {decision.Reason}",Collection:CopyEvidence(stock.ItemId)));
             }
             foreach(var stock in view.Items.Distinct())Inspect($"Player container {stock.Container}, slot {stock.Slot}",stock);
             var retainerContainers=InventoryView.RetainerTypes().Select(t=>(uint)t).ToHashSet();
@@ -60,10 +65,10 @@ public sealed partial class Plugin
             if(config.CleanDresser)
                 foreach(var candidate in market.DresserCleanupCandidates())
                     entries.Add(new(player.ContentId,"Glamour dresser",candidate.ItemId,(uint)candidate.Quantity,false,
-                        candidate.Action=="Restore for armoire migration"?"WouldMoveToArmoire":"WouldRestoreDresser",candidate.Name+": "+candidate.Reason));
+                        candidate.Action=="Restore for armoire migration"?"WouldMoveToArmoire":"WouldRestoreDresser",candidate.Name+": "+candidate.Reason,Collection:CopyEvidence(candidate.ItemId,candidate.Quantity)));
             foreach(var id in CollectionHolds.ForCharacter(config.PendingCollection,player.ContentId))
                 entries.Add(new(player.ContentId,"Pending collection hold",id,1,false,"ProtectedPendingCollection",
-                    $"{view.Facts(id)?.Name}: protected while waiting for confirmed collection; retainer storage never satisfies ownership."));
+                    $"{view.Facts(id)?.Name}: protected while waiting for confirmed collection; retainer storage never satisfies ownership.",Collection:CopyEvidence(id)));
             marketPreview=market.PreviewMarket();
             if(marketPreview.Plan is {} plan)
             {
@@ -71,18 +76,19 @@ public sealed partial class Plugin
                     entries.Add(new(player.ContentId,$"Retainer {marketPreview.Retainer}, proposed market slot {listing.MarketSlot+1}; source {listing.Source.Container}:{listing.Source.Slot}",
                         listing.Source.ItemId,listing.Quantity,listing.Source.Hq,"WouldList",
                         $"{view.Facts(listing.Source.ItemId)?.Name}: {listing.Quantity} at {listing.UnitPrice:N0} gil each; total {listing.Total:N0} gil. Estimate; live comparison and protection rechecked before execution.",
-                        listing.UnitPrice,listing.Total,marketPreview.World,marketPreview.Retainer,listing.Reference.Source,listing.Reference.Observed));
+                        listing.UnitPrice,listing.Total,marketPreview.World,marketPreview.Retainer,listing.Reference.Source,listing.Reference.Observed,Collection:CopyEvidence(listing.Source.ItemId)));
                 foreach(var repricing in marketPreview.Reprices)
                     entries.Add(new(player.ContentId,$"Retainer {marketPreview.Retainer}, listing slot {repricing.Source.Slot}",repricing.Source.ItemId,repricing.Source.Quantity,repricing.Source.Hq,
                         "WouldReprice",$"{view.Facts(repricing.Source.ItemId)?.Name}: {repricing.Before:N0} to {repricing.After:N0} gil each; estimate rechecked before execution.",
-                        repricing.After,(ulong)repricing.After*repricing.Source.Quantity,marketPreview.World,marketPreview.Retainer,repricing.Reference.Source,repricing.Reference.Observed));
+                        repricing.After,(ulong)repricing.After*repricing.Source.Quantity,marketPreview.World,marketPreview.Retainer,repricing.Reference.Source,repricing.Reference.Observed,Collection:CopyEvidence(repricing.Source.ItemId)));
                 for(var i=0;i<plan.Held.Count;i++)
                     entries.Add(new(player.ContentId,$"Market planning hold {i+1}",0,0,false,"MarketHeld",plan.Held[i],World:marketPreview.World,Retainer:marketPreview.Retainer));
             }
             entries.Add(new(player.ContentId,"Market preview summary",0,0,false,"MarketSnapshot",marketPreview.Status,World:marketPreview.World,Retainer:marketPreview.Retainer));
+            entries.Add(new(player.ContentId,"Market price source",0,0,false,"PriceSourceStatus",universalis.Status+" "+universalis.Freshness,World:view.World));
             var disposals=entries.Count(e=>e.Action=="WouldDispose");var removals=entries.Where(e=>e.Location=="Glamour dresser").Sum(e=>e.Quantity);
             entries.Add(new(player.ContentId,"Review summary",0,0,false,"Snapshot",
-                $"{disposals} disposal candidates (cached retainer observations labelled); {removals} dresser removals. Held/unverified stacks: {unavailable} ({string.Join("; ",holdReasons.Order())}). Cleanup enabled: {config.CleanDresser}. References ready: {view.Evidence.ReferencesReady}; gearsets ready: {view.Evidence.GearsetsReady}; dresser known: {view.Evidence.DresserKnown}; armoire known: {view.Evidence.ArmoireKnown}. {tracked.Status}"));
+                $"{disposals} disposal candidates (cached retainer observations labelled); {removals} dresser removals. Protected non-equipment stacks: {entries.Count(e=>e.Action=="ProtectedNonEquipment")}. Enabled sale rules: {config.Rules.Sales.Count(r=>r.Enabled)}; quality: {config.Rules.Quality}. Held/unverified stacks: {unavailable} ({string.Join("; ",holdReasons.Order())}). Cleanup enabled: {config.CleanDresser}. References ready: {view.Evidence.ReferencesReady}; native plates known: {view.NativeReferencesKnown}; Glamaholic known: {view.Evidence.GlamaholicKnown}; gearsets ready: {view.Evidence.GearsetsReady}; dresser known: {view.Evidence.DresserKnown}; armoire known: {view.Evidence.ArmoireKnown}. {tracked.Status}"));
             foreach(var entry in reviewJournal.Snapshot(ReviewPath,entries))
                 Record($"[LOG ONLY] {entry.Action}: {entry.Location}; item {entry.ItemId} x{entry.Quantity}. {entry.Reason}");
         }

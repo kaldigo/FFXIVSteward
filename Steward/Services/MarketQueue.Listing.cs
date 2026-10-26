@@ -72,7 +72,11 @@ public sealed unsafe partial class MarketQueue
         var quote=view.Evidence.Prices.Values.Where(p=>p.ItemId==id&&p.World==view.World&&!p.Own&&p.UnitPrice>0&&
             (config.Rules.Quality==QualityMode.Combined||p.Hq==hq)&&p.Observed<=now&&now-p.Observed<=TimeSpan.FromMinutes(config.Rules.MaximumPriceAgeMinutes))
             .OrderBy(p=>p.UnitPrice).FirstOrDefault();
-        return quote==null?null:new(view.World,quote.UnitPrice,OwnMinimum(id,hq),quote.Observed,quote.Source+" cache; own prices outside the current retainer may be incomplete",true);
+        var own=OwnMinimum(id,hq);
+        foreach(var price in view.Evidence.PublicOwnPrices.Values.Where(p=>p.ItemId==id&&p.World==view.World&&
+            (config.Rules.Quality==QualityMode.Combined||p.Hq==hq)&&p.Observed<=now&&now-p.Observed<=TimeSpan.FromMinutes(config.Rules.MaximumPriceAgeMinutes)))
+            own=own.HasValue?Math.Min(own.Value,price.UnitPrice):price.UnitPrice;
+        return quote==null?null:new(view.World,quote.UnitPrice,own,quote.Observed,quote.Source+" cache; own prices outside the current retainer may be incomplete",true);
     }
     private ListingInput? SaleInput(Stock stock,bool live,MarketReference? reference=null)
     {
@@ -85,8 +89,10 @@ public sealed unsafe partial class MarketQueue
     public MarketPreview PreviewMarket()
     {
         if(!MarketSnapshot(out var retainer,out var listings))
-            return new(0,view.World,null,[],"Open your retainer's selling list to load its actual free slots. Log-only does not open menus or request prices.");
+            return new(0,view.World,null,[],"Open your retainer's selling list to load its actual free slots. Log-only does not open game menus or request in-game searches. Universalis may fetch price estimates in the background.");
         if(!marketPreferencesReady())return new(retainer,view.World,null,[],"Market preferences unavailable; listing proposals held.");
+        if(!view.Evidence.ReferencesReady||!view.Evidence.GearsetsReady)
+            return new(retainer,view.World,null,[],"Protection references unavailable; listing proposals held. Load the native glamour plate editor and Glamaholic references; gearset evidence must also be ready.");
         var free=Enumerable.Range(0,20).Except(listings.Select(s=>(int)s.Slot)).ToArray();
         var inputs=AvailableSaleStock().Select(s=>SaleInput(s,false)).OfType<ListingInput>()
             .Where(i=>ListingPlanner.CanConsider(i.Item,i.Stock,i.Decision,i.Rule)).ToArray();

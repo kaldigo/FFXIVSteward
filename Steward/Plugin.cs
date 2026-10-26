@@ -26,6 +26,9 @@ public sealed partial class Plugin : IDalamudPlugin
     private readonly MarketQueue market;
     private readonly TrackedInventories tracked;
     private readonly DungeonSources dungeonSources;
+    private readonly UniversalisPrices universalis=new();
+    private static readonly HashSet<ulong> noPriceOwners=[];
+    private IReadOnlySet<ulong> PriceOwners=>view.Retainers.Count==0?noPriceOwners:config.OwnRetainers;
     private readonly List<string> history=[];
     private readonly string historyPath;
     private long nextRefresh;
@@ -122,7 +125,15 @@ public sealed partial class Plugin : IDalamudPlugin
         view.World=objects.LocalPlayer?.CurrentWorld.RowId??0;
         view.Refresh(player.IsLoaded?player.ContentId:0);
         UpdateCollectionHolds();
-        if(Environment.TickCount64>=nextImports){imports.Refresh();tracked.Refresh();nextImports=Environment.TickCount64+2000;}
+        if(Environment.TickCount64>=nextImports)
+        {
+            imports.Refresh();tracked.Refresh();nextImports=Environment.TickCount64+2000;
+            var ids=view.Items.Concat(tracked.Items.Where(r=>view.Retainers.Contains(r.Owner)).Select(r=>r.Stock))
+                .Where(s=>!config.Rules.Ignored.Contains(s.ItemId)&&view.Facts(s.ItemId) is {Marketable:true} item&&
+                    (item.Equipment||config.Rules.Sales.Any(r=>r.Matches(item,s))||config.Rules.NonEquipmentDisposal.Contains(item.Id)))
+                .Select(s=>s.ItemId);
+            universalis.Tick(view.World,ids,PriceOwners,config.Rules.MaximumPriceAgeMinutes,view.Evidence,config.UseUniversalis,DateTimeOffset.UtcNow);
+        }
     }
     private Decision Judge(Stock stock)
     {
@@ -137,6 +148,7 @@ public sealed partial class Plugin : IDalamudPlugin
         view.World=objects.LocalPlayer?.CurrentWorld.RowId??0;
         view.Refresh(player.IsLoaded?player.ContentId:0);
         imports.Refresh();
+        universalis.Apply(view.World,PriceOwners,config.Rules.MaximumPriceAgeMinutes,view.Evidence,config.UseUniversalis,DateTimeOffset.UtcNow);
     }
     private Decision JudgeLive(Stock stock)
     {
@@ -262,7 +274,14 @@ public sealed partial class Plugin : IDalamudPlugin
             {overflowPass=false;if(view.Items.Any(s=>Judge(s).Outcome==Outcome.StoreRetainer))Alert("Retainer storage could not fit all protected overflow. Remaining items are still protected in inventory; free retainer space and try again.");}
             if(executionFault)status="Execution held after an uncertain/failed operation. Check inventory and clear the stopped run before continuing.";
         }
-        catch(Exception ex){status=ex.Message;if(config.Automatic || market.Queue.Running || ownsPostprocess)HoldExecution(ex.Message);StopQueue();}
+        catch(Exception ex)
+        {
+            status=ex.Message;
+            var key="refresh-error/"+ex.Message;
+            if(!recentDecisions.TryGetValue(key,out var last)||Environment.TickCount64-last>60000)
+            {recentDecisions[key]=Environment.TickCount64;Record("Steward refresh failed; review may be incomplete: "+ex.Message);}
+            if(config.Automatic || market.Queue.Running || ownsPostprocess)HoldExecution(ex.Message);StopQueue();
+        }
     }
     private void RequestPostprocess(string retainer)
     {
@@ -333,7 +352,7 @@ public sealed partial class Plugin : IDalamudPlugin
         if(!open)return;
         ImGui.SetNextWindowSize(new(850,640),ImGuiCond.FirstUseEver);
         if(!ImGui.Begin("Steward",ref open)){ImGui.End();return;}
-        ImGui.TextWrapped(status);ImGui.TextWrapped(imports.Status);
+        ImGui.TextWrapped(status);ImGui.TextWrapped(imports.Status);ImGui.TextWrapped(universalis.Status);ImGui.TextWrapped(universalis.Freshness);
         if(config.PendingOperation!=null)ImGui.TextWrapped($"Unverified operation: {config.PendingOperation}; character {config.PendingCharacter}. Review that character's inventory before clearing.");
         var automatic=config.Automatic;
         if(ImGui.Checkbox("Enable automatic execution",ref automatic))SetAutomatic(automatic);
@@ -384,6 +403,9 @@ public sealed partial class Plugin : IDalamudPlugin
                 var combined=config.Rules.Quality==QualityMode.Combined;
                 if(ImGui.Checkbox("Compare HQ and NQ together",ref combined)){config.Rules.Quality=combined?QualityMode.Combined:QualityMode.Separate;Save();}
                 var age=config.Rules.MaximumPriceAgeMinutes;if(ImGui.InputInt("Maximum cache age (minutes)",ref age)){config.Rules.MaximumPriceAgeMinutes=Math.Clamp(age,1,1440);Save();}
+                var publicPrices=config.UseUniversalis;
+                if(ImGui.Checkbox("Use Universalis prices",ref publicPrices)){config.UseUniversalis=publicPrices;Save();nextImports=0;}
+                ImGui.TextWrapped("Current-world listing prices are fetched in the background, including in log-only mode. Server upload time controls freshness. Actual posting and repricing still require a live in-game comparison.");
                 ImGui.InputText("Item ID",ref itemText,12);
                 if(uint.TryParse(itemText,out var id)&&id>0)
                 {
@@ -391,10 +413,13 @@ public sealed partial class Plugin : IDalamudPlugin
                     if(ImGui.Button("Remove exclusion")){config.Rules.Ignored.Remove(id);Save();}ImGui.SameLine();
                     if(ImGui.Button("Keep item")){config.Rules.Keep.Add(id);Save();}ImGui.SameLine();
                     if(ImGui.Button("Remove keep")){config.Rules.Keep.Remove(id);Save();}
+                    if(ImGui.Button("Allow disposal of this non-equipment item")){config.Rules.NonEquipmentDisposal.Add(id);Save();}ImGui.SameLine();
+                    if(ImGui.Button("Remove non-equipment disposal permission")){config.Rules.NonEquipmentDisposal.Remove(id);Save();}
                     if(ImGui.Button("Source: dungeon / crafting")){config.Sources[id]=SourceKind.Ordinary;Save();}ImGui.SameLine();
                     if(ImGui.Button("Source: special")){config.Sources[id]=SourceKind.Special;Save();}
                 }
                 ImGui.TextWrapped("Excluded IDs: "+string.Join(", ",config.Rules.Ignored));
+                ImGui.TextWrapped("Non-equipment stays protected unless explicitly allowed by item ID; sale rules can still list it. AutoRetainer keeps its enabled methods and item-selection rules. Allowed non-equipment disposal IDs: "+string.Join(", ",config.Rules.NonEquipmentDisposal));
                 ImGui.InputText("Eorzea Collection list file",ref commonPath,1024);
                 if(ImGui.Button("Import curated glamour list"))try{ExternalImports.ImportCommon(commonPath,config.Rules);Save();Record("Imported curated glamour list");}catch(Exception ex){Record(ex.Message);}
                 if(ImGui.Button("Add auto-sell rule")){config.Rules.Sales.Add(new());Save();}
@@ -416,7 +441,7 @@ public sealed partial class Plugin : IDalamudPlugin
                 {
                     ImGui.InputTextMultiline("Settings JSON",ref policyJson,65536,new(0,180));
                     if(ImGui.Button("Apply rules and source overrides"))try
-                    {var changed=JsonSerializer.Deserialize<Configuration>(policyJson)??throw new InvalidDataException("Empty settings");config.Rules=changed.Rules;config.Sources=changed.Sources;config.Pricing=changed.Pricing;config.ImportMarketBuddy=changed.ImportMarketBuddy;Save();Record("Updated rules");}
+                    {var changed=JsonSerializer.Deserialize<Configuration>(policyJson)??throw new InvalidDataException("Empty settings");config.Rules=changed.Rules;config.Sources=changed.Sources;config.Pricing=changed.Pricing;config.ImportMarketBuddy=changed.ImportMarketBuddy;config.UseUniversalis=changed.UseUniversalis;Save();Record("Updated rules");}
                     catch(Exception ex){Record(ex.Message);}
                 }
                 ImGui.EndTabItem();
@@ -457,6 +482,7 @@ public sealed partial class Plugin : IDalamudPlugin
         try{StopQueue();market.Dispose();}
         finally
         {
+            universalis.Dispose();
             pi.GetIpcProvider<string,string>(Endpoint).UnregisterFunc();
             pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.OverflowNeeded").UnregisterFunc();
             pi.GetIpcProvider<ulong,string,object>("Steward.InventoryPolicy.Fault").UnregisterAction();
