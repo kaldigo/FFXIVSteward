@@ -5,6 +5,8 @@ $root=Split-Path $PSScriptRoot -Parent
 Push-Location $root
 try {
     $cfg=Get-Content release-config.json -Raw | ConvertFrom-Json
+    python tools/build_common_glamour.py --check
+    if ($LASTEXITCODE) { throw 'Common glamour evidence or generated list failed validation' }
     $buildArgs=@('build',$cfg.project,'-c','Release','-p:UseSharedCompilation=false','--nologo')
     if ($Version) { $buildArgs+="-p:Version=$Version" }
     & dotnet @buildArgs

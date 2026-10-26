@@ -72,6 +72,7 @@ Check(released==4&&!queue.Running&&queue.Status.Contains("cleanup failure"),"One
 Console.WriteLine($"{total} checks passed including cancellation/error paths.");
 SafetyChecks.Run(Check,now);
 ExecutionChecks.Run(Check,now);
+CommonGlamourChecks.Run(Check,now);
 Console.WriteLine($"{total} checks passed including disposal/protection safety regressions.");
 if(args.Length==3)
 {
