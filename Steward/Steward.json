@@ -1,7 +1,12 @@
 {
-  "Author": "kaldigo", "Name": "Steward", "InternalName": "Steward",
+  "Author": "kaldigo",
+  "Name": "Steward",
+  "InternalName": "Steward",
   "Punchline": "Collect what matters. Sell the surplus.",
   "Description": "Collection-aware inventory decisions and market rules coordinated with the AutoRetainer integration fork. Starts in dry-run mode.",
-  "ApplicableVersion": "any", "DalamudApiLevel": 15,
-  "RepoUrl": "https://github.com/kaldigo/FFXIVSteward", "LoadPriority": 0
+  "ApplicableVersion": "any",
+  "DalamudApiLevel": 15,
+  "RepoUrl": "https://github.com/kaldigo/FFXIVSteward",
+  "LoadPriority": 0,
+  "Changelog": "Redesigned settings with a searchable sidebar, dedicated sale rules and glamour filters, storage and item overrides. Category details panels use the same game icons as AutoRetainer, grouped headings and responsive checkbox columns. Sale rules have separate Rules, Pricing, Price data and Listing preview tabs. Existing rules and protection defaults are preserved; editing policy pauses automation. Eorzea Collection remains an internal filter, with patch-update tooling preserved. Log-only and diagnostic capture are under Developer tools; the raw settings editor is removed. Local build and automated checks pass; in-game layout acceptance is pending.\n\n"
 }
