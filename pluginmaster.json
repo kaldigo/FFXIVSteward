@@ -3,7 +3,7 @@
     "Author": "kaldigo",
     "Name": "Steward",
     "InternalName": "Steward",
-    "AssemblyVersion": "0.1.0.13",
+    "AssemblyVersion": "0.1.0.14",
     "Description": "Collection-aware inventory decisions and market rules coordinated with the AutoRetainer integration fork. Starts in dry-run mode.",
     "ApplicableVersion": "any",
     "RepoUrl": "https://github.com/kaldigo/FFXIVSteward",
@@ -16,8 +16,8 @@
     "AcceptsFeedback": true,
     "IconUrl": "https://raw.githubusercontent.com/kaldigo/FFXIVSteward/main/assets/icon.png",
     "Changelog": "Repeated safety review: protocol/safety revision 5, synchronous private settings/journals, all queued work recorded before native steps, character-bound recovery, cancellation-safe completion and exact loaded inventory acknowledgements. Automatic execution is off on every load. Update AutoRetainer together. The pinned ECommons writer swallows I/O failures, so the bridge now uses an independent throwing safety ledger. Native acceptance and safe cross-zone collection refresh remain outstanding; unattended cleanup is not certified.",
-    "DownloadLinkInstall": "https://github.com/kaldigo/FFXIVSteward/releases/download/v0.1.0.13/Steward.zip",
-    "DownloadLinkUpdate": "https://github.com/kaldigo/FFXIVSteward/releases/download/v0.1.0.13/Steward.zip",
-    "DownloadLinkTesting": "https://github.com/kaldigo/FFXIVSteward/releases/download/v0.1.0.13/Steward.zip"
+    "DownloadLinkInstall": "https://github.com/kaldigo/FFXIVSteward/releases/download/v0.1.0.14/Steward.zip",
+    "DownloadLinkUpdate": "https://github.com/kaldigo/FFXIVSteward/releases/download/v0.1.0.14/Steward.zip",
+    "DownloadLinkTesting": "https://github.com/kaldigo/FFXIVSteward/releases/download/v0.1.0.14/Steward.zip"
   }
 ]
