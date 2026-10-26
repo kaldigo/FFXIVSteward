@@ -7,7 +7,7 @@ public sealed record CollectionCopyEvidence(
     int? DresserCopiesAfterProposal,bool? CollectionConfirmedAfterProposal,bool ProposalWithinObservedCopies,
     bool LastCopyOmittedForDecision,bool? NativePlateReference,bool? GlamaholicReference,
     bool GearsetsReady,bool? GearsetReference,bool ReferencesReady,string ProtectionMatches,
-    bool NonEquipmentDisposalAllowed,SourceKind AcquisitionSource,byte Rarity,bool Marketable)
+    bool NonEquipmentDisposalAllowed,SourceKind AcquisitionSource,byte Rarity,bool Marketable,uint ItemCategory,bool Equipment)
 {
     public static CollectionCopyEvidence Capture(ItemFacts item,RuleSettings rules,Evidence evidence,
         bool nativeKnown,bool nativeReference,DateTimeOffset observedAt,int removals=0)
@@ -26,6 +26,7 @@ public sealed record CollectionCopyEvidence(
             confirmed=armoire==true?true:item.ArmoireEligible?false:after is int remaining?remaining>0:null;
         List<string> matches=[];
         if(rules.Ignored.Contains(item.Id))matches.Add("Excluded");
+        if(rules.IgnoredCategories.Contains(item.Category))matches.Add("Excluded category");
         if(rules.Keep.Contains(item.Id))matches.Add("Explicit keep");
         if(evidence.GearsetsReady&&evidence.Gearsets.Contains(item.Id))matches.Add("Gearset/equipped");
         if(nativeKnown&&nativeReference)matches.Add("Native glamour plate");
@@ -46,6 +47,6 @@ public sealed record CollectionCopyEvidence(
             evidence.DresserKnown,evidence.ArmoireKnown,copies,armoire,item.ArmoireEligible,removals,after,confirmed,valid,
             omitted,nativeKnown?nativeReference:null,evidence.GlamaholicKnown?evidence.GlamaholicReferences.Contains(item.Id):null,
             evidence.GearsetsReady,evidence.GearsetsReady?evidence.Gearsets.Contains(item.Id):null,evidence.ReferencesReady,
-            string.Join("; ",matches),rules.NonEquipmentDisposal.Contains(item.Id),item.Source,item.Rarity,item.Marketable);
+            string.Join("; ",matches),rules.NonEquipmentDisposal.Contains(item.Id),item.Source,item.Rarity,item.Marketable,item.Category,item.Equipment);
     }
 }

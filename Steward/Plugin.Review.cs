@@ -32,7 +32,7 @@ public sealed partial class Plugin
         if(!config.LogOnly||decision.Outcome!=Outcome.Dispose||action is not ("Vendor" or "Desynth" or "Gc"))return;
         var key=$"review/{player.ContentId}/{stock.Container}/{stock.Slot}/{stock.ItemId}/{stock.Quantity}/{action}/{decision.Reason}";
         if(recentDecisions.TryGetValue(key,out var at)&&Environment.TickCount64-at<60000)return;
-        var entry=new ReviewEntry(player.ContentId,$"Live policy request: container {stock.Container}, slot {stock.Slot}",stock.ItemId,stock.Quantity,stock.Hq,"WouldPermit "+action,decision.Reason,Collection:CopyEvidence(stock.ItemId));
+        var entry=new ReviewEntry(player.ContentId,$"Live policy request: container {stock.Container}, slot {stock.Slot}",stock.ItemId,stock.Quantity,stock.Hq,"WouldPermit "+action,decision.Reason,Collection:CopyEvidence(stock.ItemId),RuleName:decision.Rule?.Name);
         try
         {
             File.AppendAllText(ReviewPath,System.Text.Json.JsonSerializer.Serialize(new{at=DateTimeOffset.UtcNow,mode="LogOnly",proposal=entry})+Environment.NewLine);
@@ -54,9 +54,11 @@ public sealed partial class Plugin
                 var decision=Judge(stock);
                 if(decision.Outcome==Outcome.Wait){unavailable++;holdReasons.Add(decision.Reason);}
                 if(decision.Outcome==Outcome.Dispose)
-                    entries.Add(new(player.ContentId,location,stock.ItemId,stock.Quantity,stock.Hq,"WouldDispose",$"{view.Facts(stock.ItemId)?.Name}: {decision.Reason}. Steward eligibility only; AutoRetainer still applies its enabled methods and item-selection rules.",Collection:CopyEvidence(stock.ItemId)));
+                    entries.Add(new(player.ContentId,location,stock.ItemId,stock.Quantity,stock.Hq,"WouldDispose",$"{view.Facts(stock.ItemId)?.Name}: {decision.Reason}. Steward eligibility only; AutoRetainer still applies its enabled methods and item-selection rules.",Collection:CopyEvidence(stock.ItemId),RuleName:decision.Rule?.Name));
                 if(decision is {Outcome:Outcome.Keep,Reason:"Non-equipment disposal requires explicit item permission"})
-                    entries.Add(new(player.ContentId,location,stock.ItemId,stock.Quantity,stock.Hq,"ProtectedNonEquipment",$"{view.Facts(stock.ItemId)?.Name}: {decision.Reason}",Collection:CopyEvidence(stock.ItemId)));
+                    entries.Add(new(player.ContentId,location,stock.ItemId,stock.Quantity,stock.Hq,"ProtectedNonEquipment",$"{view.Facts(stock.ItemId)?.Name}: {decision.Reason}",Collection:CopyEvidence(stock.ItemId),RuleName:decision.Rule?.Name));
+                if(decision is {Outcome:Outcome.Ignore,Reason:"Item category excluded from all Steward handling"})
+                    entries.Add(new(player.ContentId,location,stock.ItemId,stock.Quantity,stock.Hq,"ExcludedCategory",$"{view.Facts(stock.ItemId)?.Name}: {decision.Reason}",Collection:CopyEvidence(stock.ItemId)));
             }
             foreach(var stock in view.Items.Distinct())Inspect($"Player container {stock.Container}, slot {stock.Slot}",stock);
             var retainerContainers=InventoryView.RetainerTypes().Select(t=>(uint)t).ToHashSet();
@@ -76,16 +78,19 @@ public sealed partial class Plugin
                     entries.Add(new(player.ContentId,$"Retainer {marketPreview.Retainer}, proposed market slot {listing.MarketSlot+1}; source {listing.Source.Container}:{listing.Source.Slot}",
                         listing.Source.ItemId,listing.Quantity,listing.Source.Hq,"WouldList",
                         $"{view.Facts(listing.Source.ItemId)?.Name}: {listing.Quantity} at {listing.UnitPrice:N0} gil each; total {listing.Total:N0} gil. Estimate; live comparison and protection rechecked before execution.",
-                        listing.UnitPrice,listing.Total,marketPreview.World,marketPreview.Retainer,listing.Reference.Source,listing.Reference.Observed,Collection:CopyEvidence(listing.Source.ItemId)));
+                        listing.UnitPrice,listing.Total,marketPreview.World,marketPreview.Retainer,listing.Reference.Source,listing.Reference.Observed,Collection:CopyEvidence(listing.Source.ItemId),RuleName:listing.RuleName));
                 foreach(var repricing in marketPreview.Reprices)
                     entries.Add(new(player.ContentId,$"Retainer {marketPreview.Retainer}, listing slot {repricing.Source.Slot}",repricing.Source.ItemId,repricing.Source.Quantity,repricing.Source.Hq,
                         "WouldReprice",$"{view.Facts(repricing.Source.ItemId)?.Name}: {repricing.Before:N0} to {repricing.After:N0} gil each; estimate rechecked before execution.",
-                        repricing.After,(ulong)repricing.After*repricing.Source.Quantity,marketPreview.World,marketPreview.Retainer,repricing.Reference.Source,repricing.Reference.Observed,Collection:CopyEvidence(repricing.Source.ItemId)));
+                        repricing.After,(ulong)repricing.After*repricing.Source.Quantity,marketPreview.World,marketPreview.Retainer,repricing.Reference.Source,repricing.Reference.Observed,Collection:CopyEvidence(repricing.Source.ItemId),RuleName:repricing.RuleName));
                 for(var i=0;i<plan.Held.Count;i++)
                     entries.Add(new(player.ContentId,$"Market planning hold {i+1}",0,0,false,"MarketHeld",plan.Held[i],World:marketPreview.World,Retainer:marketPreview.Retainer));
             }
             entries.Add(new(player.ContentId,"Market preview summary",0,0,false,"MarketSnapshot",marketPreview.Status,World:marketPreview.World,Retainer:marketPreview.Retainer));
             entries.Add(new(player.ContentId,"Market price source",0,0,false,"PriceSourceStatus",universalis.Status+" "+universalis.Freshness,World:view.World));
+            if(config.UseUniversalis)
+                foreach(var held in universalis.HeldItems(view.World).Where(h=>view.Facts(h.ItemId) is {} facts&&!config.Rules.IsIgnored(facts)))
+                    entries.Add(new(player.ContentId,"Universalis price hold",held.ItemId,0,false,"PriceHeld",$"{view.Facts(held.ItemId)?.Name}: {held.Reason}",World:view.World));
             var disposals=entries.Count(e=>e.Action=="WouldDispose");var removals=entries.Where(e=>e.Location=="Glamour dresser").Sum(e=>e.Quantity);
             entries.Add(new(player.ContentId,"Review summary",0,0,false,"Snapshot",
                 $"{disposals} disposal candidates (cached retainer observations labelled); {removals} dresser removals. Protected non-equipment stacks: {entries.Count(e=>e.Action=="ProtectedNonEquipment")}. Enabled sale rules: {config.Rules.Sales.Count(r=>r.Enabled)}; quality: {config.Rules.Quality}. Held/unverified stacks: {unavailable} ({string.Join("; ",holdReasons.Order())}). Cleanup enabled: {config.CleanDresser}. References ready: {view.Evidence.ReferencesReady}; native plates known: {view.NativeReferencesKnown}; Glamaholic known: {view.Evidence.GlamaholicKnown}; gearsets ready: {view.Evidence.GearsetsReady}; dresser known: {view.Evidence.DresserKnown}; armoire known: {view.Evidence.ArmoireKnown}. {tracked.Status}"));

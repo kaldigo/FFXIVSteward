@@ -11,13 +11,15 @@ public sealed class UniversalisPrices : IDisposable
     private readonly CancellationTokenSource shutdown=new();
     private readonly Dictionary<(uint World,uint Item),PublicMarketItem> cache=[];
     private readonly Dictionary<(uint World,uint Item),DateTimeOffset> retry=[];
+    private readonly Dictionary<(uint World,uint Item),string> holds=[];
+    public IReadOnlyList<PublicMarketHold> HeldItems(uint world)=>holds.Where(p=>p.Key.World==world).Select(p=>new PublicMarketHold(p.Key.Item,p.Value)).ToArray();
     private Task<FetchResult>? pending;
     private DateTimeOffset nextRequest;
     private int failures;
     private bool disposed;
     public string Status { get; private set; }="Universalis: waiting for inventory";
     public string Freshness { get; private set; }="";
-    private sealed record FetchResult(uint World,uint[] Items,IReadOnlyList<PublicMarketItem> Values,string? Error,TimeSpan? RetryAfter);
+    private sealed record FetchResult(uint World,uint[] Items,IReadOnlyList<PublicMarketItem> Values,IReadOnlyList<PublicMarketHold> Held,string? Error,TimeSpan? RetryAfter);
     public UniversalisPrices(HttpMessageHandler? handler=null)
     {
         client=handler==null?new HttpClient():new HttpClient(handler);
@@ -33,10 +35,11 @@ public sealed class UniversalisPrices : IDisposable
             if(result.Error==null)
             {
                 failures=0;
-                foreach(var id in result.Items)cache.Remove((result.World,id));
+                foreach(var id in result.Items){cache.Remove((result.World,id));holds.Remove((result.World,id));}
                 foreach(var value in result.Values)cache[(value.World,value.ItemId)]=value;
+                foreach(var hold in result.Held)holds[(result.World,hold.ItemId)]=hold.Reason;
                 foreach(var id in result.Items)retry[(result.World,id)]=now.AddMinutes(5);
-                Status=$"Universalis: received {result.Values.Count}/{result.Items.Length} item snapshots; server upload age still applies";
+                Status=$"Universalis: received {result.Values.Count}/{result.Items.Length} item snapshots; {result.Held.Count} individually held. Server upload age still applies.";
             }
             else
             {
@@ -48,6 +51,7 @@ public sealed class UniversalisPrices : IDisposable
             }
             while(cache.Count>2048)cache.Remove(cache.MinBy(p=>p.Value.Uploaded).Key);
             while(retry.Count>4096)retry.Remove(retry.MinBy(p=>p.Value).Key);
+            foreach(var key in holds.Keys.Where(k=>!retry.ContainsKey(k)).ToArray())holds.Remove(key);
         }
         Apply(world,own,maximumAgeMinutes,evidence,enabled,now);
         if(!enabled){Status="Universalis disabled";return;}
@@ -75,7 +79,7 @@ public sealed class UniversalisPrices : IDisposable
                 if(!evidence.Prices.TryGetValue(key,out var current)||current.World!=world||current.Observed<quote.Observed)evidence.Prices[key]=quote;
             }
         }
-        Freshness=$"World {world}: {fresh} items with usable prices; {stale} stale/future uploads; {unpriced} without identifiable competing prices. Maximum upload age: {maximumAgeMinutes} minutes."+
+        Freshness=$"World {world}: {fresh} items with usable prices; {stale} stale/future uploads; {unpriced} without identifiable competing prices; {holds.Count(p=>p.Key.World==world)} individually held items. Maximum upload age: {maximumAgeMinutes} minutes."+
             (own.Count==0?" Load owned retainers before using public prices.":"");
     }
     private async Task<FetchResult> Fetch(uint world,uint[] items,CancellationToken token)
@@ -90,7 +94,7 @@ public sealed class UniversalisPrices : IDisposable
                 var wait=response.Headers.RetryAfter?.Delta;
                 if(wait==null&&response.Headers.RetryAfter?.Date is {} date)wait=date-DateTimeOffset.UtcNow;
                 if(wait.HasValue)wait=TimeSpan.FromSeconds(Math.Clamp(wait.Value.TotalSeconds,5,3600));
-                return new(world,items,[],"HTTP "+(int)response.StatusCode,wait);
+                return new(world,items,[],[],"HTTP "+(int)response.StatusCode,wait);
             }
             const int limit=4*1024*1024;
             if(response.Content.Headers.ContentLength>limit)throw new InvalidDataException("Price response exceeds size limit");
@@ -98,11 +102,11 @@ public sealed class UniversalisPrices : IDisposable
             using var buffer=new MemoryStream();var bytes=new byte[8192];int read;
             while((read=await stream.ReadAsync(bytes,token).ConfigureAwait(false))!=0)
             {if(buffer.Length+read>limit)throw new InvalidDataException("Price response exceeds size limit");buffer.Write(bytes,0,read);}
-            var values=UniversalisData.Parse(Encoding.UTF8.GetString(buffer.ToArray()),world,items.ToHashSet());
-            return new(world,items,values,null,null);
+            var values=UniversalisData.ParseBatch(Encoding.UTF8.GetString(buffer.ToArray()),world,items.ToHashSet());
+            return new(world,items,values.Items,values.Held,null,null);
         }
         catch(Exception ex)when(ex is HttpRequestException or OperationCanceledException or System.Text.Json.JsonException or InvalidDataException or InvalidOperationException or KeyNotFoundException or FormatException or ArgumentOutOfRangeException or OverflowException or IOException)
-        {return new(world,items,[],ex.GetType().Name,null);}
+        {return new(world,items,[],[],ex.GetType().Name+": "+ex.Message,null);}
     }
     public void Dispose()
     {if(disposed)return;disposed=true;shutdown.Cancel();client.Dispose();shutdown.Dispose();}

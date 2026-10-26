@@ -9,7 +9,7 @@ public sealed unsafe partial class MarketQueue
     private readonly Dictionary<uint,ObservedMarket> observedMarkets=[];
     private uint observationWorld;
     private DateTimeOffset observationWorldSince;
-    public sealed record RepriceProposal(Stock Source,uint Before,uint After,MarketReference Reference);
+    public sealed record RepriceProposal(Stock Source,uint Before,uint After,MarketReference Reference,string? RuleName=null);
     public sealed record MarketPreview(ulong Retainer,uint World,ListingPlan? Plan,IReadOnlyList<RepriceProposal> Reprices,string Status);
 
     private void ObserveMarket(uint item,DateTimeOffset at,int request,List<Offering> values)
@@ -106,7 +106,7 @@ public sealed unsafe partial class MarketQueue
             if(before==0||before<=competitor||reference.OwnMinimum is uint own&&own<=competitor)continue;
             var target=Pricing.Undercut(competitor,config.Pricing,decision.Rule?.MinimumUnit??1);
             if(target.HasValue&&MarketSubmission.CanCommit(listing,listing,decision,true,target.Value,listing.Quantity,(int)target.Value,(int)listing.Quantity,9999))
-                reprices.Add(new(listing,before,target.Value,reference));
+                reprices.Add(new(listing,before,target.Value,reference,decision.Rule?.Name));
         }
         return new(retainer,view.World,plan,reprices,$"{listings.Count}/20 slots occupied; {plan.Listings.Count} proposed new listings; {plan.FreeSlotsRemaining} slots remain. Estimates use fresh cached or manually observed prices; execution always rechecks the game market.{(config.Rules.Sales.Any(r=>r.Enabled)?"":" Add an enabled auto-sell rule in Rules to propose new listings.")}");
     }

@@ -129,7 +129,7 @@ public sealed partial class Plugin : IDalamudPlugin
         {
             imports.Refresh();tracked.Refresh();nextImports=Environment.TickCount64+2000;
             var ids=view.Items.Concat(tracked.Items.Where(r=>view.Retainers.Contains(r.Owner)).Select(r=>r.Stock))
-                .Where(s=>!config.Rules.Ignored.Contains(s.ItemId)&&view.Facts(s.ItemId) is {Marketable:true} item&&
+                .Where(s=>view.Facts(s.ItemId) is {Marketable:true} item&&!config.Rules.IsIgnored(item)&&
                     (item.Equipment||config.Rules.Sales.Any(r=>r.Matches(item,s))||config.Rules.NonEquipmentDisposal.Contains(item.Id)))
                 .Select(s=>s.ItemId);
             universalis.Tick(view.World,ids,PriceOwners,config.Rules.MaximumPriceAgeMinutes,view.Evidence,config.UseUniversalis,DateTimeOffset.UtcNow);
@@ -400,6 +400,8 @@ public sealed partial class Plugin : IDalamudPlugin
             if(ImGui.BeginTabItem("Rules"))
             {
                 DrawStorageSettings();
+                DrawCategorySelection("Exclude item categories from all handling",config.Rules.IgnoredCategories,"None excluded");
+                ImGui.TextWrapped("Global category exclusions skip listing, disposal and collection moves. Sale-rule exclusions below affect only that rule.");
                 var combined=config.Rules.Quality==QualityMode.Combined;
                 if(ImGui.Checkbox("Compare HQ and NQ together",ref combined)){config.Rules.Quality=combined?QualityMode.Combined:QualityMode.Separate;Save();}
                 var age=config.Rules.MaximumPriceAgeMinutes;if(ImGui.InputInt("Maximum cache age (minutes)",ref age)){config.Rules.MaximumPriceAgeMinutes=Math.Clamp(age,1,1440);Save();}
@@ -423,17 +425,21 @@ public sealed partial class Plugin : IDalamudPlugin
                 ImGui.InputText("Eorzea Collection list file",ref commonPath,1024);
                 if(ImGui.Button("Import curated glamour list"))try{ExternalImports.ImportCommon(commonPath,config.Rules);Save();Record("Imported curated glamour list");}catch(Exception ex){Record(ex.Message);}
                 if(ImGui.Button("Add auto-sell rule")){config.Rules.Sales.Add(new());Save();}
+                ImGui.TextWrapped("First matching enabled rule wins. Put specific gear/material rules above an all-items rule; each rule can have its own prices and stack size.");
                 for(var i=0;i<config.Rules.Sales.Count;i++)
                 {
                     var rule=config.Rules.Sales[i];ImGui.PushID(i);
                     var name=rule.Name;if(ImGui.InputText("Rule name",ref name,100)){rule.Name=name;Save();}
+                    var ruleEnabled=rule.Enabled;if(ImGui.Checkbox("Rule enabled",ref ruleEnabled)){rule.Enabled=ruleEnabled;Save();}
+                    DrawSaleRuleCategories(rule);
                     var unit=(int)rule.MinimumUnit;var total=(int)rule.MinimumTotal;var stack=rule.MaximumStack;
                     if(ImGui.InputInt("Minimum unit gil",ref unit)){rule.MinimumUnit=(uint)Math.Clamp(unit,1,999999999);Save();}
                     if(ImGui.InputInt("Minimum stack gil",ref total)){rule.MinimumTotal=(uint)Math.Max(1,total);Save();}
                     if(ImGui.InputInt("Maximum stack",ref stack)){rule.MaximumStack=Math.Clamp(stack,1,9999);Save();}
-                    ImGui.TextWrapped("Item IDs: "+(rule.ItemIds.Count==0?"all marketable items":string.Join(",",rule.ItemIds)));
+                    ImGui.TextWrapped("Item IDs: "+(rule.ItemIds.Count==0?"any within the selected group/categories":string.Join(",",rule.ItemIds)));
                     if(uint.TryParse(itemText,out var ruleId)&&ruleId>0&&ImGui.Button("Restrict to entered item")){rule.ItemIds.Add(ruleId);Save();}
                     if(i>0){ImGui.SameLine();if(ImGui.Button("Move up")){(config.Rules.Sales[i-1],config.Rules.Sales[i])=(rule,config.Rules.Sales[i-1]);Save();}}
+                    if(i<config.Rules.Sales.Count-1){ImGui.SameLine();if(ImGui.Button("Move down")){(config.Rules.Sales[i+1],config.Rules.Sales[i])=(rule,config.Rules.Sales[i+1]);Save();}}
                     if(ImGui.Button("Remove rule")){config.Rules.Sales.RemoveAt(i);Save();ImGui.PopID();break;}ImGui.PopID();ImGui.Separator();
                 }
                 if(ImGui.Button("Edit all settings as JSON"))policyJson=JsonSerializer.Serialize(config,new JsonSerializerOptions{WriteIndented=true});

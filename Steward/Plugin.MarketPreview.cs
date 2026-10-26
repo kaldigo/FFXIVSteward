@@ -23,6 +23,7 @@ public sealed partial class Plugin
                 {
                     ImGui.TextWrapped($"Slot {listing.MarketSlot+1}: {view.Facts(listing.Source.ItemId)?.Name??listing.Source.ItemId.ToString()} {(listing.Source.Hq?"HQ":"NQ")} x{listing.Quantity} — {listing.UnitPrice:N0} gil each; {listing.Total:N0} gil total.");
                     ImGui.TextWrapped($"Source {listing.Source.Container}:{listing.Source.Slot}; price: {listing.Reference.Source}, observed {listing.Reference.Observed.LocalDateTime:g}.");
+                    ImGui.TextWrapped("Sale rule: "+listing.RuleName);
                 }
                 foreach(var listing in marketPreview.Reprices)
                     ImGui.TextWrapped($"Reprice slot {listing.Source.Slot+1}: {view.Facts(listing.Source.ItemId)?.Name} x{listing.Source.Quantity}, {listing.Before:N0} → {listing.After:N0} gil each.");

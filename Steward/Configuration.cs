@@ -38,6 +38,9 @@ public sealed class Configuration : IPluginConfiguration, IJsonOnDeserialized
     public bool InitialExclusionsApplied { get; set; }
     void IJsonOnDeserialized.OnDeserialized()
     {
+        // Preserve legacy single-category rules when opening the multi-category editor.
+        foreach(var rule in Rules.Sales)
+            if(rule.Category!=0){rule.Categories.Add(rule.Category);rule.Category=0;}
         if(Version!=1 || PendingCollection==null || SafetyRevision>=6&&!pendingCollectionRead ||
             PendingCollection.Any(p=>p.Key==0||p.Value==null||p.Value.Contains(0)))
             throw new System.Text.Json.JsonException("Missing or invalid collection safety state; execution must remain held");

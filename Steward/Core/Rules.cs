@@ -2,6 +2,7 @@ namespace Steward.Core;
 
 public enum Outcome { Ignore, Keep, CollectArmoire, CollectDresser, Market, Dispose, Wait, StoreRetainer }
 public enum QualityMode { Separate, Combined }
+public enum ItemGroup { Any, Gear, Other }
 public enum SourceKind { Unknown, Ordinary, Special, NormalDungeon, NormalRaid, AllianceRaid, SavageRaid, HighEnd }
 public sealed record ItemFacts(uint Id, string Name, bool Equipment, byte Rarity, int EquipLevel,
     bool Marketable, bool ArmoireEligible, SourceKind Source, uint Category, uint NpcPrice = 0, bool DesignedForGlamour = false);
@@ -15,17 +16,25 @@ public sealed class SaleRule
     public bool Enabled { get; set; } = true;
     public HashSet<uint> ItemIds { get; set; } = [];
     public uint Category { get; set; }
+    public ItemGroup Group { get; set; }
+    public HashSet<uint> Categories { get; set; } = [];
+    public HashSet<uint> ExcludedCategories { get; set; } = [];
     public bool? Hq { get; set; }
     public uint MinimumUnit { get; set; } = 1000;
     public uint MinimumTotal { get; set; } = 5000;
     public int MaximumStack { get; set; } = 99;
     public bool Matches(ItemFacts item, Stock stock) => Enabled &&
-        (ItemIds.Count == 0 || ItemIds.Contains(item.Id)) && (Category == 0 || Category == item.Category) &&
+        (ItemIds.Count == 0 || ItemIds.Contains(item.Id)) &&
+        (Group==ItemGroup.Any || Group==ItemGroup.Gear&&item.Equipment || Group==ItemGroup.Other&&!item.Equipment) &&
+        (Categories.Count==0 ? Category==0||Category==item.Category : Categories.Contains(item.Category)) &&
+        !ExcludedCategories.Contains(item.Category) &&
         (Hq == null || Hq == stock.Hq);
 }
 public sealed class RuleSettings
 {
     public HashSet<uint> Ignored { get; set; } = [];
+    public HashSet<uint> IgnoredCategories { get; set; } = [];
+    public bool IsIgnored(ItemFacts item)=>Ignored.Contains(item.Id)||IgnoredCategories.Contains(item.Category);
     public HashSet<uint> Keep { get; set; } = [];
     public HashSet<uint> NonEquipmentDisposal { get; set; } = [];
     public HashSet<uint> CommonGlamour { get; set; } = [];
@@ -65,6 +74,7 @@ public static class Rules
     {
         if(item.Id==0 || stock.ItemId!=item.Id || stock.Quantity==0) return new(Outcome.Wait, "Invalid item or inventory evidence");
         if(settings.Ignored.Contains(item.Id)) return new(Outcome.Ignore, "Excluded from all Steward handling");
+        if(settings.IgnoredCategories.Contains(item.Category)) return new(Outcome.Ignore, "Item category excluded from all Steward handling");
         if(settings.Keep.Contains(item.Id)) return new(Outcome.Keep, "Explicit keep override");
         if(!evidence.GearsetsReady || !evidence.ReferencesReady) return new(Outcome.Wait, "Glamour references or gear sets are unavailable");
         if(evidence.Gearsets.Contains(item.Id)) return new(Outcome.Keep, "Equipped or referenced by a gear set");

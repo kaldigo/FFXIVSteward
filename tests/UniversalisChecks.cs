@@ -34,14 +34,24 @@ static class UniversalisChecks
         check(UniversalisData.Parse(Item(now,string.Join(',',Listing(1,seller:null),Listing(100))),1,ids).Single().Quotes(own,now,30).Count==0,"Unknown seller blocks that quality rather than inventing competition");
         check(UniversalisData.Parse(Item(now,Listing(10,seller:"opaque-hash")),1,ids).Single().Quotes(own,now,30).Count==0,"Opaque retainer hashes do not bypass own-price protection");
         check(UniversalisData.Parse(Item(now,string.Join(',',Listing(1,mannequin:true),Listing(100))),1,ids).Single().Quotes(own,now,30).Single().UnitPrice==100,"Mannequin listings are not normal competitors");
-        check(UniversalisData.Parse(Item(now,""),1,ids).Single().Quotes(own,now,30).Count==0,"Empty listing response never becomes zero value");
+        check(UniversalisData.ParseBatch(Item(now,""),1,ids) is {Items.Count:0,Held.Count:1},"Empty listing response is held individually, never valued as zero");
         foreach(var invalid in new[]{Item(now,Listing(100),world:2),Item(now,Listing(100),id:43),Item(now,Listing(0)),"{}","{"})
         {
             var rejected=false;try{UniversalisData.Parse(invalid,1,ids);}catch(Exception ex)when(ex is InvalidDataException or JsonException or KeyNotFoundException){rejected=true;}
             check(rejected,"Malformed, wrong-world/item or zero price response is rejected");
         }
         var multi="{\"worldID\":1,\"items\":{\"42\":"+Item(now,Listing(100))+",\"43\":"+Item(now,Listing(200),id:43)+"},\"unresolvedItems\":[44]}";
-        check(UniversalisData.Parse(multi,1,new HashSet<uint>{42,43,44}).Count==2,"Partial batch responses do not invent missing item values");
+        var partial=UniversalisData.ParseBatch(multi,1,new HashSet<uint>{42,43,44});
+        check(partial.Items.Count==2&&partial.Held.Single().ItemId==44,"Partial batch responses retain valid values and identify missing items");
+        var soiled="{\"worldID\":1,\"items\":{\"42\":"+Item(now,Listing(100))+",\"5433\":"+Item(DateTimeOffset.UnixEpoch,"",id:5433)+"}}";
+        partial=UniversalisData.ParseBatch(soiled,1,new HashSet<uint>{42,5433});
+        check(partial.Items.Single().ItemId==42&&partial.Held.Single().ItemId==5433,"Soiled Femur's zero upload and empty listings cannot poison the batch");
+        foreach(var bad in new[]{Item(now,Listing(0),id:5433),Item(now,Listing(100),world:2,id:5433),"{}"})
+        {
+            var mixed="{\"worldID\":1,\"items\":{\"42\":"+Item(now,Listing(100))+",\"5433\":"+bad+"}}";
+            partial=UniversalisData.ParseBatch(mixed,1,new HashSet<uint>{42,5433});
+            check(partial.Items.Single().ItemId==42&&partial.Held.Single().ItemId==5433,"Malformed per-item data holds that ID and retains other valid prices");
+        }
         var evidence=new Evidence();var handler=new FakeHandler(_=>new(HttpStatusCode.OK){Content=new StringContent(raw)});
         using(var client=new UniversalisPrices(handler))
         {
@@ -56,6 +66,26 @@ static class UniversalisChecks
             client.Apply(1,own,30,evidence,true,now.AddSeconds(2));check(evidence.Prices[(42,false)].Source=="Game","Newer in-game comparison wins over public upload");
             client.Apply(1,own,30,evidence,false,now);check(evidence.Prices.Count==1&&evidence.Prices[(42,false)].Source=="Game","Disabling source removes its quotes without deleting native evidence");
             evidence.Prices.Clear();client.Apply(1,new HashSet<ulong>{7,8},30,evidence,true,now);check(evidence.Prices.Count==0,"Newly identified own retainers invalidate cached competing quotes");
+        }
+        handler=new(request=>new(HttpStatusCode.OK){Content=new StringContent(request.RequestUri!.AbsolutePath.EndsWith("/44")?Item(now.AddSeconds(6),Listing(200),id:44):soiled)});
+        using(var client=new UniversalisPrices(handler))
+        {
+            evidence=new();client.Tick(1,[42,5433],own,30,evidence,true,now);await Drain(client,evidence,own,now);
+            check(evidence.Prices[(42,false)].UnitPrice==100&&!evidence.Prices.Keys.Any(k=>k.Item1==5433),"Client applies usable batch members while leaving unpriced items unknown");
+            check(client.HeldItems(1).Single().ItemId==5433&&!client.Status.Contains("unavailable"),"Item-level hold is diagnostic, not an API outage");
+            client.Tick(1,[42,5433,44],own,30,evidence,true,now.AddSeconds(6));
+            check(handler.Calls==2&&handler.Uri!.AbsolutePath.EndsWith("/44"),"Successful partial batch advances to later items instead of retrying the same unpriced ID");
+            await Drain(client,evidence,own,now.AddSeconds(6));
+            check(evidence.Prices[(44,false)].UnitPrice==200&&client.HeldItems(1).Single().ItemId==5433,"Later item pricing completes while the original unpriced item stays held");
+        }
+        var recoveryCalls=0;
+        handler=new(_=>new(HttpStatusCode.OK){Content=new StringContent(++recoveryCalls==1?Item(DateTimeOffset.UnixEpoch,"",id:5433):Item(now.AddSeconds(301),Listing(100),id:5433))});
+        using(var client=new UniversalisPrices(handler))
+        {
+            evidence=new();client.Tick(1,[5433],own,30,evidence,true,now);await Drain(client,evidence,own,now);
+            check(client.HeldItems(1).Count==1&&evidence.Prices.Count==0,"Entire unpriced batch is a successful item-level hold");
+            client.Tick(1,[5433],own,30,evidence,true,now.AddSeconds(301));await Drain(client,evidence,own,now.AddSeconds(301));
+            check(client.HeldItems(1).Count==0&&evidence.Prices[(5433,false)].UnitPrice==100,"Fresh later data releases the price hold without a restart");
         }
         handler=new(_=>{var r=new HttpResponseMessage((HttpStatusCode)429);r.Headers.RetryAfter=new RetryConditionHeaderValue(TimeSpan.FromSeconds(60));return r;});
         using(var client=new UniversalisPrices(handler))

@@ -4,7 +4,7 @@ public sealed record MarketReference(uint World,uint? Competitor,uint? OwnMinimu
 public sealed record ListingInput(ItemFacts Item,Stock Stock,Decision Decision,SaleRule? Rule,MarketReference? Reference);
 public sealed record ListingChoice(uint UnitPrice,uint Quantity,string Reason)
 {public ulong Total=>(ulong)UnitPrice*Quantity;public bool Eligible=>UnitPrice>0&&Quantity>0;}
-public sealed record ListingProposal(Stock Source,int MarketSlot,uint Quantity,uint UnitPrice,MarketReference Reference)
+public sealed record ListingProposal(Stock Source,int MarketSlot,uint Quantity,uint UnitPrice,MarketReference Reference,string? RuleName=null)
 {public ulong Total=>(ulong)UnitPrice*Quantity;}
 public sealed record ListingPlan(IReadOnlyList<ListingProposal> Listings,IReadOnlyList<string> Held,int FreeSlotsRemaining);
 
@@ -47,7 +47,7 @@ public static class ListingPlanner
                 var input=original with{Stock=stock,Reference=reference};
                 var choice=Next(input,pricing,world,maxAgeMinutes,now);
                 if(!choice.Eligible){held.Add($"{stock.ItemId} ({stock.Container}:{stock.Slot}) x{stock.Quantity}: {choice.Reason}");break;}
-                proposals.Add(new(stock,freeSlots[proposals.Count],choice.Quantity,choice.UnitPrice,reference!));
+                proposals.Add(new(stock,freeSlots[proposals.Count],choice.Quantity,choice.UnitPrice,reference!,original.Rule!.Name));
                 own[key]=choice.UnitPrice;stock=stock with{Quantity=stock.Quantity-choice.Quantity};
             }
         }
