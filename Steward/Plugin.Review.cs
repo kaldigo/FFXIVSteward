@@ -22,7 +22,7 @@ public sealed partial class Plugin
             config.LogOnly=enabled;config.Automatic=false;Save();reviewJournal.Reset();nextReview=0;
             Record(enabled?"Log-only review enabled: all managed item actions blocked":"Log-only review disabled; automatic execution remains off");
         }
-        ImGui.TextWrapped("Logs proposed listings and prices, disposal, and enabled dresser cleanup. No managed item actions occur in log-only mode. Open a retainer selling list to load its market capacity; cached prices are labelled estimates.");
+        ImGui.TextWrapped("Logs collection destinations, overflow, proposed listings and prices, disposal, and enabled dresser cleanup. No managed item actions occur in log-only mode. Open a retainer selling list to load its market capacity; cached prices are labelled estimates.");
         ImGui.TextWrapped("Review log: "+ReviewPath);
         if(ImGui.Button("Write review snapshot now"))
         {if(!config.LogOnly)Record("Enable Log only before recording a review session.");else{reviewJournal.Reset();nextReview=0;ReviewTick();}}
@@ -52,9 +52,15 @@ public sealed partial class Plugin
             void Inspect(string location,Stock stock)
             {
                 var decision=Judge(stock);
+                var sale=SaleStatistics.Select(view.Evidence,stock.ItemId,stock.Hq,config.Rules.Quality,view.World,DateTimeOffset.UtcNow);
                 if(decision.Outcome==Outcome.Wait){unavailable++;holdReasons.Add(decision.Reason);}
+                if(decision.Outcome is Outcome.CollectDresser or Outcome.CollectArmoire or Outcome.StoreRetainer or Outcome.Market or Outcome.Wait or Outcome.Keep or Outcome.Ignore)
+                    entries.Add(new(player.ContentId,location,stock.ItemId,stock.Quantity,stock.Hq,
+                        decision.Outcome switch{Outcome.CollectDresser=>"WouldCollectDresser",Outcome.CollectArmoire=>"WouldCollectArmoire",Outcome.StoreRetainer=>"ProtectedRetainerOverflow",Outcome.Market=>"SaleEligible",_=>decision.Outcome.ToString()},
+                        $"{view.Facts(stock.ItemId)?.Name}: {decision.Reason}. Dresser free: {view.Evidence.DresserFreeSlots?.ToString()??"unknown"}; reserved: {config.Rules.DresserEmptySlots}. Collection proposals select one missing copy per item, subject to live space and readiness.",
+                        Collection:CopyEvidence(stock.ItemId),RuleName:decision.Rule?.Name,SaleEvidence:sale));
                 if(decision.Outcome==Outcome.Dispose)
-                    entries.Add(new(player.ContentId,location,stock.ItemId,stock.Quantity,stock.Hq,"WouldDispose",$"{view.Facts(stock.ItemId)?.Name}: {decision.Reason}. Steward eligibility only; AutoRetainer still applies its enabled methods and item-selection rules.",Collection:CopyEvidence(stock.ItemId),RuleName:decision.Rule?.Name));
+                    entries.Add(new(player.ContentId,location,stock.ItemId,stock.Quantity,stock.Hq,"WouldDispose",$"{view.Facts(stock.ItemId)?.Name}: {decision.Reason}. Steward eligibility only; AutoRetainer still applies its enabled methods and item-selection rules.",Collection:CopyEvidence(stock.ItemId),RuleName:decision.Rule?.Name,SaleEvidence:sale));
                 if(decision is {Outcome:Outcome.Keep,Reason:"Non-equipment disposal requires explicit item permission"})
                     entries.Add(new(player.ContentId,location,stock.ItemId,stock.Quantity,stock.Hq,"ProtectedNonEquipment",$"{view.Facts(stock.ItemId)?.Name}: {decision.Reason}",Collection:CopyEvidence(stock.ItemId),RuleName:decision.Rule?.Name));
                 if(decision is {Outcome:Outcome.Ignore,Reason:"Item category excluded from all Steward handling"})

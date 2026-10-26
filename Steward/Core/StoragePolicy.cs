@@ -14,7 +14,7 @@ public static class StoragePolicy
         (evidence.Armoire.Contains(item.Id)||!item.ArmoireEligible&&evidence.OmittedDresserItem!=item.Id&&evidence.Dresser.Contains(item.Id));
     public static int Priority(ItemFacts item,RuleSettings rules,Evidence evidence)
     {
-        if(rules.Keep.Contains(item.Id)||evidence.References.Contains(item.Id))return 0;
+        if(rules.Keep.Contains(item.Id)||rules.CollectionKeep.Contains(item.Id)||evidence.References.Contains(item.Id))return 0;
         if(item.Rarity>3 || item.Rarity==3&&!item.Marketable&&item.Source is not (SourceKind.NormalDungeon or SourceKind.NormalRaid) ||
             item.Source is SourceKind.Special or SourceKind.AllianceRaid or SourceKind.SavageRaid or SourceKind.HighEnd)return 1;
         if(item.EquipLevel==1||item.DesignedForGlamour||evidence.PendingCollection.Contains(item.Id))return 2;

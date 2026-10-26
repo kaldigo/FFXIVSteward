@@ -28,6 +28,8 @@ public sealed record CollectionCopyEvidence(
         if(rules.Ignored.Contains(item.Id))matches.Add("Excluded");
         if(rules.IgnoredCategories.Contains(item.Category))matches.Add("Excluded category");
         if(rules.Keep.Contains(item.Id))matches.Add("Explicit keep");
+        if(rules.CollectionKeep.Contains(item.Id))matches.Add("Supplemental glamour collection");
+        if(rules.QuantityReserves.GetValueOrDefault(item.Id)>0)matches.Add("Quantity reserve: "+rules.QuantityReserves[item.Id]);
         if(evidence.GearsetsReady&&evidence.Gearsets.Contains(item.Id))matches.Add("Gearset/equipped");
         if(nativeKnown&&nativeReference)matches.Add("Native glamour plate");
         if(evidence.GlamaholicKnown&&evidence.GlamaholicReferences.Contains(item.Id))matches.Add("Glamaholic");

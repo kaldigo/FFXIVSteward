@@ -18,6 +18,18 @@ public sealed class ExternalImports
         using var stream=typeof(ExternalImports).Assembly.GetManifestResourceStream("Steward.data.common-glamour.json")??throw new InvalidDataException("Bundled glamour list missing");
         using var doc=JsonDocument.Parse(stream);foreach(var entry in doc.RootElement.GetProperty("items").EnumerateArray())bundled.Add(entry.GetProperty("itemId").GetUInt32());
     }
+    private readonly Dictionary<string,(DateTime At,long Length,object Value)> parsed=[];
+    private T ReadCached<T>(string path,Func<string,T> parse)
+    {
+        var info=new FileInfo(path);
+        if(!info.Exists){parsed.Remove(path);throw new FileNotFoundException("Import file is unavailable",path);}
+        if(parsed.TryGetValue(path,out var previous)&&previous.At==info.LastWriteTimeUtc&&previous.Length==info.Length)return (T)previous.Value;
+        var text=File.ReadAllText(path);var value=parse(text);
+        // A file being replaced is retried instead of accepting a mixed import.
+        var after=new FileInfo(path);
+        if(after.LastWriteTimeUtc!=info.LastWriteTimeUtc||after.Length!=info.Length)throw new IOException("Import changed while being read");
+        parsed[path]=(info.LastWriteTimeUtc,info.Length,value!);return value;
+    }
     public void Refresh()
     {
         MarketPreferencesReady=!config.ImportMarketBuddy;
@@ -28,27 +40,28 @@ public sealed class ExternalImports
         try
         {
             var path=Path.Combine(directory,"Glamaholic.json");
-            if(File.Exists(path)){var imported=Imports.Glamaholic(File.ReadAllText(path));references.UnionWith(imported);view.Evidence.GlamaholicReferences=imported;view.Evidence.GlamaholicKnown=true;glamReady=true;}
+            if(File.Exists(path)){var imported=ReadCached(path,Imports.Glamaholic);references.UnionWith(imported);view.Evidence.GlamaholicReferences=imported;view.Evidence.GlamaholicKnown=true;glamReady=true;}
             else if(config.GlamaholicExpected)errors.Add("Glamaholic config not found");
         }
         catch(Exception ex){glamReady=false;errors.Add("Glamaholic: "+ex.Message);}
         view.Evidence.References=references;view.Evidence.ReferencesReady=glamReady&&view.NativeReferencesKnown;
         if(config.ImportMarketBuddy)
         {
-            try{var path=Path.Combine(directory,"Marketbuddy.json");if(File.Exists(path)){config.Pricing=Imports.MarketBuddy(File.ReadAllText(path));MarketPreferencesReady=true;}else errors.Add("Market Buddy settings not found; market execution held");}
+            try{var path=Path.Combine(directory,"Marketbuddy.json");if(File.Exists(path)){config.Pricing=ReadCached(path,Imports.MarketBuddy);MarketPreferencesReady=true;}else errors.Add("Market Buddy settings not found; market execution held");}
             catch(Exception ex){errors.Add("Market Buddy: "+ex.Message);}
         }
         try
         {
             var sales=Path.Combine(directory,"AllaganMarket","SaleItems.csv");
-            if(File.Exists(sales))foreach(var line in File.ReadLines(sales).Skip(1).Where(l=>!string.IsNullOrWhiteSpace(l)))
+            if(File.Exists(sales))foreach(var line in ReadCached(sales,text=>text.Split('\n',StringSplitOptions.RemoveEmptyEntries)).Where(l=>!string.IsNullOrWhiteSpace(l)))
             {
                 var fields=line.Split(',');
+                if(fields[0].Trim().Equals("RetainerId",StringComparison.OrdinalIgnoreCase))continue;
                 if(fields.Length<9)throw new InvalidDataException("Unexpected Allagan listing schema");
                 if(uint.Parse(fields[1])==view.World)config.OwnRetainers.Add(ulong.Parse(fields[0]));
             }
             var path=Path.Combine(directory,"AllaganMarket","MarketPriceCache.csv");
-            if(File.Exists(path))foreach(var quote in Imports.MarketCache(File.ReadAllText(path)))
+            if(File.Exists(path))foreach(var quote in ReadCached(path,Imports.MarketCache))
             {
                 var key=(quote.ItemId,quote.Hq);
                 if(quote.World==view.World && (!view.Evidence.Prices.TryGetValue(key,out var current)||current.Observed<quote.Observed))view.Evidence.Prices[key]=quote;

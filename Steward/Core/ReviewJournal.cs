@@ -4,7 +4,7 @@ namespace Steward.Core;
 
 public sealed record ReviewEntry(ulong Character,string Location,uint ItemId,uint Quantity,bool Hq,string Action,string Reason,
     uint? UnitPrice=null,ulong? Total=null,uint? World=null,ulong? Retainer=null,string? PriceSource=null,DateTimeOffset? PriceObserved=null,
-    CollectionCopyEvidence? Collection=null,string? RuleName=null);
+    CollectionCopyEvidence? Collection=null,string? RuleName=null,SaleStatistic? SaleEvidence=null);
 
 public sealed class ReviewJournal
 {

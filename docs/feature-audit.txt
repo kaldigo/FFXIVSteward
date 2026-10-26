@@ -1,0 +1,76 @@
+Steward and AutoRetainer feature audit — 26 October 2026
+Scope: agreed user intent, source paths, regression checks, local builds. Unpublished.
+
+1. Inventory and evidence
+Player bags, armoury, loaded collection and owned-retainer observations feed classification.
+Retainer cache entries remain preview-only. Actions re-read exact source slots and current protection.
+Changed: immutable game metadata and unchanged parsed imports are cached; upstream protection is reused only within a refresh and reset before live authorization. This reduces repeated work without treating offline inventory as live.
+Limit: first-time native dresser, armoire and plate evidence must be loaded in game. Unknown evidence holds work; cross-zone readiness is not proven by a local build.
+
+2. Protection rules
+Native plates, Glamaholic nested folders, bundled/common glamour, level-one/design gear, special acquisition, alliance/Savage/high-end gear and nonmarketable blues remain protected.
+Confirmed normal dungeons/normal raids are exceptions to blue protection only; other references can still protect them. Marketable blue items do not qualify through blue rarity alone.
+Rarity comes from Lumina Item.Rarity in installed game data.
+Reviewed: exact collection copies, dyes ignored, unknown acquisition held, upstream protection and global exclusions take precedence.
+Changed: supplemental collection list now has a direct control. It collects one missing copy; Keep item remains a physical-inventory override.
+
+3. Quantity reserves
+Changed: per-item reserves allocate across live source slots, counting NQ/HQ together. Offline caches never count as surviving reserves. Split plans and final submission enforce removable quantities. Whole-stack disposal is held when any portion is reserved.
+Conservative boundary: when another retainer is unavailable, its inventory cannot reduce the reserve held in the current live scope. This may retain extra copies, never fewer than the requested reserve.
+
+4. Missing collection items on retainers
+Changed: a collection-only sweep uses AutoRetainer's existing retainer selection/postprocessing. Each withdrawal rechecks classification, source, ownership and available capacity. A durable collection hold is saved before withdrawal.
+The earlier Wolf Mark/Glamaholic examples take collection precedence over sales.
+Collection-only sweeps do not retrieve disposal items or start market work.
+Requires the accompanying fork and a reachable summoning bell. Native acceptance of menus and transfers remains outstanding.
+
+5. Dresser and armoire delivery
+Changed: automatic collection now requests AutoRetainer's dresser/inn route; previously only an already-open dresser was processed. AutoRetainer retains armoire and travel execution. Steward retains targeted, acknowledged dresser deposits.
+Changed: repair, prism and current native-filter blocks now alert the player instead of silently skipping.
+Armoire-eligible items use armoire routing and do not consume dresser allowance.
+Unsupported bulk outfit conversion is still deliberately held because it lacks a safe per-item submission gate.
+
+6. Dresser capacity and retainer overflow
+Reviewed: reserve slider, live available-space checks, pending player withdrawals, per-retainer capacity, exact transfer acknowledgement, durable character-scoped holds, player alerts and restoration after restart.
+Retainer storage is not collection evidence. Holds release only after exact live collection ownership.
+When all retainers are full or unavailable, items remain protected and the player is alerted; no disposal fallback.
+
+7. Dresser cleanup
+Reviewed: opt-in cleanup, exact last-copy omission that survives refresh, unlocked outfit components, migration to armoire, protection/exclusion/upstream gates, bag-space and restoration acknowledgement.
+Changed: enabling cleanup can request the dresser route automatically. Migration persists its hold before restoration.
+Protected last copies remain in place. Armoire migration is the protected exception because the destination hold precedes removal.
+
+8. Sale judgement and price retrieval
+Changed: production uses compact Universalis aggregate summaries, up to 100 IDs per request, with current retainer/player candidates first, partial progress, background fetches and persistent cache.
+Default summary refresh is six hours, exposed in settings. Refresh never waits for the entire inventory.
+Average unit/total value and optional daily sales thresholds are per-rule. Missing velocity holds an enabled velocity rule. The quality selector and global combined/separate comparisons remain available.
+The API's recent-sales window is not treated as a lifetime sales history. Older known values survive empty responses and can qualify slow sellers by rule setting. No known average is unknown, not zero. An old or missing value cannot permit disposal.
+A rare item with neither recent sales nor any retained prior average remains held; no historical value is invented. No full historical-backfill service is added.
+A real official summary response was inspected, including missing IDs/qualities and a useful Soiled Femur average despite absent world listings.
+
+9. Automatic new listings and repricing
+Reviewed: category/item/quality matching, first matching rule, Market Buddy preferences, actual slot holes, dynamic filling, repeated splits, own-lowest matching, native competition, exact world/retainer/source binding and price/quantity readback.
+Changed: failed velocity/value decisions cannot be bypassed by the native listing planner; reserves survive repeated splits and final checks.
+Summary values provide explicitly labelled preview estimates only. Native identified competition still determines actual posting. Repricing does not treat a historical average as a competitor.
+
+10. Disposal and AutoRetainer reuse
+Steward grants/denies eligibility; AutoRetainer retains enabled methods, item lists and execution. Materials require explicit per-item disposal permission. Matching sale and collection rules precede disposal.
+Changed: disposal withdrawal now asks whether AutoRetainer has an enabled hard-list vendor/NPC/desynthesis selection, instead of filling bags with every theoretically disposable item.
+GC selection remains AutoRetainer's native delivery-list workflow; Steward does not invent pre-withdrawal GC eligibility or speculative desynthesis returns. GC-only items not selected for another withdrawal path are not automatically pulled from retainers. This is a remaining functional boundary, not a claim of complete GC automation from retainer storage.
+
+11. Review mode, history and alerts
+Changed: individual collection, overflow, sale eligibility, hold/keep/exclusion and price/sales evidence are now logged, alongside listing proposals, disposal and cleanup.
+Collection classifications are candidates, not receipts or exact globally reserved move counts. Live execution chooses a single missing copy and validates capacity again.
+Reviewed: LogOnly independently blocks actions, automatic starts off, mode change cancels before relaxing flags, failed saves hold execution, operation journals and copy evidence persist.
+
+12. Integration identity and maintenance
+AutoRetainer identity/icon are unchanged by this audit. Optional Collect and DisposalSelected operations reuse its queue and selection predicate. Protocol-6 safety semantics remain intact; an older fork lacks the new capabilities and safely holds those paths.
+Reviewed: owned handoff/control release, cancellation, unknown submission recovery, per-item gates and automated upstream-update validation. No release, GitHub push or installed-config change was performed.
+
+Validation
+Steward and AutoRetainer compile locally. Final automated results: 7,461 Steward C# checks, 50 Steward Python tests, 184 AutoRetainer safety checks, and 53 AutoRetainer Python integration/upstream-update tests passed.
+AutoRetainer's upstream-update tests use temporary local repositories, including expected rejected pushes; they do not publish changes.
+Build warnings: Steward's NuGet vulnerability feed was unreachable; AutoRetainer retains upstream compiler warnings and a known MessagePack dependency advisory. Pinned dependencies were not changed.
+
+Native acceptance still required
+Travel/retainer menu callbacks; actual split listing and repricing; withdrawal/deposit acknowledgements; dresser cleanup and armoire migration; live performance on a cold versus warm cache; readiness after zoning; cancellation during an actual game action. None of these have been represented as in-game-tested.

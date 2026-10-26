@@ -8,4 +8,5 @@
   <EmbeddedResource Include="../Steward/data/common-glamour.json" LogicalName="CommonGlamourBundle" />
   <EmbeddedResource Include="../docs/data/common-glamour-evidence.json" LogicalName="CommonGlamourEvidence" />
  </ItemGroup>
+ <ItemGroup><Compile Include="../Steward/Services/AggregatePrices.cs" Link="Services/AggregatePrices.cs" /></ItemGroup>
 </Project>

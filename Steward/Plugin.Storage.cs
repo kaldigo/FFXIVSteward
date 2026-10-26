@@ -1,5 +1,6 @@
 using Dalamud.Bindings.ImGui;
 using Steward.Core;
+using Steward.Services;
 using Dalamud.Interface.ImGuiNotification;
 
 namespace Steward;
@@ -7,6 +8,20 @@ namespace Steward;
 public sealed partial class Plugin
 {
     private bool overflowPass;
+    private bool collectionPass;
+    private long nextCollectionAttempt;
+    private long nextDresserAttempt;
+    private bool cleanupVisited;
+    private bool CollectionNeeded(ulong character)
+    {
+        if(!player.IsLoaded||character==0||character!=player.ContentId||attached!=character||!config.Connected||!config.ExecutionEnabled||executionFault||InventoryView.FreeBagSlots()<2)return false;
+        RefreshProtection();
+        var waiting=view.Items.Where(s=>Judge(s).Outcome==Outcome.CollectDresser).Select(s=>s.ItemId).Distinct().Count();
+        var containers=InventoryView.RetainerTypes().Select(t=>(uint)t).ToHashSet();
+        return tracked.Items.Any(r=>view.Retainers.Contains(r.Owner)&&containers.Contains(r.Stock.Container)&&
+            !view.Items.Any(s=>s.ItemId==r.Stock.ItemId)&&(Judge(r.Stock).Outcome is Outcome.CollectArmoire or Outcome.CollectDresser)&&
+            StoragePolicy.CanWithdraw(Judge(r.Stock).Outcome,view.Evidence.DresserFreeSlots,config.Rules.DresserEmptySlots,waiting,0));
+    }
     private long nextOverflowAttempt;
     private readonly Dictionary<string,long> storageAlerts=[];
     private readonly List<string> cleanupPreview=[];
@@ -44,16 +59,37 @@ public sealed partial class Plugin
         CollectionHolds.Release(held,confirmed,Save);
         foreach(var id in confirmed)view.Evidence.PendingCollection.Remove(id);
     }
-    private void AutomaticStorageWork()
+    private bool AutomaticStorageWork()
     {
-        if(!player.IsLoaded||attached!=player.ContentId||!config.Connected||!config.ExecutionEnabled||executionFault||market.Queue.Running||ownsPostprocess||overflowPass)return;
+        if(!player.IsLoaded||attached!=player.ContentId||!config.Connected||!config.ExecutionEnabled||executionFault||market.Queue.Running||ownsPostprocess||overflowPass||collectionPass)return false;
+        if(Environment.TickCount64>=nextCollectionAttempt&&CollectionNeeded(player.ContentId))
+        {
+            if(!market.CloseDresserForStorage())return false;
+            nextCollectionAttempt=Environment.TickCount64+60000;
+            collectionPass=true;
+            try
+            {
+                if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,"Collect"))return true;
+                collectionPass=false;nextCollectionAttempt=Environment.TickCount64+5000;Alert("Protected items on retainers are waiting for collection. Move near a summoning bell and keep free inventory space.");
+            }
+            catch{collectionPass=false;throw;}
+        }
         if(view.Items.Any(s=>Judge(s).Outcome==Outcome.CollectArmoire))
         {
-            if(!market.CloseDresserForStorage())return;
-            if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,"Armoire"))return;
+            if(!market.CloseDresserForStorage())return false;
+            if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,"Armoire"))return true;
         }
-        if(!view.Items.Any(s=>Judge(s).Outcome==Outcome.StoreRetainer)||Environment.TickCount64<nextOverflowAttempt)return;
-        StartOverflow();
+        if(market.DresserOpen)cleanupVisited=true;
+        if(!market.DresserOpen&&Environment.TickCount64>=nextDresserAttempt&&
+            (view.Items.Any(s=>Judge(s).Outcome==Outcome.CollectDresser)||config.CleanDresser&&!cleanupVisited))
+        {
+            nextDresserAttempt=Environment.TickCount64+60000;
+            if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,"Dresser"))return true;
+            Alert("Glamour collection is waiting for AutoRetainer's dresser route. Check its travel dependencies; protected items remain safe.");
+        }
+        if(view.Items.Any(s=>Judge(s).Outcome==Outcome.StoreRetainer)&&Environment.TickCount64>=nextOverflowAttempt)
+        {StartOverflow();return overflowPass;}
+        return false;
     }
     private void StartOverflow()
     {
@@ -77,7 +113,7 @@ public sealed partial class Plugin
         if(ImGui.SliderInt("Leave empty dresser slots",ref reserve,0,800)){config.Rules.DresserEmptySlots=reserve;Save();}
         ImGui.TextWrapped("Armoire items do not use this allowance. Protected dresser overflow goes to retainers and remains protected until collection is confirmed.");
         var cleanup=config.CleanDresser;
-        if(ImGui.Checkbox("Clean dresser using all protection rules",ref cleanup)){config.CleanDresser=cleanup;Save();}
+        if(ImGui.Checkbox("Clean dresser using all protection rules",ref cleanup)){config.CleanDresser=cleanup;cleanupVisited=false;Save();}
         ImGui.TextWrapped("Cleanup restores items that no rule needs and moves eligible pieces to the armoire. Required last copies, unknown sources, exclusions, gear sets and AutoRetainer protections are preserved.");
         if(ImGui.Button("Preview dresser cleanup"))
         {

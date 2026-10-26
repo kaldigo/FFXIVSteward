@@ -9,7 +9,7 @@ public sealed record ItemFacts(uint Id, string Name, bool Equipment, byte Rarity
 public sealed record Stock(uint ItemId, bool Hq, uint Quantity, uint Container, ushort Slot);
 public sealed record Quote(uint ItemId, bool Hq, uint World, uint UnitPrice, DateTimeOffset Observed,
     string Source, bool Own = false);
-public sealed record Decision(Outcome Outcome, string Reason, SaleRule? Rule = null, uint? UnitPrice = null);
+public sealed record Decision(Outcome Outcome, string Reason, SaleRule? Rule = null, uint? UnitPrice = null, bool SaleRejected = false, uint? MaximumRemovable = null);
 public sealed class SaleRule
 {
     public string Name { get; set; } = "Sale rule";
@@ -23,6 +23,8 @@ public sealed class SaleRule
     public uint MinimumUnit { get; set; } = 1000;
     public uint MinimumTotal { get; set; } = 5000;
     public int MaximumStack { get; set; } = 99;
+    public double? MinimumDailySales { get; set; }
+    public bool AllowOlderSaleValue { get; set; } = true;
     public bool Matches(ItemFacts item, Stock stock) => Enabled &&
         (ItemIds.Count == 0 || ItemIds.Contains(item.Id)) &&
         (Group==ItemGroup.Any || Group==ItemGroup.Gear&&item.Equipment || Group==ItemGroup.Other&&!item.Equipment) &&
@@ -36,10 +38,13 @@ public sealed class RuleSettings
     public HashSet<uint> IgnoredCategories { get; set; } = [];
     public bool IsIgnored(ItemFacts item)=>Ignored.Contains(item.Id)||IgnoredCategories.Contains(item.Category);
     public HashSet<uint> Keep { get; set; } = [];
+    public HashSet<uint> CollectionKeep { get; set; } = [];
+    public Dictionary<uint,uint> QuantityReserves { get; set; } = [];
     public HashSet<uint> NonEquipmentDisposal { get; set; } = [];
     public HashSet<uint> CommonGlamour { get; set; } = [];
     public List<SaleRule> Sales { get; set; } = [];
-    public int MaximumPriceAgeMinutes { get; set; } = 30;
+    public int MaximumPriceAgeMinutes { get; set; } = 30; // Native/imported listing evidence only.
+    public int SummaryRefreshHours { get; set; } = 6;
     public QualityMode Quality { get; set; } = QualityMode.Separate;
     public int DresserEmptySlots { get; set; } = 20;
 }
@@ -64,6 +69,9 @@ public sealed class Evidence
     public HashSet<uint> Armoire { get; set; } = [];
     public HashSet<uint> PendingCollection { get; set; } = [];
     public int? DresserFreeSlots { get; set; }
+    public List<Stock> ReserveStocks { get; set; } = [];
+    public bool StatisticsRequired { get; set; }
+    public Dictionary<(uint, bool), SaleStatistic> SaleStatistics { get; set; } = [];
     public Dictionary<(uint, bool), Quote> Prices { get; set; } = [];
     public Dictionary<(uint, bool), Quote> PublicOwnPrices { get; set; } = [];
 }
@@ -78,18 +86,22 @@ public static class Rules
         if(settings.Keep.Contains(item.Id)) return new(Outcome.Keep, "Explicit keep override");
         if(!evidence.GearsetsReady || !evidence.ReferencesReady) return new(Outcome.Wait, "Glamour references or gear sets are unavailable");
         if(evidence.Gearsets.Contains(item.Id)) return new(Outcome.Keep, "Equipped or referenced by a gear set");
+        var removable=QuantityReserve.Removable(stock,settings.QuantityReserves.GetValueOrDefault(item.Id),evidence.ReserveStocks);
+        if(removable==null)return new(Outcome.Wait,"Quantity reserve needs live source inventory");
+        if(removable==0)return new(Outcome.Keep,"Quantity reserve protects this stack");
+        if(settings.CollectionKeep.Contains(item.Id)&&!item.Equipment&&!item.ArmoireEligible)return new(Outcome.Keep,"Supplemental collection item has no equipment storage destination");
         var routineDuty = item.Source is SourceKind.NormalDungeon or SourceKind.NormalRaid;
         var ordinary = routineDuty || item.Source == SourceKind.Ordinary;
         var pending = evidence.PendingCollection.Contains(item.Id);
         var rarityProtected = item.Rarity > 3 || (item.Rarity == 3 && !item.Marketable && !routineDuty);
         var collect = item.ArmoireEligible || item.Equipment && (rarityProtected || item.EquipLevel == 1 || item.DesignedForGlamour ||
-            !ordinary || pending || settings.CommonGlamour.Contains(item.Id) || evidence.CuratedGlamour.Contains(item.Id) || evidence.References.Contains(item.Id));
+            !ordinary || pending || settings.CollectionKeep.Contains(item.Id) || settings.CommonGlamour.Contains(item.Id) || evidence.CuratedGlamour.Contains(item.Id) || evidence.References.Contains(item.Id));
         if(collect)
         {
             if(!evidence.DresserKnown || !evidence.ArmoireKnown) return new(Outcome.Wait, "Live dresser or armoire ownership is unavailable");
             if(!evidence.Armoire.Contains(item.Id) && (item.ArmoireEligible || evidence.OmittedDresserItem==item.Id || !evidence.Dresser.Contains(item.Id)))
             {
-                if(item.Source == SourceKind.Unknown && !pending && !item.ArmoireEligible && !evidence.References.Contains(item.Id) && !item.DesignedForGlamour && !rarityProtected && item.EquipLevel != 1 && !settings.CommonGlamour.Contains(item.Id) && !evidence.CuratedGlamour.Contains(item.Id))
+                if(item.Source == SourceKind.Unknown && !pending && !settings.CollectionKeep.Contains(item.Id) && !item.ArmoireEligible && !evidence.References.Contains(item.Id) && !item.DesignedForGlamour && !rarityProtected && item.EquipLevel != 1 && !settings.CommonGlamour.Contains(item.Id) && !evidence.CuratedGlamour.Contains(item.Id))
                     return new(Outcome.Keep, "Acquisition source is uncertain; preserve for collection");
                 if(!item.ArmoireEligible && evidence.DresserFreeSlots is int free && free<=Math.Clamp(settings.DresserEmptySlots,0,800))
                     return new(Outcome.StoreRetainer,"Protected overflow: store in a retainer until dresser space is available");
@@ -97,9 +109,31 @@ public static class Rules
             }
         }
         var rule = settings.Sales.FirstOrDefault(r => r.Matches(item, stock));
+        var saleRejected=false;
         if(item.Marketable)
         {
             if(world==0)return new(Outcome.Wait,"Current world is unavailable; market valuation is blocked");
+            if(evidence.StatisticsRequired)
+            {
+                var value=SaleStatistics.Select(evidence,item.Id,stock.Hq,settings.Quality,world,now);
+                if(value==null)return new(Outcome.Wait,"Average sale value unavailable; sale and disposal held",rule);
+                var current=value.RecentSales&&value.ValueObserved.HasValue&&now-value.ValueObserved.Value<=TimeSpan.FromHours(Math.Clamp(settings.SummaryRefreshHours,1,168));
+                if(rule!=null)
+                {
+                    if(!current&&!rule.AllowOlderSaleValue)return new(Outcome.Wait,"Rule requires recent sale evidence",rule);
+                    if(rule.MinimumDailySales is double minimum && (value.DailySales==null||!current))
+                        return new(Outcome.Wait,"Rule sales velocity is unknown; item held",rule);
+                    var quantity=Math.Min(removable.Value,(uint)Math.Clamp(rule.MaximumStack,1,9999));
+                    if(value.Average>=rule.MinimumUnit&&value.Average*quantity>=rule.MinimumTotal&&
+                        (rule.MinimumDailySales==null||value.DailySales>=rule.MinimumDailySales))
+                        return new(Outcome.Market,"Matches average-value and sales-velocity rule: "+rule.Name,rule,(uint)Math.Floor(value.Average!.Value),MaximumRemovable:removable);
+                    saleRejected=true;
+                }
+                // An old value can propose a sale, but a quiet four-day window never permits destruction.
+                if(!current)return new(Outcome.Wait,"Older sale value retained; disposal held without recent sales",rule,SaleRejected:saleRejected);
+            }
+            else
+            {
             var candidates = evidence.Prices.Values.Where(p => p.ItemId == item.Id && p.World == world && !p.Own &&
                 (settings.Quality == QualityMode.Combined || p.Hq == stock.Hq) && p.UnitPrice > 0 &&
                 p.Observed <= now && now-p.Observed <= TimeSpan.FromMinutes(settings.MaximumPriceAgeMinutes));
@@ -107,13 +141,15 @@ public static class Rules
             if(quote == null) return new(Outcome.Wait, "No fresh competing price; disposal is blocked");
             if(rule != null)
             {
-                var quantity = Math.Min(stock.Quantity, (uint)Math.Clamp(rule.MaximumStack, 1, 9999));
+                var quantity = Math.Min(removable.Value, (uint)Math.Clamp(rule.MaximumStack, 1, 9999));
                 if(quote.UnitPrice >= rule.MinimumUnit && (ulong)quote.UnitPrice*quantity >= rule.MinimumTotal)
-                    return new(Outcome.Market, "Matches sale rule: " + rule.Name, rule, quote.UnitPrice);
+                    return new(Outcome.Market, "Matches sale rule: " + rule.Name, rule, quote.UnitPrice,MaximumRemovable:removable);
             }
         }
+        }
         if(!item.Equipment && !settings.NonEquipmentDisposal.Contains(item.Id))
-            return new(Outcome.Keep, "Non-equipment disposal requires explicit item permission",rule);
-        return new(Outcome.Dispose, collect ? "Exact copy already collected; surplus may use AutoRetainer disposal rules" : "Outside collection rules; use AutoRetainer disposal rules",rule);
+            return new(Outcome.Keep, "Non-equipment disposal requires explicit item permission",rule,SaleRejected:saleRejected);
+        if(removable<stock.Quantity)return new(Outcome.Keep,"Stack contains a quantity reserve; whole-stack disposal blocked",rule);
+        return new(Outcome.Dispose, collect ? "Exact copy already collected; surplus may use AutoRetainer disposal rules" : "Outside collection rules; use AutoRetainer disposal rules",rule,SaleRejected:saleRejected);
     }
 }

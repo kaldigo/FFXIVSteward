@@ -42,9 +42,10 @@ public static class Imports
     {
         var result = new List<Quote>();
         var lines = csv.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        foreach(var raw in lines.Skip(1))
+        foreach(var raw in lines)
         {
             var fields = raw.TrimEnd('\r').Split(',');
+            if(fields[0].Trim().Equals("ItemId",StringComparison.OrdinalIgnoreCase))continue;
             if(fields.Length != 7) throw new InvalidDataException("Unexpected Allagan Market cache columns");
             if(fields[1] is not ("Y" or "N") || fields[6] is not ("Y" or "N"))throw new InvalidDataException("Unknown Allagan Market quality or owner flag");
             var date = DateTime.Parse(fields[4].Trim('"'), CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal);

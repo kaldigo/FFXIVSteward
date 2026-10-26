@@ -14,6 +14,8 @@ public sealed unsafe class InventoryView
     private readonly Dictionary<uint,uint[]> outfits;
     private readonly (uint Row,uint Item)[] cabinet;
     private readonly HashSet<uint> crafted;
+    private readonly HashSet<uint> cabinetItems;
+    private readonly Dictionary<uint,ItemFacts> itemMetadata=[];
     private readonly IReadOnlyDictionary<uint,SourceKind> acquisitionSources=AcquisitionSources.Load();
     public Evidence Evidence { get; } = new();
     public List<Stock> Items { get; } = [];
@@ -28,21 +30,29 @@ public sealed unsafe class InventoryView
         this.data=data;this.config=config;
         Categories=data.GetExcelSheet<Sheets.ItemUICategory>().Where(r=>!string.IsNullOrWhiteSpace(r.Name.ToString())).ToDictionary(r=>r.RowId,r=>r.Name.ToString());
         cabinet=data.GetExcelSheet<Sheets.Cabinet>().Where(r=>r.Item.RowId!=0).Select(r=>(r.RowId,r.Item.RowId)).ToArray();
+        cabinetItems=cabinet.Select(c=>c.Item).ToHashSet();
         outfits=data.GetExcelSheet<Sheets.MirageStoreSetItem>().ToDictionary(r=>r.RowId,r=>new[]{r.MainHand.RowId,r.OffHand.RowId,r.Head.RowId,r.Body.RowId,r.Hands.RowId,r.Legs.RowId,r.Feet.RowId,r.Earrings.RowId,r.Necklace.RowId,r.Bracelets.RowId,r.Ring.RowId});
         crafted=data.GetExcelSheet<Sheets.Recipe>().Where(r=>r.ItemResult.RowId!=0).Select(r=>r.ItemResult.RowId).ToHashSet();
     }
     public ItemFacts? Facts(uint id)
     {
         id%=1000000;
-        if(!data.GetExcelSheet<Sheets.Item>().TryGetRow(id,out var row))return null;
+        if(!itemMetadata.TryGetValue(id,out var facts))
+        {
+            if(!data.GetExcelSheet<Sheets.Item>().TryGetRow(id,out var row))return null;
+            // IsGlamorous means dresser-compatible, not cosmetic-purpose gear.
+            facts=new(id,row.Name.ToString(),row.EquipSlotCategory.RowId!=0,row.Rarity,row.LevelEquip,
+                !row.IsUntradable && row.ItemSearchCategory.RowId!=0,cabinetItems.Contains(id),row.IsPvP?SourceKind.Special:SourceKind.Unknown,
+                row.ItemUICategory.RowId,row.PriceLow,row.LevelItem.RowId==1);
+            itemMetadata[id]=facts;
+        }
         var source=config.Sources.GetValueOrDefault(id,crafted.Contains(id)?SourceKind.Ordinary:SourceKind.Unknown);
         source=AcquisitionSources.Merge(source,acquisitionSources.GetValueOrDefault(id));
         source=AcquisitionSources.Merge(source,config.DutySources.GetValueOrDefault(id));
-        if(row.IsPvP)source=SourceKind.Special;
-        // IsGlamorous means dresser-compatible (almost all equipment), not cosmetic-purpose gear.
-        return new(id,row.Name.ToString(),row.EquipSlotCategory.RowId!=0,row.Rarity,row.LevelEquip,
-            !row.IsUntradable && row.ItemSearchCategory.RowId!=0,cabinet.Any(c=>c.Item==id),source,row.ItemUICategory.RowId,row.PriceLow,row.LevelItem.RowId==1);
+        source=AcquisitionSources.Merge(source,facts.Source);
+        return facts with{Source=source};
     }
+
     public void Refresh(ulong character)
     {
         Evidence.InvalidateLive();
@@ -55,7 +65,7 @@ public sealed unsafe class InventoryView
             Evidence.DresserKnown=Evidence.ArmoireKnown=Evidence.GearsetsReady=Evidence.ReferencesReady=false;
             NativeReferencesKnown=false;NativeReferences.Clear();Retainers.Clear();
         }
-        Items.Clear();Evidence.Gearsets.Clear();Evidence.GearsetsReady=false;
+        Evidence.ReserveStocks.Clear();Items.Clear();Evidence.Gearsets.Clear();Evidence.GearsetsReady=false;
         if(character==0)return;
         var im=InventoryManager.Instance();if(im==null)return;
         foreach(var type in InventoryTypes())Read(type,Items);
@@ -100,6 +110,9 @@ public sealed unsafe class InventoryView
         var rm=RetainerManager.Instance();
         if(rm!=null && rm->IsReady)
             foreach(var r in rm->Retainers)if(r.RetainerId!=0){Retainers.Add(r.RetainerId);config.OwnRetainers.Add(r.RetainerId);}
+        Evidence.ReserveStocks.AddRange(Items);
+        if(rm!=null&&rm->IsReady&&Retainers.Contains(rm->LastSelectedRetainerId)&&RetainerTypes().All(t=>Loaded((uint)t)))
+            foreach(var type in RetainerTypes())Read(type,Evidence.ReserveStocks);
     }
     public static InventoryType[] InventoryTypes() => Enum.GetValues<InventoryType>().Where(t=>t is >= InventoryType.Inventory1 and <= InventoryType.Inventory4 || t.ToString().StartsWith("Armory",StringComparison.Ordinal)).ToArray();
     public static InventoryType[] RetainerTypes() => [InventoryType.RetainerPage1,InventoryType.RetainerPage2,InventoryType.RetainerPage3,InventoryType.RetainerPage4,InventoryType.RetainerPage5,InventoryType.RetainerPage6,InventoryType.RetainerPage7];

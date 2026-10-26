@@ -5,6 +5,7 @@ namespace Steward.Services;
 
 public sealed unsafe partial class MarketQueue
 {
+    public bool DresserOpen=>ui.Get("MiragePrismPrismBoxCrystallize")!=null;
     public bool CloseDresserForStorage()
     {
         if(!config.ExecutionEnabled)return false;

@@ -92,7 +92,10 @@ class Distribution(unittest.TestCase):
   source=(ROOT/'Steward/Plugin.cs').read_text()
   judge=source.split('private Decision Judge(Stock stock)')[1].split('private void RefreshProtection()')[0]
   self.assertIn('AutoRetainer.PluginState.IsItemProtected',judge)
-  self.assertIn('UpstreamProtection.Apply(decision,null)',judge)
+  self.assertIn('catch{protectedItem=null;}',judge)
+  self.assertIn('UpstreamProtection.Apply(decision,protectedItem)',judge)
+  refresh=source.split('private void RefreshProtection()')[1].split('private Decision JudgeLive')[0]
+  self.assertIn('protectionSnapshot.Clear();',refresh)
  def test_all_queue_paths_use_durable_start_and_acknowledgement(self):
   plugin=(ROOT/'Steward/Plugin.cs').read_text();queue=(ROOT/'Steward/Services/MarketQueue.cs').read_text()
   self.assertIn('HoldExecution,BeginOperation,CompleteOperation,ProtectCollection,Alert,Judge)',plugin)

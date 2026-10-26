@@ -81,6 +81,7 @@ ListingChecks.Run(Check,now);
 DisposalEvidenceChecks.Run(Check,now);
 await UniversalisChecks.Run(Check,now);
 CategoryChecks.Run(Check,now);
+await FeatureAuditChecks.Run(Check,now);
 Console.WriteLine($"{total} checks passed including disposal/protection safety regressions.");
 if(args.Length==3)
 {

@@ -163,7 +163,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     var choice=ListingPlanner.Next(new(facts,expected,decision,saleRule,reference),config.Pricing,view.World,config.Rules.MaximumPriceAgeMinutes,DateTimeOffset.UtcNow);
                     if(!choice.Eligible){history("Held listing "+expected.ItemId+": "+choice.Reason);return Finish();}
                     target=choice.UnitPrice;quantity=(int)choice.Quantity;
-                    decision=new(Outcome.Market,"Validated live listing plan",saleRule,target);
+                    decision=decision with{Outcome=Outcome.Market,Reason="Validated live listing plan",Rule=saleRule,UnitPrice=target};
                 }
                 else
                 {
@@ -197,7 +197,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     var choice=ListingPlanner.Next(new(facts,expected,decision,saleRule,ReferenceFromOffers(expected.ItemId,expected.Hq,result.At,result.Offers)),
                         config.Pricing,view.World,config.Rules.MaximumPriceAgeMinutes,DateTimeOffset.UtcNow);
                     if(!choice.Eligible||choice.Quantity!=quantity)return StepResult.Failed;
-                    latest=choice.UnitPrice;decision=new(Outcome.Market,"Validated live listing plan",saleRule,latest);
+                    latest=choice.UnitPrice;decision=decision with{Outcome=Outcome.Market,Reason="Validated live listing plan",Rule=saleRule,UnitPrice=latest};
                     if(!MarketSnapshot(out var selected,out var currentListings,false)||selected!=retainer||!occupiedBefore.SetEquals(currentListings.Select(s=>s.Slot)))return StepResult.Failed;
                 }
                 else latest=Pricing.Target(expected.ItemId,expected.Hq,beforePrice,result.Offers,config.OwnRetainers,config.Rules.Quality,config.Pricing,decision.Rule?.MinimumUnit??1);
@@ -266,7 +266,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
     public void Dispose(){try{Stop();}finally{market.OfferingsReceived-=Received;}}
     public void ReturnToRetainerMenu()
     {ui.Close("ItemSearchResult");ui.Close("RetainerSell");ui.Close("RetainerSellList");var agent=AgentRetainer.Instance();if(agent!=null)agent->Hide();}
-    public void WithdrawForOtherActions(ulong character,bool overflowOnly=false)
+    public void WithdrawForOtherActions(ulong character,bool overflowOnly=false,bool collectionOnly=false)
     {
         Queue.Begin();
         var manager=RetainerManager.Instance();
@@ -277,7 +277,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
         var dresserWithdrawals=0;
         var initialWaiting=view.Items.Where(s=>judge(s).Outcome==Outcome.CollectDresser).Select(s=>s.ItemId).Distinct().Count();
         List<Stock> stored=[];foreach(var type in InventoryView.RetainerTypes())InventoryView.Read(type,stored);
-        foreach(var stock in stored.Where(s=>judge(s).Outcome is Outcome.CollectArmoire or Outcome.CollectDresser or Outcome.Dispose)
+        foreach(var stock in stored.Where(s=>judge(s).Outcome is Outcome.CollectArmoire or Outcome.CollectDresser || !collectionOnly&&judge(s).Outcome==Outcome.Dispose)
             .OrderBy(s=>view.Facts(s.ItemId) is {} f?StoragePolicy.Priority(f,config.Rules,view.Evidence):int.MaxValue).ThenBy(s=>s.ItemId))
         {
             var sent=false;long before=0;
@@ -293,10 +293,18 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     before=view.Items.Where(s=>s.ItemId==stock.ItemId&&s.Hq==stock.Hq).Sum(s=>(long)s.Quantity);
                     if(InventoryView.ReadSlot(stock.Container,stock.Slot)!=stock)return StepResult.Failed;
                     var decision=judge(stock);if(decision.Outcome is not (Outcome.CollectArmoire or Outcome.CollectDresser or Outcome.Dispose))return StepResult.Completed;
+                    if(decision.Outcome==Outcome.Dispose)
+                    {
+                        bool selected;
+                        try{selected=pi.GetIpcSubscriber<uint,uint,bool>("AutoRetainer.InventoryPolicy.DisposalSelected").InvokeFunc(stock.ItemId,stock.Quantity);}
+                        catch{selected=false;}
+                        if(!selected){history("Retainer item "+stock.ItemId+" left in storage: no enabled AutoRetainer disposal selection.");return StepResult.Completed;}
+                    }
                     if(decision.Outcome is Outcome.CollectArmoire or Outcome.CollectDresser && view.Items.Any(s=>s.ItemId==stock.ItemId))return StepResult.Completed;
                     var waiting=Math.Max(initialWaiting,view.Items.Where(s=>judge(s).Outcome==Outcome.CollectDresser).Select(s=>s.ItemId).Distinct().Count()-dresserWithdrawals);
                     if(!StoragePolicy.CanWithdraw(decision.Outcome,view.Evidence.DresserFreeSlots,config.Rules.DresserEmptySlots,waiting,dresserWithdrawals))return StepResult.Completed;
                     if(InventoryView.FreeBagSlots()<2)return StepResult.Completed;
+                    if(decision.Outcome is Outcome.CollectDresser or Outcome.CollectArmoire)protectCollection(stock.ItemId);
                     var payload=System.Text.Json.JsonSerializer.Serialize(new{stock.Container,stock.Slot,stock.ItemId,stock.Quantity,stock.Hq,Retainer=retainer});
                     if(!pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Retrieve").InvokeFunc(character,payload))return StepResult.Failed;
                     sent=true;return StepResult.Waiting;
@@ -398,10 +406,10 @@ public sealed unsafe partial class MarketQueue : IDisposable
                         var row=agent->Data->CrystallizeItems[i];
                         if(row.ItemId%1000000==source.ItemId&&(uint)row.Inventory==source.Container&&row.Slot==source.Slot){selected=i;break;}
                     }
-                    if(selected<0)return StepResult.Completed; // Current native filter may not include this item.
+                    if(selected<0){notify("Dresser deposit held for "+view.Facts(source.ItemId)?.Name+": the item is not available in the current dresser filter.");return StepResult.Completed;}
                     var im=InventoryManager.Instance();var inv=im->GetInventoryContainer((InventoryType)source.Container);
                     var item=inv->GetInventorySlot(source.Slot);
-                    if(item->GetConditionPercentage()!=100||im->GetInventoryItemCount(21800)<1)return StepResult.Completed;
+                    if(item->GetConditionPercentage()!=100||im->GetInventoryItemCount(21800)<1){notify("Dresser deposit needs fully repaired gear and a glamour prism. Item "+source.ItemId+" remains protected.");return StepResult.Completed;}
                     if(!ui.Callback("MiragePrismPrismBoxCrystallize",0,selected))return StepResult.Failed;
                     opened=DateTimeOffset.UtcNow;phase=1;return StepResult.Waiting;
                 }

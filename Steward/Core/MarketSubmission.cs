@@ -9,6 +9,7 @@ public static class MarketSubmission
             displayedPrice!=plannedPrice || displayedQuantity!=plannedQuantity)return false;
         if(reprice ? decision.Outcome is not (Outcome.Market or Outcome.Dispose) : decision.Outcome!=Outcome.Market)return false;
         if(reprice ? plannedQuantity!=expected.Quantity : plannedQuantity>(uint)Math.Clamp(maximumStack,1,9999))return false;
+        if(!reprice&&decision.MaximumRemovable is uint available&&plannedQuantity>available)return false;
         return decision.Rule==null || plannedPrice>=decision.Rule.MinimumUnit &&
             (ulong)plannedPrice*plannedQuantity>=decision.Rule.MinimumTotal;
     }

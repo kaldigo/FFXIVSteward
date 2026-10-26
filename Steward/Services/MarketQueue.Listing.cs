@@ -41,6 +41,10 @@ public sealed unsafe partial class MarketQueue
         InventoryView.Read(InventoryType.RetainerMarket,listings);
         return listings.Count<=20&&listings.All(s=>s.Slot<20)&&listings.Select(s=>s.Slot).Distinct().Count()==listings.Count;
     }
+    public IReadOnlyList<Stock> PriceCandidates()
+    {
+        return MarketSnapshot(out _,out var listings)?listings.Concat(AvailableSaleStock()).Distinct().ToArray():[];
+    }
     private List<Stock> AvailableSaleStock()
     {
         var result=view.Items.Where(s=>s.Container<4).ToList();
@@ -76,7 +80,10 @@ public sealed unsafe partial class MarketQueue
         foreach(var price in view.Evidence.PublicOwnPrices.Values.Where(p=>p.ItemId==id&&p.World==view.World&&
             (config.Rules.Quality==QualityMode.Combined||p.Hq==hq)&&p.Observed<=now&&now-p.Observed<=TimeSpan.FromMinutes(config.Rules.MaximumPriceAgeMinutes)))
             own=own.HasValue?Math.Min(own.Value,price.UnitPrice):price.UnitPrice;
-        return quote==null?null:new(view.World,quote.UnitPrice,own,quote.Observed,quote.Source+" cache; own prices outside the current retainer may be incomplete",true);
+        if(quote!=null)return new(view.World,quote.UnitPrice,own,quote.Observed,quote.Source+" cache; own prices outside the current retainer may be incomplete",true);
+        var summary=SaleStatistics.Select(view.Evidence,id,hq,config.Rules.Quality,view.World,now);
+        return summary==null?null:new(view.World,summary.MinimumListing??(uint)Math.Floor(summary.Average!.Value),own,
+            summary.ValueObserved!.Value,"Universalis summary estimate; seller identities unavailable, actual posting requires native comparison",true,true);
     }
     private ListingInput? SaleInput(Stock stock,bool live,MarketReference? reference=null)
     {
@@ -108,7 +115,7 @@ public sealed unsafe partial class MarketQueue
             if(target.HasValue&&MarketSubmission.CanCommit(listing,listing,decision,true,target.Value,listing.Quantity,(int)target.Value,(int)listing.Quantity,9999))
                 reprices.Add(new(listing,before,target.Value,reference,decision.Rule?.Name));
         }
-        return new(retainer,view.World,plan,reprices,$"{listings.Count}/20 slots occupied; {plan.Listings.Count} proposed new listings; {plan.FreeSlotsRemaining} slots remain. Estimates use fresh cached or manually observed prices; execution always rechecks the game market.{(config.Rules.Sales.Any(r=>r.Enabled)?"":" Add an enabled auto-sell rule in Rules to propose new listings.")}");
+        return new(retainer,view.World,plan,reprices,$"{listings.Count}/20 slots occupied; {plan.Listings.Count} proposed new listings; {plan.FreeSlotsRemaining} slots remain. Estimates use cached summaries or manually observed prices; execution always rechecks the game market.{(config.Rules.Sales.Any(r=>r.Enabled)?"":" Add an enabled auto-sell rule in Rules to propose new listings.")}");
     }
     private void EnqueueListingPump(ulong retainer,bool coordinated,ListingPass pass)
     {
