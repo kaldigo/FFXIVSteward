@@ -97,16 +97,6 @@ static class FeatureAuditChecks
             client.Apply(84,new HashSet<ulong>(),6,evidence,true,now);check(evidence.SaleStatistics.Count==0,"Switching world clears applied summaries");
             client.Apply(83,new HashSet<ulong>(),6,evidence,false,now);check(!evidence.StatisticsRequired&&evidence.SaleStatistics.Count==0,"Disabling summaries clears their evidence");
         }
-        var bulk=new Handler(json);
-        using(var client=new AggregatePrices(handler:bulk))
-        {
-            evidence=new();var ids=Enumerable.Range(1,130).Select(i=>(uint)i).ToArray();
-            client.Tick(83,ids,new HashSet<ulong>(),6,evidence,true,now);
-            for(var i=0;i<100&&evidence.SaleStatistics.Count==0;i++){await Task.Delay(1);client.Tick(83,[],new HashSet<ulong>(),6,evidence,true,now);}
-            check(bulk.Uri!.AbsolutePath.Split('/').Last().Split(',').Length==100,"Cold prefetch batches at most 100 item summaries");
-            client.Tick(83,ids,new HashSet<ulong>(),6,evidence,true,now.AddSeconds(1));
-            check(bulk.Calls==2&&bulk.Uri!.AbsolutePath.Split('/').Last().Split(',').Length==30,"Empty items do not starve the next prefetch batch");
-        }
         var limited=new LimitedHandler();
         using(var client=new AggregatePrices(handler:limited))
         {

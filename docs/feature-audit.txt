@@ -41,7 +41,7 @@ Changed: enabling cleanup can request the dresser route automatically. Migration
 Protected last copies remain in place. Armoire migration is the protected exception because the destination hold precedes removal.
 
 8. Sale judgement and price retrieval
-Changed: production uses compact Universalis aggregate summaries, up to 100 IDs per request, with current retainer/player candidates first, partial progress, background fetches and persistent cache.
+Changed: production uses compact Universalis aggregate summaries, up to five IDs per request (two concurrent requests, four starts per second; timeout recovery added after this audit), with current retainer/player candidates first, partial progress, background fetches and persistent cache.
 Default summary refresh is six hours, exposed in settings. Refresh never waits for the entire inventory.
 Average unit/total value and optional daily sales thresholds are per-rule. Missing velocity holds an enabled velocity rule. The quality selector and global combined/separate comparisons remain available.
 The API's recent-sales window is not treated as a lifetime sales history. Older known values survive empty responses and can qualify slow sellers by rule setting. No known average is unknown, not zero. An old or missing value cannot permit disposal.
