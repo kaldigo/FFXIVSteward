@@ -7,8 +7,10 @@ public sealed class TrackedInventories(IDalamudPluginInterface pi)
 {
     public List<(ulong Owner,Stock Stock)> Items { get; private set; }=[];
     public string Status { get; private set; }="Not yet queried";
-    public void Refresh()
+    public void Refresh(ulong character,IReadOnlySet<ulong> retainers,InventoryMemory memory)
     {
+        Items=memory.Stocks(character).Where(r=>retainers.Contains(r.Owner)).ToList();
+        if(character==0){Items=[];return;}
         try
         {
             if(!pi.GetIpcSubscriber<bool>("AllaganTools.IsInitialized").InvokeFunc())throw new InvalidOperationException("Allagan Tools is not ready");
@@ -22,8 +24,10 @@ public sealed class TrackedInventories(IDalamudPluginInterface pi)
                     // CriticalCommonLib.InventoryItem.ToNumeric(): container, slot, item, quantity, flags at 6.
                     items.Add((owner,new((uint)row[2]%1000000,(row[6]&1)!=0,checked((uint)row[3]),checked((uint)row[0]),checked((ushort)row[1]))));
                 }
-            Items=items;Status=$"Allagan Tools: {owners.Count} tracked owners, {items.Count} cached stacks. Preview only; actions use live slots.";
+            foreach(var owner in owners.Where(retainers.Contains))
+                memory.ObserveRetainer(character,owner,items.Where(r=>r.Item1==owner&&r.Item2.Container is >=10000 and <=10006).Select(r=>r.Item2),onlyIfMissing:true);
+            Items=memory.Stocks(character).Where(r=>retainers.Contains(r.Owner)).ToList();memory.Flush();Status=$"Allagan Tools: {owners.Count} tracked owners, {items.Count} cached stacks. Preview only; actions use live slots.";
         }
-        catch(Exception ex){Items=[];Status="Tracked inventories unavailable: "+ex.Message;}
+        catch(Exception ex){Status="Using persistent retainer observations for preview/prefetch; Allagan Tools unavailable: "+ex.Message;}
     }
 }

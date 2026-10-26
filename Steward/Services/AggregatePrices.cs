@@ -12,9 +12,9 @@ public sealed class AggregatePrices : IDisposable
     private readonly Dictionary<(uint,uint,bool),SaleStatistic> cache=[];
     private readonly Dictionary<(uint,uint),DateTimeOffset> retry=[];
     private readonly string? path;
-    private const int MaximumConcurrentRequests=2;
+    private const int MaximumConcurrentRequests=4;
     private const int MaximumRequestsPerSecond=4;
-    private int batchSize=5;
+    private int batchSize=20;
     private sealed record Request(uint World,uint[] Items,Task<Result> Task);
     private readonly List<Request> pending=[];
     private readonly Queue<DateTimeOffset> starts=[];
@@ -38,9 +38,9 @@ public sealed class AggregatePrices : IDisposable
         {
             if(new FileInfo(path).Length>4*1024*1024)throw new InvalidDataException("Oversized statistics cache");
             foreach(var s in JsonSerializer.Deserialize<SaleStatistic[]>(File.ReadAllText(path))??[])
-                if(s.World>0&&s.ItemId>0&&s.Average is >0 and <=999999999&&s.ValueObserved.HasValue&&
-                    s.ValueObserved<=s.Fetched&&s.Fetched<=DateTimeOffset.UtcNow&&(s.DailySales==null||double.IsFinite(s.DailySales.Value)&&s.DailySales>=0))
-                    cache[(s.World,s.ItemId,s.Hq)]=s;
+                if(s!=null&&s.World>0&&s.ItemId>0&&(s.Average==null&&s.ValueObserved==null || s.Average is >0 and <=999999999&&s.ValueObserved.HasValue)&&
+                    (s.ValueObserved==null||s.ValueObserved<=s.Fetched)&&s.Fetched<=DateTimeOffset.UtcNow&&(s.DailySales==null||double.IsFinite(s.DailySales.Value)&&s.DailySales>=0))
+                    cache[(s.World,s.ItemId,s.Hq)]=s.HistoryTruncated?s with{DailySales=null,RecentSales=false}:s;
         }
         catch(Exception ex)when(ex is IOException or JsonException or InvalidDataException or UnauthorizedAccessException)
         {Status="Price cache unavailable; rebuilding in background: "+ex.Message;}
@@ -49,7 +49,7 @@ public sealed class AggregatePrices : IDisposable
         .Select(p=>new PublicMarketHold(p.Key.Item2,p.Value)).Concat(cache.Values.Where(s=>s.World==world&&s.Average==null)
         .GroupBy(s=>s.ItemId).Where(g=>!errors.ContainsKey((world,g.Key))&&!cache.Values.Any(s=>s.World==world&&s.ItemId==g.Key&&s.Average>0))
         .Select(g=>new PublicMarketHold(g.Key,"No known average sale value; never treated as zero"))).ToArray();
-    public void Tick(uint world,IEnumerable<uint> items,IReadOnlySet<ulong> own,int refreshHours,Evidence evidence,bool enabled,DateTimeOffset now)
+    public void Tick(uint world,IEnumerable<uint> items,IReadOnlySet<ulong> own,int refreshHours,Evidence evidence,bool enabled,DateTimeOffset now,int historyDays=28)
     {
         if(disposed)return;
         foreach(var request in pending.Where(p=>p.Task.IsCompleted).ToArray())
@@ -81,7 +81,7 @@ public sealed class AggregatePrices : IDisposable
                 foreach(var value in result.Values)
                 {var key=(value.World,value.ItemId,value.Hq);cache[key]=SaleStatistics.Merge(value,cache.GetValueOrDefault(key));}
                 foreach(var id in result.Items)
-                {retry[(result.World,id)]=now.AddHours(Math.Clamp(refreshHours,1,168));errors.Remove((result.World,id));}
+                {retry.Remove((result.World,id));errors.Remove((result.World,id));}
                 dirty=true;Status=$"Universalis: refreshed {result.Values.Where(v=>v.Average.HasValue).Select(v=>v.ItemId).Distinct().Count()}/{result.Items.Length} item values; successful batches are available immediately";
             }
             while(cache.Count>8192)cache.Remove(cache.MinBy(p=>p.Value.Fetched).Key);
@@ -94,7 +94,7 @@ public sealed class AggregatePrices : IDisposable
         }
         if(dirty&&saving==null&&path!=null)
         {var snapshot=cache.Values.ToArray();dirty=false;saving=Task.Run(()=>AtomicState.Write(path,snapshot));}
-        Apply(world,own,refreshHours,evidence,enabled,now);
+        Apply(world,own,refreshHours,evidence,enabled,now,historyDays);
         if(!enabled){Status="Universalis disabled";return;}
         if(world==0||now<next)return;
         while(starts.Count>0&&now-starts.Peek()>=TimeSpan.FromSeconds(1))starts.Dequeue();
@@ -102,27 +102,29 @@ public sealed class AggregatePrices : IDisposable
         var inFlight=pending.Where(p=>p.World==world).SelectMany(p=>p.Items).ToHashSet();
         var eligible=items.Where(id=>id>0).Distinct().Where(id=>!inFlight.Contains(id)&&
             (!retry.TryGetValue((world,id),out var at)||now>=at)&&
-            (!cache.TryGetValue((world,id,false),out var value)||value.Fetched>now||now-value.Fetched>=interval)).ToArray();
+            (!cache.TryGetValue((world,id,false),out var value)||value.Fetched>now||value.HistoryDays!=Math.Clamp(historyDays,7,90)||now-value.Fetched>=interval)).ToArray();
         var offset=0;
         while(pending.Count<MaximumConcurrentRequests&&starts.Count<MaximumRequestsPerSecond&&offset<eligible.Length)
         {
             var batch=eligible.Skip(offset).Take(batchSize).ToArray();offset+=batch.Length;
-            starts.Enqueue(now);pending.Add(new(world,batch,Fetch(world,batch,now,shutdown.Token)));
+            starts.Enqueue(now);pending.Add(new(world,batch,Fetch(world,batch,now,Math.Clamp(historyDays,7,90),shutdown.Token)));
         }
     }
 
-    public void Apply(uint world,IReadOnlySet<ulong> own,int refreshHours,Evidence evidence,bool enabled,DateTimeOffset now)
+    public void Apply(uint world,IReadOnlySet<ulong> own,int refreshHours,Evidence evidence,bool enabled,DateTimeOffset now,int historyDays=28)
     {
         evidence.StatisticsRequired=enabled;evidence.SaleStatistics.Clear();
         if(!enabled||world==0){Freshness="";return;}
-        foreach(var s in cache.Values.Where(s=>s.World==world&&s.Fetched<=now))evidence.SaleStatistics[(s.ItemId,s.Hq)]=s;
+        foreach(var s in cache.Values.Where(s=>s.World==world&&s.Fetched<=now))evidence.SaleStatistics[(s.ItemId,s.Hq)]=s.HistoryDays==Math.Clamp(historyDays,7,90)?s:s with{DailySales=null,RecentSales=false};
         Freshness=$"World {world}: {evidence.SaleStatistics.Values.Count(s=>s.Average>0)} quality-specific average values cached. Refresh every {refreshHours} hours; older known values retained for slow sellers. Requests in flight: {pending.Count}/{MaximumConcurrentRequests}; batch size: {batchSize}; deferred item errors: {errors.Count(p=>p.Key.Item1==world)}. Native comparisons set actual listing prices.";
     }
-    private async Task<Result> Fetch(uint world,uint[] ids,DateTimeOffset at,CancellationToken token)
+    private async Task<Result> Fetch(uint world,uint[] ids,DateTimeOffset at,int historyDays,CancellationToken token)
     {
         try
         {
-            using var response=await client.GetAsync($"https://universalis.app/api/v2/aggregated/{world}/{string.Join(',',ids)}",HttpCompletionOption.ResponseHeadersRead,token).ConfigureAwait(false);
+            var prefix=ids.Length==1?"":"items.";
+            var fields="itemIDs,worldID,unresolvedItems,"+string.Join(',',new[]{"itemID","worldID","lastUploadTime","averagePriceNQ","averagePriceHQ","nqSaleVelocity","hqSaleVelocity","recentHistoryCount","minPriceNQ","minPriceHQ"}.Select(f=>prefix+f));
+            using var response=await client.GetAsync($"https://universalis.app/api/v2/{world}/{string.Join(',',ids)}?listings=0&entries=500&statsWithin={(long)historyDays*86400000}&entriesWithin={(long)historyDays*86400}&fields={fields}",HttpCompletionOption.ResponseHeadersRead,token).ConfigureAwait(false);
             if(!response.IsSuccessStatusCode)
             {
                 var delay=response.Headers.RetryAfter?.Delta;
@@ -131,16 +133,20 @@ public sealed class AggregatePrices : IDisposable
                 return new(world,ids,[],"HTTP "+(int)response.StatusCode,delay,response.StatusCode==HttpStatusCode.TooManyRequests);
             }
             const int limit=4*1024*1024;
-            if(response.Content.Headers.ContentLength>limit)throw new InvalidDataException("Oversized aggregate response");
+            if(response.Content.Headers.ContentLength>limit)throw new InvalidDataException("Oversized sale summary response");
             await using var stream=await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
             using var buffer=new MemoryStream();var bytes=new byte[8192];int read;
             while((read=await stream.ReadAsync(bytes,token).ConfigureAwait(false))>0)
-            {if(buffer.Length+read>limit)throw new InvalidDataException("Oversized aggregate response");buffer.Write(bytes,0,read);}
-            return new(world,ids,SaleStatistics.Parse(System.Text.Encoding.UTF8.GetString(buffer.ToArray()),world,ids.ToHashSet(),at),null,null);
+            {if(buffer.Length+read>limit)throw new InvalidDataException("Oversized sale summary response");buffer.Write(bytes,0,read);}
+            return new(world,ids,SaleStatistics.ParseCurrent(System.Text.Encoding.UTF8.GetString(buffer.ToArray()),world,ids.ToHashSet(),at,historyDays),null,null);
         }
         catch(Exception ex)when(ex is HttpRequestException or OperationCanceledException or IOException or JsonException or InvalidOperationException or KeyNotFoundException or FormatException or OverflowException)
         {return new(world,ids,[],ex.Message,null);}
     }
     public void Dispose()
-    {if(disposed)return;disposed=true;shutdown.Cancel();client.Dispose();shutdown.Dispose();}
+    {
+        if(disposed)return;disposed=true;shutdown.Cancel();client.Dispose();shutdown.Dispose();
+        try{saving?.GetAwaiter().GetResult();if(dirty&&path!=null)AtomicState.Write(path,cache.Values.ToArray());}
+        catch(Exception ex){Status="Price-cache save failed: "+ex.Message;}
+    }
 }

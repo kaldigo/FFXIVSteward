@@ -4,7 +4,7 @@ namespace Steward.Core;
 
 // Historical value is deliberately separate from an identified competing listing.
 public sealed record SaleStatistic(uint World,uint ItemId,bool Hq,double? Average,double? DailySales,
-    DateTimeOffset Fetched,DateTimeOffset? ValueObserved,uint? MinimumListing,bool RecentSales);
+    DateTimeOffset Fetched,DateTimeOffset? ValueObserved,uint? MinimumListing,bool RecentSales,bool HistoryTruncated=false,int HistoryDays=4);
 
 public static class SaleStatistics
 {
@@ -22,6 +22,44 @@ public static class SaleStatistics
     public static SaleStatistic Merge(SaleStatistic incoming,SaleStatistic? previous)=>
         incoming.Average is >0||previous==null?incoming:incoming with
         {Average=previous.Average,ValueObserved=previous.ValueObserved,RecentSales=false};
+
+    // Current-market summaries calculate statistics before fields filtering; entries=0 would erase sale evidence.
+    public static IReadOnlyList<SaleStatistic> ParseCurrent(string json,uint world,IReadOnlySet<uint> requested,DateTimeOffset fetched,int historyDays=28)
+    {
+        using var doc=JsonDocument.Parse(json);var root=doc.RootElement;
+        if(world==0||root.ValueKind!=JsonValueKind.Object||!root.TryGetProperty("worldID",out var scope)||scope.ValueKind!=JsonValueKind.Number||!scope.TryGetUInt32(out var w)||w!=world)
+            throw new InvalidDataException("Wrong or missing summary world");
+        List<SaleStatistic> values=[];HashSet<uint> seen=[];
+        void Row(uint id,JsonElement row)
+        {
+            if(!requested.Contains(id)||!seen.Add(id))throw new InvalidDataException("Unexpected or duplicate summary item");
+            if(row.ValueKind!=JsonValueKind.Object||!row.TryGetProperty("itemID",out var identity)||identity.ValueKind!=JsonValueKind.Number||!identity.TryGetUInt32(out var item)||item!=id||
+                !row.TryGetProperty("worldID",out var rowWorld)||rowWorld.ValueKind!=JsonValueKind.Number||!rowWorld.TryGetUInt32(out var rw)||rw!=world)return;
+            double? Number(string key)=>row.TryGetProperty(key,out var v)&&v.ValueKind==JsonValueKind.Number&&v.TryGetDouble(out var n)&&double.IsFinite(n)&&n>=0?n:null;
+            var count=Number("recentHistoryCount");
+            var complete=count is >=0 and <500 && count==Math.Floor(count.Value);
+            foreach(var hq in new[]{false,true})
+            {
+                var average=Number(hq?"averagePriceHQ":"averagePriceNQ");
+                if(average is <=0 or >999999999||count is null or <=0)average=null;
+                var daily=complete?Number(hq?"hqSaleVelocity":"nqSaleVelocity"):null;
+                var minimum=Number(hq?"minPriceHQ":"minPriceNQ");
+                values.Add(new(world,id,hq,average,daily,fetched,average.HasValue?fetched:null,
+                    minimum is >=1 and <=999999999?(uint)minimum.Value:null,average.HasValue&&daily is >0,
+                    !complete,historyDays));
+            }
+        }
+        if(root.TryGetProperty("items",out var rows)&&rows.ValueKind==JsonValueKind.Object)
+        {
+            foreach(var row in rows.EnumerateObject())
+            {if(!uint.TryParse(row.Name,out var id))throw new InvalidDataException("Invalid summary item key");Row(id,row.Value);}
+        }
+        else if(root.TryGetProperty("itemID",out var single)&&single.TryGetUInt32(out var singleId))Row(singleId,root);
+        else throw new InvalidDataException("Missing summary items");
+        foreach(var id in requested)foreach(var hq in new[]{false,true})
+            if(!values.Any(v=>v.ItemId==id&&v.Hq==hq))values.Add(new(world,id,hq,null,null,fetched,null,null,false,false,historyDays));
+        return values;
+    }
 
     public static IReadOnlyList<SaleStatistic> Parse(string json,uint world,IReadOnlySet<uint> requested,DateTimeOffset fetched)
     {

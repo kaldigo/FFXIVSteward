@@ -84,6 +84,7 @@ static class FeatureAuditChecks
         evidence.Dresser.Add(42);check(Judge().Outcome==Outcome.Market,"Collected supplemental copy permits surplus sale");
         check(!StoragePolicy.Restore(StoragePolicy.WithoutDresserCopy(evidence,42,1,Judge).Outcome,true,false),"Supplemental last copy cannot be removed by cleanup");
         rules.CollectionKeep.Clear();evidence.Dresser.Clear();
+        json="""{"worldID":83,"items":{"42":{"worldID":83,"itemID":42,"averagePriceNQ":5000,"nqSaleVelocity":0.07,"minPriceNQ":4500,"recentHistoryCount":2}}}""";
         var handler=new Handler(json);
         using(var client=new AggregatePrices(handler:handler))
         {
@@ -91,7 +92,7 @@ static class FeatureAuditChecks
             for(var i=0;i<100&&!evidence.SaleStatistics.ContainsKey((43,false));i++)
             {await Task.Delay(1);client.Tick(83,[],new HashSet<ulong>(),6,evidence,true,now);}
             check(evidence.SaleStatistics[(42,false)].Average==5000&&handler.Calls==1,"Completed background summary immediately available without all-inventory barrier");
-            check(handler.Uri!.AbsolutePath.Contains("/aggregated/83/")&&handler.Uri.Query=="","Compact request contains no individual listings");
+            check(handler.Uri!.AbsolutePath.Contains("/83/")&&!handler.Uri.AbsolutePath.Contains("aggregated")&&handler.Uri.Query.Contains("entries=500")&&handler.Uri.Query.Contains("fields="),"Compact request contains no individual listings");
             client.Tick(83,[42,43],new HashSet<ulong>(),6,evidence,true,now.AddHours(5));
             check(handler.Calls==1,"Summary not re-fetched inside six-hour cache window");
             client.Apply(84,new HashSet<ulong>(),6,evidence,true,now);check(evidence.SaleStatistics.Count==0,"Switching world clears applied summaries");
@@ -121,7 +122,15 @@ static class FeatureAuditChecks
             }
             using var loaded=new AggregatePrices(path,new Handler(json));
             loaded.Apply(83,new HashSet<ulong>(),6,evidence,true,now);
-            check(evidence.SaleStatistics[(42,false)]==stat,"Persistent summary is immediately available after restart, with original value age");
+            check(evidence.SaleStatistics[(42,false)]==stat with{HistoryDays=28},"Persistent summary is immediately available after restart, with original value age");
+            var emptyPath=Path.Combine(directory,"empty.json");
+            File.WriteAllText(emptyPath,JsonSerializer.Serialize(new[]{new SaleStatistic(83,43,false,null,null,now,null,null,false,false,28)}));
+            var emptyHandler=new Handler(json);
+            using var empty=new AggregatePrices(emptyPath,emptyHandler);
+            empty.Tick(83,[43],new HashSet<ulong>(),2,evidence,true,now.AddHours(1));
+            check(emptyHandler.Calls==0&&evidence.SaleStatistics[(43,false)].Average==null,"Successful empty summaries persist across restart without refetching or becoming zero");
+            loaded.Apply(83,new HashSet<ulong>(),2,evidence,true,now,7);
+            check(evidence.SaleStatistics[(42,false)].DailySales==null&&!evidence.SaleStatistics[(42,false)].RecentSales,"Changing history window holds old activity evidence until refresh");
         }
         finally{Directory.Delete(directory,true);}
         check(Imports.MarketCache("42,N,83,0,2026-10-25,1000,N\n").Single().ItemId==42,"Headerless Allagan cache retains first item");

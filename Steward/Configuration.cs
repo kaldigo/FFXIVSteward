@@ -26,6 +26,7 @@ public sealed class Configuration : IPluginConfiguration, IJsonOnDeserialized
     public Dictionary<uint,SourceKind> Sources { get; set; } = [];
     public HashSet<ulong> OwnRetainers { get; set; } = [];
     public bool ImportMarketBuddy { get; set; } = true;
+    public int SummaryCacheRevision { get; set; }
     public bool UseUniversalis { get; set; } = true;
     public bool GlamaholicExpected { get; set; } = true;
     public bool UseBundledGlamourList { get; set; } = true;

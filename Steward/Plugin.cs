@@ -25,6 +25,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private readonly ExternalImports imports;
     private readonly MarketQueue market;
     private readonly TrackedInventories tracked;
+    private readonly InventoryMemory inventoryMemory;
     private readonly DungeonSources dungeonSources;
     private readonly AggregatePrices universalis;
     private static readonly HashSet<ulong> noPriceOwners=[];
@@ -34,6 +35,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private readonly string historyPath;
     private long nextRefresh;
     private long nextImports;
+    private uint[] priceCandidates=[];
     private long nextAutomaticWork;
     private ulong attached;
     private bool open=true;
@@ -60,6 +62,7 @@ public sealed partial class Plugin : IDalamudPlugin
         if(config.Version!=1)throw new InvalidDataException("Unsupported Steward settings; execution cannot start");
         // A failed Stop write must never let a later process restore an old enabled flag.
         config.Automatic=false;
+        if(config.SummaryCacheRevision<1){config.Rules.SummaryRefreshHours=Math.Clamp(config.Rules.SummaryRefreshHours,1,2);config.SummaryCacheRevision=1;}
         if(config.SafetyRevision<6)
         {
             config.Automatic=false;
@@ -80,7 +83,8 @@ public sealed partial class Plugin : IDalamudPlugin
             Save();
         }
         universalis=new(Path.Combine(pi.GetPluginConfigDirectory(),"sale-statistics.json"));
-        view=new(data,config);imports=new(pi,config,view);
+        inventoryMemory=new(Path.Combine(pi.GetPluginConfigDirectory(),"inventory-observations.json"));
+        view=new(data,config,inventoryMemory);imports=new(pi,config,view);
         tracked=new(pi);
         dungeonSources=new(pi,data,config,Save);
         historyPath=Path.Combine(pi.GetPluginConfigDirectory(),"history.jsonl");
@@ -125,19 +129,23 @@ public sealed partial class Plugin : IDalamudPlugin
     }
     private void Refresh()
     {
-        view.World=objects.LocalPlayer?.CurrentWorld.RowId??0;
-        view.Refresh(player.IsLoaded?player.ContentId:0);
+        var character=player.IsLoaded?player.ContentId:0;
+        var world=objects.LocalPlayer?.CurrentWorld.RowId??0;
+        // Prefill on the first loaded frame and after character/world changes, independently of automation or UI.
+        if(view.Character!=character||view.World!=world){nextImports=0;priceCandidates=[];}
+        view.World=world;
+        view.Refresh(character);
         protectionSnapshot.Clear();
         UpdateCollectionHolds();
         if(Environment.TickCount64>=nextImports)
         {
-            imports.Refresh();tracked.Refresh();nextImports=Environment.TickCount64+1000;
-            var ids=market.PriceCandidates().Concat(view.Items).Concat(tracked.Items.Where(r=>view.Retainers.Contains(r.Owner)).Select(r=>r.Stock))
+            imports.Refresh();tracked.Refresh(view.Character,view.Retainers,inventoryMemory);nextImports=Environment.TickCount64+1000;
+            priceCandidates=market.PriceCandidates().Concat(view.Items).Concat(tracked.Items.Where(r=>view.Retainers.Contains(r.Owner)).Select(r=>r.Stock))
                 .Where(s=>view.Facts(s.ItemId) is {Marketable:true} item&&!config.Rules.IsIgnored(item)&&
                     (item.Equipment||config.Rules.Sales.Any(r=>r.Matches(item,s))||config.Rules.NonEquipmentDisposal.Contains(item.Id)))
-                .Select(s=>s.ItemId);
-            universalis.Tick(view.World,ids,PriceOwners,config.Rules.SummaryRefreshHours,view.Evidence,config.UseUniversalis,DateTimeOffset.UtcNow);
+                .Select(s=>s.ItemId).Distinct().ToArray();
         }
+        universalis.Tick(view.World,priceCandidates,PriceOwners,config.Rules.SummaryRefreshHours,view.Evidence,config.UseUniversalis,DateTimeOffset.UtcNow,config.Rules.SummaryHistoryDays);
     }
     private Decision Judge(Stock stock)
     {
@@ -158,7 +166,7 @@ public sealed partial class Plugin : IDalamudPlugin
         view.Refresh(player.IsLoaded?player.ContentId:0);
         protectionSnapshot.Clear();
         imports.Refresh();
-        universalis.Apply(view.World,PriceOwners,config.Rules.SummaryRefreshHours,view.Evidence,config.UseUniversalis,DateTimeOffset.UtcNow);
+        universalis.Apply(view.World,PriceOwners,config.Rules.SummaryRefreshHours,view.Evidence,config.UseUniversalis,DateTimeOffset.UtcNow,config.Rules.SummaryHistoryDays);
     }
     private Decision JudgeLive(Stock stock)
     {
@@ -415,10 +423,11 @@ public sealed partial class Plugin : IDalamudPlugin
                 ImGui.TextWrapped("Global category exclusions skip listing, disposal and collection moves. Sale-rule exclusions below affect only that rule.");
                 var combined=config.Rules.Quality==QualityMode.Combined;
                 if(ImGui.Checkbox("Compare HQ and NQ together",ref combined)){config.Rules.Quality=combined?QualityMode.Combined:QualityMode.Separate;Save();}
-                var age=config.Rules.SummaryRefreshHours;if(ImGui.InputInt("Refresh sale summaries every (hours)",ref age)){config.Rules.SummaryRefreshHours=Math.Clamp(age,1,168);Save();}
+                var days=config.Rules.SummaryHistoryDays;if(ImGui.InputInt("Sale history window (days)",ref days)){config.Rules.SummaryHistoryDays=Math.Clamp(days,7,90);Save();}
+                var age=config.Rules.SummaryRefreshHours;if(ImGui.InputInt("Refresh sale summaries every (hours)",ref age)){config.Rules.SummaryRefreshHours=Math.Clamp(age,1,2);Save();}
                 var publicPrices=config.UseUniversalis;
                 if(ImGui.Checkbox("Use Universalis prices",ref publicPrices)){config.UseUniversalis=publicPrices;Save();nextImports=0;}
-                ImGui.TextWrapped("Average sale value and daily sales are prefetched and saved across restarts. Missing recent sales never mean zero value. Actual posting and repricing still use an in-game comparison.");
+                ImGui.TextWrapped("Average sale value and units sold per day are prefetched and saved across restarts. Missing recent sales never mean zero value. Actual posting and repricing still use an in-game comparison.");
                 ImGui.InputText("Item ID",ref itemText,12);
                 if(uint.TryParse(itemText,out var id)&&id>0)
                 {
@@ -455,8 +464,8 @@ public sealed partial class Plugin : IDalamudPlugin
                     if(ImGui.InputInt("Minimum stack gil",ref total)){rule.MinimumTotal=(uint)Math.Max(1,total);Save();}
                     if(ImGui.InputInt("Maximum stack",ref stack)){rule.MaximumStack=Math.Clamp(stack,1,9999);Save();}
                     var velocityEnabled=rule.MinimumDailySales.HasValue;
-                    if(ImGui.Checkbox("Require minimum daily sales",ref velocityEnabled)){rule.MinimumDailySales=velocityEnabled?0.1:null;Save();}
-                    if(velocityEnabled){var velocity=(float)(rule.MinimumDailySales??0.1);if(ImGui.InputFloat("Minimum daily sales",ref velocity,0.01f,0.1f,"%.3f")){rule.MinimumDailySales=float.IsFinite(velocity)?Math.Max(0,velocity):0;Save();}}
+                    if(ImGui.Checkbox("Require minimum units sold per day",ref velocityEnabled)){rule.MinimumDailySales=velocityEnabled?0.1:null;Save();}
+                    if(velocityEnabled){var velocity=(float)(rule.MinimumDailySales??0.1);if(ImGui.InputFloat("Minimum units sold per day",ref velocity,0.01f,0.1f,"%.3f")){rule.MinimumDailySales=float.IsFinite(velocity)?Math.Max(0,velocity):0;Save();}}
                     var older=rule.AllowOlderSaleValue;
                     if(ImGui.Checkbox("Allow older known values for slow sellers",ref older)){rule.AllowOlderSaleValue=older;Save();}
                     ImGui.TextWrapped("Value floors apply to the average sale value and the actual posted price. An enabled sales threshold holds items when sales evidence is missing.");
@@ -512,7 +521,7 @@ public sealed partial class Plugin : IDalamudPlugin
         try{StopQueue();market.Dispose();}
         finally
         {
-            universalis.Dispose();
+            universalis.Dispose();inventoryMemory.Dispose();
             pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.CollectionNeeded").UnregisterFunc();
             pi.GetIpcProvider<string,string>(Endpoint).UnregisterFunc();
             pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.OverflowNeeded").UnregisterFunc();

@@ -44,7 +44,8 @@ public sealed class RuleSettings
     public HashSet<uint> CommonGlamour { get; set; } = [];
     public List<SaleRule> Sales { get; set; } = [];
     public int MaximumPriceAgeMinutes { get; set; } = 30; // Native/imported listing evidence only.
-    public int SummaryRefreshHours { get; set; } = 6;
+    public int SummaryRefreshHours { get; set; } = 2;
+    public int SummaryHistoryDays { get; set; } = 28;
     public QualityMode Quality { get; set; } = QualityMode.Separate;
     public int DresserEmptySlots { get; set; } = 20;
 }
@@ -61,6 +62,10 @@ public sealed class Evidence
     public bool GearsetsReady { get; set; }
     public bool DresserKnown { get; set; }
     public bool ArmoireKnown { get; set; }
+    public bool CachedDresserKnown { get; set; }
+    public bool CachedArmoireKnown { get; set; }
+    public HashSet<uint> CachedDresser { get; set; } = [];
+    public HashSet<uint> CachedArmoire { get; set; } = [];
     public HashSet<uint> Dresser { get; set; } = [];
     public Dictionary<uint,int> DresserCopyCounts { get; set; } = [];
     public HashSet<uint> GlamaholicReferences { get; set; } = [];
@@ -98,7 +103,10 @@ public static class Rules
             !ordinary || pending || settings.CollectionKeep.Contains(item.Id) || settings.CommonGlamour.Contains(item.Id) || evidence.CuratedGlamour.Contains(item.Id) || evidence.References.Contains(item.Id));
         if(collect)
         {
-            if(!evidence.DresserKnown || !evidence.ArmoireKnown) return new(Outcome.Wait, "Live dresser or armoire ownership is unavailable");
+            if(!evidence.DresserKnown || !evidence.ArmoireKnown)
+                return evidence.CachedDresser.Contains(item.Id)||evidence.CachedArmoire.Contains(item.Id)
+                    ?new(Outcome.Keep,"Cached collection copy is unverified; preserve until collection is observed")
+                    :new(Outcome.Wait,"Live dresser or armoire ownership is unavailable");
             if(!evidence.Armoire.Contains(item.Id) && (item.ArmoireEligible || evidence.OmittedDresserItem==item.Id || !evidence.Dresser.Contains(item.Id)))
             {
                 if(item.Source == SourceKind.Unknown && !pending && !settings.CollectionKeep.Contains(item.Id) && !item.ArmoireEligible && !evidence.References.Contains(item.Id) && !item.DesignedForGlamour && !rarityProtected && item.EquipLevel != 1 && !settings.CommonGlamour.Contains(item.Id) && !evidence.CuratedGlamour.Contains(item.Id))
@@ -129,7 +137,7 @@ public static class Rules
                         return new(Outcome.Market,"Matches average-value and sales-velocity rule: "+rule.Name,rule,(uint)Math.Floor(value.Average!.Value),MaximumRemovable:removable);
                     saleRejected=true;
                 }
-                // An old value can propose a sale, but a quiet four-day window never permits destruction.
+                // An old value can propose a sale, but a quiet or truncated history window never permits destruction.
                 if(!current)return new(Outcome.Wait,"Older sale value retained; disposal held without recent sales",rule,SaleRejected:saleRejected);
             }
             else

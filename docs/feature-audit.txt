@@ -41,8 +41,8 @@ Changed: enabling cleanup can request the dresser route automatically. Migration
 Protected last copies remain in place. Armoire migration is the protected exception because the destination hold precedes removal.
 
 8. Sale judgement and price retrieval
-Changed: production uses compact Universalis aggregate summaries, up to five IDs per request (two concurrent requests, four starts per second; timeout recovery added after this audit), with current retainer/player candidates first, partial progress, background fetches and persistent cache.
-Default summary refresh is six hours, exposed in settings. Refresh never waits for the entire inventory.
+Changed: production uses compact current-market summary fields, up to 20 IDs per request (four concurrent requests, four starts per second; adaptive timeout recovery), with current retainer/player candidates first, partial progress, background fetches and persistent cache.
+Default summary refresh is two hours, exposed in settings. Refresh never waits for the entire inventory.
 Average unit/total value and optional daily sales thresholds are per-rule. Missing velocity holds an enabled velocity rule. The quality selector and global combined/separate comparisons remain available.
 The API's recent-sales window is not treated as a lifetime sales history. Older known values survive empty responses and can qualify slow sellers by rule setting. No known average is unknown, not zero. An old or missing value cannot permit disposal.
 A rare item with neither recent sales nor any retained prior average remains held; no historical value is invented. No full historical-backfill service is added.
@@ -74,3 +74,5 @@ Build warnings: Steward's NuGet vulnerability feed was unreachable; AutoRetainer
 
 Native acceptance still required
 Travel/retainer menu callbacks; actual split listing and repricing; withdrawal/deposit acknowledgements; dresser cleanup and armoire migration; live performance on a cold versus warm cache; readiness after zoning; cancellation during an actual game action. None of these have been represented as in-game-tested.
+
+Persistent observation update: character-scoped retainer inventories, dresser and armoire persist without expiry. Complete native empty reads replace previous snapshots. Missing Allagan Tools does not erase cached retainer prefetch candidates. Cached collection ownership never supplies live counts/readiness or disposal permission. Restart, character isolation, armoire/dresser last-copy holds, and empty replacement are tested. Current-market summary history is configurable (28 days default); truncated history makes velocity unknown and blocks disposal.

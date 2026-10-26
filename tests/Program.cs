@@ -83,6 +83,7 @@ await UniversalisChecks.Run(Check,now);
 CategoryChecks.Run(Check,now);
 await FeatureAuditChecks.Run(Check,now);
 await AggregateRecoveryChecks.Run(Check,now);
+PersistentObservationChecks.Run(Check,now);
 Console.WriteLine($"{total} checks passed including disposal/protection safety regressions.");
 if(args.Length==3)
 {

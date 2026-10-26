@@ -11,6 +11,7 @@ public sealed unsafe class InventoryView
 {
     private readonly IDataManager data;
     private readonly Configuration config;
+    private readonly InventoryMemory memory;
     private readonly Dictionary<uint,uint[]> outfits;
     private readonly (uint Row,uint Item)[] cabinet;
     private readonly HashSet<uint> crafted;
@@ -25,9 +26,9 @@ public sealed unsafe class InventoryView
     public HashSet<ulong> Retainers { get; } = [];
     public uint World { get; set; }
     public IReadOnlyDictionary<uint,string> Categories { get; }
-    public InventoryView(IDataManager data,Configuration config)
+    public InventoryView(IDataManager data,Configuration config,InventoryMemory memory)
     {
-        this.data=data;this.config=config;
+        this.data=data;this.config=config;this.memory=memory;
         Categories=data.GetExcelSheet<Sheets.ItemUICategory>().Where(r=>!string.IsNullOrWhiteSpace(r.Name.ToString())).ToDictionary(r=>r.RowId,r=>r.Name.ToString());
         cabinet=data.GetExcelSheet<Sheets.Cabinet>().Where(r=>r.Item.RowId!=0).Select(r=>(r.RowId,r.Item.RowId)).ToArray();
         cabinetItems=cabinet.Select(c=>c.Item).ToHashSet();
@@ -64,8 +65,10 @@ public sealed unsafe class InventoryView
             Character=character;Evidence.Dresser.Clear();Evidence.Armoire.Clear();Evidence.Prices.Clear();Evidence.PublicOwnPrices.Clear();Evidence.References.Clear();
             Evidence.DresserKnown=Evidence.ArmoireKnown=Evidence.GearsetsReady=Evidence.ReferencesReady=false;
             NativeReferencesKnown=false;NativeReferences.Clear();Retainers.Clear();
+            Retainers.UnionWith(memory.Owners(character));
         }
         Evidence.ReserveStocks.Clear();Items.Clear();Evidence.Gearsets.Clear();Evidence.GearsetsReady=false;
+        memory.Apply(character,Evidence);
         if(character==0)return;
         var im=InventoryManager.Instance();if(im==null)return;
         foreach(var type in InventoryTypes())Read(type,Items);
@@ -109,10 +112,15 @@ public sealed unsafe class InventoryView
         }
         var rm=RetainerManager.Instance();
         if(rm!=null && rm->IsReady)
-            foreach(var r in rm->Retainers)if(r.RetainerId!=0){Retainers.Add(r.RetainerId);config.OwnRetainers.Add(r.RetainerId);}
+            {Retainers.Clear();foreach(var r in rm->Retainers)if(r.RetainerId!=0){Retainers.Add(r.RetainerId);config.OwnRetainers.Add(r.RetainerId);}}
         Evidence.ReserveStocks.AddRange(Items);
         if(rm!=null&&rm->IsReady&&Retainers.Contains(rm->LastSelectedRetainerId)&&RetainerTypes().All(t=>Loaded((uint)t)))
-            foreach(var type in RetainerTypes())Read(type,Evidence.ReserveStocks);
+            {
+                List<Stock> stocks=[];foreach(var type in RetainerTypes())Read(type,stocks);
+                Evidence.ReserveStocks.AddRange(stocks);
+                memory.ObserveRetainer(character,rm->LastSelectedRetainerId,stocks);
+            }
+        memory.ObserveCollection(character,Evidence);memory.Flush();
     }
     public static InventoryType[] InventoryTypes() => Enum.GetValues<InventoryType>().Where(t=>t is >= InventoryType.Inventory1 and <= InventoryType.Inventory4 || t.ToString().StartsWith("Armory",StringComparison.Ordinal)).ToArray();
     public static InventoryType[] RetainerTypes() => [InventoryType.RetainerPage1,InventoryType.RetainerPage2,InventoryType.RetainerPage3,InventoryType.RetainerPage4,InventoryType.RetainerPage5,InventoryType.RetainerPage6,InventoryType.RetainerPage7];
