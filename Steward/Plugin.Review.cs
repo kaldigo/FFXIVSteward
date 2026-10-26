@@ -6,7 +6,15 @@ namespace Steward;
 
 public sealed partial class Plugin
 {
-    private readonly ReviewJournal reviewJournal=new();
+    private readonly BackgroundReviewJournal reviewJournal;
+    private void PumpReviewLog()
+    {
+        while(reviewJournal.TryTake(out var result))
+        {
+            if(result!.Error!=null){if(result.Key!=null)recentDecisions.Remove(result.Key);if(result.Review)Alert("Review logging failed: "+result.Error);else log.Error("History logging failed: "+result.Error);continue;}
+            foreach(var entry in result.History){history.Insert(0,entry);if(history.Count>300)history.RemoveAt(history.Count-1);}
+        }
+    }
     private long nextReview;
     private string ReviewPath=>Path.Combine(pi.GetPluginConfigDirectory(),"review.jsonl");
     private CollectionCopyEvidence? CopyEvidence(uint id,int removals=0)=>view.Facts(id) is {} item?
@@ -25,7 +33,7 @@ public sealed partial class Plugin
         ImGui.TextWrapped("Logs collection destinations, overflow, proposed listings and prices, disposal, and enabled dresser cleanup. No managed item actions occur in log-only mode. Open a retainer selling list to load its market capacity; cached prices are labelled estimates.");
         ImGui.TextWrapped("Review log: "+ReviewPath);
         if(ImGui.Button("Write review snapshot now"))
-        {if(!config.LogOnly)Record("Enable Log only before recording a review session.");else{reviewJournal.Reset();nextReview=0;ReviewTick();}}
+        {if(!config.LogOnly)Record("Enable Log only before recording a review session.");else{reviewJournal.Reset();nextReview=0;}}
     }
     private void LogPolicyProposal(string? action,Stock stock,Decision decision)
     {
@@ -35,15 +43,15 @@ public sealed partial class Plugin
         var entry=new ReviewEntry(player.ContentId,$"Live policy request: container {stock.Container}, slot {stock.Slot}",stock.ItemId,stock.Quantity,stock.Hq,"WouldPermit "+action,decision.Reason,Collection:CopyEvidence(stock.ItemId),RuleName:decision.Rule?.Name);
         try
         {
-            File.AppendAllText(ReviewPath,System.Text.Json.JsonSerializer.Serialize(new{at=DateTimeOffset.UtcNow,mode="LogOnly",proposal=entry})+Environment.NewLine);
+            reviewJournal.Proposal(ReviewPath,entry,key);
             recentDecisions[key]=Environment.TickCount64;
-            Record($"[LOG ONLY] Would permit {action}: item {stock.ItemId} x{stock.Quantity}, container {stock.Container}, slot {stock.Slot}. {decision.Reason}");
+
         }
         catch(Exception ex){Alert("Review logging failed: "+ex.Message+". The proposed action remains blocked.");}
     }
     private void ReviewTick()
     {
-        if(!config.LogOnly||!player.IsLoaded||Environment.TickCount64<nextReview)return;
+        if(!config.LogOnly||!player.IsLoaded||reviewJournal.ReviewPending||Environment.TickCount64<nextReview)return;
         nextReview=Environment.TickCount64+5000;
         try
         {
@@ -68,8 +76,8 @@ public sealed partial class Plugin
             }
             foreach(var stock in view.Items.Distinct())Inspect($"Player container {stock.Container}, slot {stock.Slot}",stock);
             var retainerContainers=InventoryView.RetainerTypes().Select(t=>(uint)t).ToHashSet();
-            foreach(var (owner,stock) in tracked.Items.Distinct().Where(r=>view.Retainers.Contains(r.Owner)&&retainerContainers.Contains(r.Stock.Container)))
-                Inspect($"Retainer {owner}, cached container {stock.Container}, slot {stock.Slot} (preview only)",stock);
+            foreach(var (owner,stock) in tracked.Items.Distinct().Where(r=>view.Retainers.Contains(r.Owner)&&(retainerContainers.Contains(r.Stock.Container)||AllaganRetainerPreview.IsPreview(r.Stock.Container))))
+                Inspect($"Retainer {owner}, cached {AllaganRetainerPreview.Location(stock)} (preview only)",stock);
             if(config.CleanDresser)
                 foreach(var candidate in market.DresserCleanupCandidates())
                     entries.Add(new(player.ContentId,"Glamour dresser",candidate.ItemId,(uint)candidate.Quantity,false,
@@ -100,8 +108,7 @@ public sealed partial class Plugin
             var disposals=entries.Count(e=>e.Action=="WouldDispose");var removals=entries.Where(e=>e.Location=="Glamour dresser").Sum(e=>e.Quantity);
             entries.Add(new(player.ContentId,"Review summary",0,0,false,"Snapshot",
                 $"{disposals} disposal candidates (cached retainer observations labelled); {removals} dresser removals. Protected non-equipment stacks: {entries.Count(e=>e.Action=="ProtectedNonEquipment")}. Enabled sale rules: {config.Rules.Sales.Count(r=>r.Enabled)}; quality: {config.Rules.Quality}. Held/unverified stacks: {unavailable} ({string.Join("; ",holdReasons.Order())}). Cleanup enabled: {config.CleanDresser}. References ready: {view.Evidence.ReferencesReady}; native plates known: {view.NativeReferencesKnown}; Glamaholic known: {view.Evidence.GlamaholicKnown}; gearsets ready: {view.Evidence.GearsetsReady}; dresser known: {view.Evidence.DresserKnown}; armoire known: {view.Evidence.ArmoireKnown}. {tracked.Status} {inventoryMemory.Status}"));
-            foreach(var entry in reviewJournal.Snapshot(ReviewPath,entries))
-                Record($"[LOG ONLY] {entry.Action}: {entry.Location}; item {entry.ItemId} x{entry.Quantity}. {entry.Reason}");
+            if(!reviewJournal.Snapshot(ReviewPath,entries))nextReview=0;
         }
         catch(Exception ex){Alert("Review logging could not complete: "+ex.Message+". Log-only mode still blocks all managed item actions.");}
     }

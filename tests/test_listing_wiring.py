@@ -42,7 +42,7 @@ class ListingWiring(unittest.TestCase):
         self.assertIn('listing.Reference.Source,listing.Reference.Observed',source)
         self.assertNotIn('market.Start(',source)
         ui=(ROOT/'Steward/Plugin.cs').read_text(encoding='utf-8')
-        self.assertIn('if(config.LogOnly){reviewJournal.Reset();nextReview=0;ReviewTick();}else market.Start();',ui)
+        self.assertIn('if(config.LogOnly){reviewJournal.Reset();nextReview=0;}else market.Start();',ui)
 
     def test_passive_price_observation_uses_current_native_request(self):
         source=(ROOT/'Steward/Services/MarketQueue.Listing.cs').read_text(encoding='utf-8')

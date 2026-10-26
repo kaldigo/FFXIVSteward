@@ -35,7 +35,7 @@ public sealed class InventoryMemory : IDisposable
         catch(Exception ex)when(ex is IOException or JsonException or InvalidDataException or UnauthorizedAccessException)
         {Status="Inventory cache unavailable; waiting for observations: "+ex.Message;}
     }
-    private static bool Valid(Stock s)=>s.ItemId>0&&s.Quantity>0&&s.Container is >=10000 and <=10006&&s.Slot<25;
+    private static bool Valid(Stock s)=>s.ItemId>0&&s.Quantity>0&&(s.Container is >=10000 and <=10006&&s.Slot<25 || AllaganRetainerPreview.IsPreview(s.Container)&&s.Slot<35);
     private CharacterInventory For(ulong id)
     {
         if(id==0)throw new ArgumentException("Character required");
@@ -63,6 +63,7 @@ public sealed class InventoryMemory : IDisposable
             throw new InvalidDataException("Incomplete or invalid retainer observation");
         if(!c.Retainers.TryGetValue(owner,out var old)||!old.SequenceEqual(stocks)){c.Retainers[owner]=stocks;dirty=true;}
     }
+    public bool HasRetainer(ulong character,ulong owner)=>characters.TryGetValue(character,out var c)&&c.Retainers.ContainsKey(owner);
     public IEnumerable<ulong> Owners(ulong id)=>characters.TryGetValue(id,out var c)?c.Retainers.Keys:[];
     public IEnumerable<(ulong Owner,Stock Stock)> Stocks(ulong id)=>characters.TryGetValue(id,out var c)?
         c.Retainers.SelectMany(r=>r.Value.Select(s=>(r.Key,s))):[];

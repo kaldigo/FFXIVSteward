@@ -13,7 +13,7 @@ public sealed partial class Plugin
         ImGui.TextWrapped(universalis.Status);
         ImGui.TextWrapped(universalis.Freshness);
         if(ImGui.Button("Refresh listing preview"))
-        {RefreshProtection();marketPreview=market.PreviewMarket();if(config.LogOnly){reviewJournal.Reset();nextReview=0;ReviewTick();}}
+        {RefreshProtection();marketPreview=market.PreviewMarket();if(config.LogOnly){reviewJournal.Reset();nextReview=0;}}
         ImGui.TextWrapped(marketPreview?.Status??"Refresh the preview after opening a retainer's selling list.");
         if(marketPreview?.Plan is {} plan)
         {

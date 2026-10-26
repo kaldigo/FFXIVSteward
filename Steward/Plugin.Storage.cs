@@ -18,7 +18,7 @@ public sealed partial class Plugin
         RefreshProtection();
         var waiting=view.Items.Where(s=>Judge(s).Outcome==Outcome.CollectDresser).Select(s=>s.ItemId).Distinct().Count();
         var containers=InventoryView.RetainerTypes().Select(t=>(uint)t).ToHashSet();
-        return tracked.Items.Any(r=>view.Retainers.Contains(r.Owner)&&containers.Contains(r.Stock.Container)&&
+        return tracked.Items.Any(r=>view.Retainers.Contains(r.Owner)&&(containers.Contains(r.Stock.Container)||AllaganRetainerPreview.IsPreview(r.Stock.Container))&&
             !view.Items.Any(s=>s.ItemId==r.Stock.ItemId)&&(Judge(r.Stock).Outcome is Outcome.CollectArmoire or Outcome.CollectDresser)&&
             StoragePolicy.CanWithdraw(Judge(r.Stock).Outcome,view.Evidence.DresserFreeSlots,config.Rules.DresserEmptySlots,waiting,0));
     }

@@ -48,7 +48,9 @@ class ReviewWiring(unittest.TestCase):
         review=(ROOT/'Steward/Plugin.Review.cs').read_text(encoding='utf-8')
         self.assertLess(review.index('config.LogOnly=true;Stop();'),review.index('config.LogOnly=enabled;config.Automatic=false;Save();'))
         self.assertNotIn('InvokeFunc(player.ContentId,"',review)
-        self.assertIn('cached container',review)
+        self.assertIn('cached {AllaganRetainerPreview.Location(stock)}',review)
+        self.assertNotIn('File.AppendAll',review)
+        self.assertIn('reviewJournal.Proposal(ReviewPath,entry,key)',review)
         self.assertIn('ProtectedPendingCollection',review)
 
     def test_live_hold_release_uses_confirmed_ownership_and_rollback(self):

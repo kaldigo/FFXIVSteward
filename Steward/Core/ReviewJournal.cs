@@ -9,6 +9,8 @@ public sealed record ReviewEntry(ulong Character,string Location,uint ItemId,uin
 public sealed class ReviewJournal
 {
     private Dictionary<string,ReviewEntry> previous=[];
+    private readonly Action<string,IEnumerable<string>> append;
+    public ReviewJournal(Action<string,IEnumerable<string>>? append=null)=>this.append=append??File.AppendAllLines;
     public IReadOnlyList<ReviewEntry> Snapshot(string path,IEnumerable<ReviewEntry> entries)
     {
         var current=entries.Distinct().ToDictionary(e=>$"{e.Character}/{e.Location}/{e.ItemId}/{e.Action}");
@@ -18,7 +20,7 @@ public sealed class ReviewJournal
         if(changed.Length>0)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.AppendAllLines(path,changed.Select(e=>JsonSerializer.Serialize(new{at=DateTimeOffset.UtcNow,mode="LogOnly",proposal=e})));
+            append(path,changed.Select(e=>JsonSerializer.Serialize(new{at=DateTimeOffset.UtcNow,mode="LogOnly",proposal=e})));
         }
         previous=current; // Never suppress a record whose write failed.
         return changed;

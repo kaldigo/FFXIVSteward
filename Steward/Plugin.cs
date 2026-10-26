@@ -88,6 +88,7 @@ public sealed partial class Plugin : IDalamudPlugin
         tracked=new(pi);
         dungeonSources=new(pi,data,config,Save);
         historyPath=Path.Combine(pi.GetPluginConfigDirectory(),"history.jsonl");
+        reviewJournal=new(historyPath);
         market=new(pi,board,view,config,new(gui),JudgeLive,Record,RefreshProtection,()=>imports.MarketPreferencesReady,HoldExecution,BeginOperation,CompleteOperation,ProtectCollection,Alert,Judge);
         pi.GetIpcProvider<string,string>(Endpoint).RegisterFunc(Evaluate);
         pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.OverflowNeeded").RegisterFunc(OverflowNeeded);
@@ -124,7 +125,7 @@ public sealed partial class Plugin : IDalamudPlugin
     {
         var entry=$"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss} {text}";
         history.Insert(0,entry);if(history.Count>300)history.RemoveAt(history.Count-1);
-        try{Directory.CreateDirectory(Path.GetDirectoryName(historyPath)!);File.AppendAllText(historyPath,JsonSerializer.Serialize(new{at=DateTimeOffset.UtcNow,message=text})+Environment.NewLine);}
+        try{reviewJournal.Record(text,DateTimeOffset.UtcNow);}
         catch(Exception ex){log.Error(ex,"Could not write Steward history");}
     }
     private void Refresh()
@@ -232,6 +233,7 @@ public sealed partial class Plugin : IDalamudPlugin
         if(disposed)return;
         try
         {
+            PumpReviewLog();
             if(!player.IsLoaded){StopQueue();return;}
             if(attached!=0 && attached!=player.ContentId){Stop();attached=0;}
             if(Environment.TickCount64>=nextRefresh)
@@ -402,7 +404,7 @@ public sealed partial class Plugin : IDalamudPlugin
             {
                 ImGui.InputText("Search",ref search,128);
                 if(ImGui.Button("Refresh")){nextImports=0;Refresh();}
-                ImGui.SameLine();if(ImGui.Button("List / reprice current retainer")){if(config.LogOnly){reviewJournal.Reset();nextReview=0;ReviewTick();}else market.Start();}
+                ImGui.SameLine();if(ImGui.Button("List / reprice current retainer")){if(config.LogOnly){reviewJournal.Reset();nextReview=0;}else market.Start();}
                 ImGui.SameLine();if(ImGui.Button("Clean open dresser"))market.CleanupDresser();
                 ImGui.TextWrapped($"Queue: {market.Queue.Status}; completed {market.Queue.Completed}");
                 foreach(var operation in new[]{"Armoire","Dresser","Gc","Desynth","Vendor"})
@@ -491,7 +493,7 @@ public sealed partial class Plugin : IDalamudPlugin
                 foreach(var (owner,stock) in tracked.Items)
                 {
                     var facts=view.Facts(stock.ItemId);var decision=Judge(stock);
-                    ImGui.TextWrapped($"{facts?.Name??stock.ItemId.ToString()} x{stock.Quantity} — owner {owner}, container {stock.Container}: {decision.Outcome} ({decision.Reason}); cached preview");
+                    ImGui.TextWrapped($"{facts?.Name??stock.ItemId.ToString()} x{stock.Quantity} — owner {owner}, {AllaganRetainerPreview.Location(stock)}: {decision.Outcome} ({decision.Reason}); cached preview");
                 }
                 ImGui.EndTabItem();
             }
@@ -521,7 +523,7 @@ public sealed partial class Plugin : IDalamudPlugin
         try{StopQueue();market.Dispose();}
         finally
         {
-            universalis.Dispose();inventoryMemory.Dispose();
+            universalis.Dispose();inventoryMemory.Dispose();reviewJournal.Dispose();
             pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.CollectionNeeded").UnregisterFunc();
             pi.GetIpcProvider<string,string>(Endpoint).UnregisterFunc();
             pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.OverflowNeeded").UnregisterFunc();
