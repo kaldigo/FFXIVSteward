@@ -32,36 +32,43 @@ public sealed partial class Plugin
             Record(enabled?"Log-only review enabled: all managed item actions blocked":"Log-only review disabled; automatic execution remains off");
         }
         ImGui.TextWrapped("Logs collection destinations, overflow, proposed listings and prices, disposal, and enabled dresser cleanup. No managed item actions occur in log-only mode. Open a retainer selling list to load its market capacity; cached prices are labelled estimates.");
+        Setting("Log disposal candidates",config.LogDisposal,v=>config.LogDisposal=v,"Records eligibility even while AutoRetainer demo mode blocks disposal. Never enables disposal.");
         ImGui.TextWrapped("Review log: "+ReviewPath);
         if(ImGui.Button("Write review snapshot now"))
         {if(!config.LogOnly)Record("Enable Log only in Developer tools before recording a review session.");else{reviewJournal.Reset();nextReview=0;}}
     }
     private void LogPolicyProposal(string? action,Stock stock,Decision decision)
     {
-        if(!config.Features.Disposal||!config.LogOnly||decision.Outcome!=Outcome.Dispose||action is not ("Vendor" or "Desynth" or "Gc"))return;
+        if(!(config.LogOnly||config.LogDisposal)||decision.Outcome!=Outcome.Dispose||action is not ("Vendor" or "Desynth" or "Gc"))return;
         var key=$"review/{player.ContentId}/{stock.Container}/{stock.Slot}/{stock.ItemId}/{stock.Quantity}/{action}/{decision.Reason}";
         if(recentDecisions.TryGetValue(key,out var at)&&Environment.TickCount64-at<60000)return;
-        var entry=new ReviewEntry(player.ContentId,$"Live policy request: container {stock.Container}, slot {stock.Slot}",stock.ItemId,stock.Quantity,stock.Hq,"WouldPermit "+action,decision.Reason,Collection:CopyEvidence(stock.ItemId),RuleName:decision.Rule?.Name);
+        var entry=new ReviewEntry(player.ContentId,$"Live policy request: container {stock.Container}, slot {stock.Slot}",stock.ItemId,stock.Quantity,stock.Hq,(config.Features.Disposal?"WouldPermit ":"DisabledDisposalCandidate ")+action,decision.Reason,Collection:CopyEvidence(stock.ItemId),RuleName:decision.Rule?.Name);
         try
         {
-            reviewJournal.Proposal(ReviewPath,entry,key);
+            reviewJournal.Proposal(ReviewPath,entry,key,config.LogOnly?"LogOnly":"DisposalReview");
             recentDecisions[key]=Environment.TickCount64;
 
         }
         catch(Exception ex){Alert("Review logging failed: "+ex.Message+". The proposed action remains blocked.");}
     }
+    private string DisposalRoute(Stock stock)
+    {
+        try{return pi.GetIpcSubscriber<uint,uint,string>("AutoRetainer.InventoryPolicy.DisposalPreview").InvokeFunc(stock.ItemId,stock.Quantity);}
+        catch{return "AutoRetainer disposal route unavailable; native approval still required";}
+    }
     private void ReviewTick()
     {
-        if(!config.LogOnly||!player.IsLoaded||reviewJournal.ReviewPending||Environment.TickCount64<nextReview)return;
+        if(!(config.LogOnly||config.LogDisposal)||!player.IsLoaded||reviewJournal.ReviewPending||Environment.TickCount64<nextReview)return;
         nextReview=Environment.TickCount64+5000;
         try
         {
             RefreshProtection();
             List<ReviewEntry> entries=[];var unavailable=0;HashSet<string> holdReasons=[];
-            void Inspect(string location,Stock stock)
+            void Inspect(string location,Stock stock,ulong owner=0)
             {
+                if(owner!=0&&!config.Storage.RetainerEnabled(owner)){entries.Add(new(player.ContentId,location,stock.ItemId,stock.Quantity,stock.Hq,"ExcludedRetainer","Retainer excluded from item handling",Retainer:owner));return;}
                 var decision=Judge(stock);
-                if(!config.Features.Enabled(decision.Outcome))
+                if(!config.Features.Enabled(decision.Outcome)&&!(decision.Outcome==Outcome.Dispose&&config.LogDisposal))
                 {
                     entries.Add(new(player.ContentId,location,stock.ItemId,stock.Quantity,stock.Hq,"FeatureDisabled",$"{view.Facts(stock.ItemId)?.Name}: {decision.Outcome} is disabled; item protections remain active.",Collection:CopyEvidence(stock.ItemId)));
                     return;
@@ -74,7 +81,7 @@ public sealed partial class Plugin
                         $"{view.Facts(stock.ItemId)?.Name}: {decision.Reason}. Dresser free: {view.Evidence.DresserFreeSlots?.ToString()??"unknown"}; reserved: {config.Rules.DresserEmptySlots}. Collection proposals select one missing copy per item, subject to live space and readiness.",
                         Collection:CopyEvidence(stock.ItemId),RuleName:decision.Rule?.Name,SaleEvidence:sale));
                 if(decision.Outcome==Outcome.Dispose)
-                    entries.Add(new(player.ContentId,location,stock.ItemId,stock.Quantity,stock.Hq,"WouldDispose",$"{view.Facts(stock.ItemId)?.Name}: {decision.Reason}. Steward eligibility only; AutoRetainer still applies its enabled methods and item-selection rules.",Collection:CopyEvidence(stock.ItemId),RuleName:decision.Rule?.Name,SaleEvidence:sale));
+                    entries.Add(new(player.ContentId,location,stock.ItemId,stock.Quantity,stock.Hq,"WouldDispose",$"{view.Facts(stock.ItemId)?.Name}: {decision.Reason}. {(config.Features.Disposal?"Disposal enabled but subject to execution controls":"Disposal DISABLED; proposal only")}. Steward eligibility only. AutoRetainer: {DisposalRoute(stock)}.",Collection:CopyEvidence(stock.ItemId),RuleName:decision.Rule?.Name,SaleEvidence:sale));
                 if(decision is {Outcome:Outcome.Keep,Reason:"Non-equipment disposal requires explicit item permission"})
                     entries.Add(new(player.ContentId,location,stock.ItemId,stock.Quantity,stock.Hq,"ProtectedNonEquipment",$"{view.Facts(stock.ItemId)?.Name}: {decision.Reason}",Collection:CopyEvidence(stock.ItemId),RuleName:decision.Rule?.Name));
                 if(decision is {Outcome:Outcome.Ignore,Reason:"Item category excluded from all Steward handling"})
@@ -83,7 +90,7 @@ public sealed partial class Plugin
             foreach(var stock in view.Items.Distinct())Inspect($"Player container {stock.Container}, slot {stock.Slot}",stock);
             var retainerContainers=InventoryView.RetainerTypes().Select(t=>(uint)t).ToHashSet();
             foreach(var (owner,stock) in tracked.Items.Distinct().Where(r=>view.Retainers.Contains(r.Owner)&&(retainerContainers.Contains(r.Stock.Container)||AllaganRetainerPreview.IsPreview(r.Stock.Container))))
-                Inspect($"Retainer {owner}, cached {AllaganRetainerPreview.Location(stock)} (preview only)",stock);
+                Inspect($"Retainer {owner}, cached {AllaganRetainerPreview.Location(stock)} (preview only)",stock,owner);
             if(config.CleanDresser)
                 foreach(var candidate in market.DresserCleanupCandidates())
                     entries.Add(new(player.ContentId,"Glamour dresser",candidate.ItemId,(uint)candidate.Quantity,false,
@@ -91,7 +98,22 @@ public sealed partial class Plugin
             foreach(var id in CollectionHolds.ForCharacter(config.PendingCollection,player.ContentId))
                 entries.Add(new(player.ContentId,"Pending collection hold",id,1,false,"ProtectedPendingCollection",
                     $"{view.Facts(id)?.Name}: protected while waiting for confirmed collection; retainer storage never satisfies ownership.",Collection:CopyEvidence(id)));
+            if(!config.LogOnly)
+            {
+                reviewJournal.Snapshot(ReviewPath,entries.Where(e=>e.Action=="WouldDispose"),"DisposalReview");
+                return;
+            }
+            foreach(var stock in view.Items.Distinct())
+                foreach(var (retainer,name) in view.RetainerNames)
+                {
+                    var blocked=view.StorageBlock(stock.ItemId,retainer);
+                    if(blocked==null&&StorageCandidate(Judge(stock)))
+                        entries.Add(new(player.ContentId,$"Player {stock.Container}:{stock.Slot}; destination {name}",stock.ItemId,stock.Quantity,stock.Hq,"WouldStore",$"{view.Facts(stock.ItemId)?.Name}: assigned storage destination; AutoRetainer plan and live capacity still required",Retainer:retainer,Collection:CopyEvidence(stock.ItemId)));
+                }
+            foreach(var (retainer,name) in view.RetainerNames.Where(p=>config.WithdrawGilRetainers.Contains(p.Key)))
+                entries.Add(new(player.ContentId,$"Retainer {name}",0,0,false,"WouldWithdrawGil","Configured 100% withdrawal; actual amount and player gil capacity checked by AutoRetainer. Blocked in log-only mode.",Retainer:retainer));
             marketPreview=market.PreviewMarket();
+            entries.AddRange(market.StrategyReviewEntries);
             if(marketPreview.Plan is {} plan)
             {
                 foreach(var listing in plan.Listings)
@@ -112,7 +134,7 @@ public sealed partial class Plugin
             foreach(var rotation in marketPreview.Rotations??[])
             {
                 entries.Add(new(player.ContentId,$"Retainer {marketPreview.Retainer}, listing slot {rotation.Source.Slot}",rotation.Source.ItemId,rotation.Source.Quantity,rotation.Source.Hq,"WouldRotateListing",
-                    $"{view.Facts(rotation.Source.ItemId)?.Name}: first observed {rotation.Since:O}; {rotation.DaysListed:N1} tracked days. Return to inventory under normal item rules; waiting replacement: {view.Facts(rotation.Replacement.ItemId)?.Name}. Live replacement comparison and return acknowledgement required.",World:marketPreview.World,Retainer:marketPreview.Retainer,Collection:CopyEvidence(rotation.Source.ItemId)));
+                    $"{view.Facts(rotation.Source.ItemId)?.Name}: first observed {rotation.Since:O}; {rotation.DaysListed:N1} tracked days. Return to inventory under normal item rules; waiting replacement: {view.Facts(rotation.Replacement.ItemId)?.Name}. Relative turnover estimate: {rotation.SourceTurnoverDays?.ToString("0.##")??"unknown"} → {rotation.ReplacementTurnoverDays?.ToString("0.##")??"unknown"} days (listing quantity / market units per day; not a sale-time guarantee). Live replacement comparison and return acknowledgement required.",World:marketPreview.World,Retainer:marketPreview.Retainer,Collection:CopyEvidence(rotation.Source.ItemId)));
                 entries.Add(new(player.ContentId,$"Retainer {marketPreview.Retainer}, replacement for slot {rotation.Source.Slot}",rotation.Replacement.ItemId,rotation.ReplacementQuantity,rotation.Replacement.Hq,"WouldListAfterRotation",
                     $"{view.Facts(rotation.Replacement.ItemId)?.Name}: proposed replacement after confirmed return; {rotation.ReplacementQuantity} at {rotation.ReplacementPrice:N0} gil each. Estimate, subject to live comparison.",rotation.ReplacementPrice,(ulong)rotation.ReplacementPrice*rotation.ReplacementQuantity,marketPreview.World,marketPreview.Retainer,Collection:CopyEvidence(rotation.Replacement.ItemId)));
             }

@@ -13,8 +13,8 @@ public sealed partial class Plugin
     private SaleRule? expandSaleRule;
     private readonly Dictionary<uint,string> itemQueries=[];
     private readonly Dictionary<uint,IReadOnlyList<(uint Id,string Name)>> itemSearchResults=[];
-    private static readonly string[] Pages=["Overview","Sale rules","Glamour filters","Storage","Item overrides","Integrations","Developer tools"];
-    private static readonly string[] PageKeywords=["automation pause status inventory","market prices stacks quality undercut sales","collection outfits plates rarity dungeon raid favourites","dresser armoire overflow cleanup space","exclude keep reserve quantities categories disposal","AutoRetainer Market Buddy Universalis connection","logs diagnostics log-only testing"];
+    private static readonly string[] Pages=["Overview","Sale rules","Glamour filters","Storage","Item overrides","Integrations","Developer tools","Experimental strategies"];
+    private static readonly string[] PageKeywords=["automation pause status inventory","market prices stacks quality undercut sales","collection outfits plates rarity dungeon raid favourites","dresser armoire overflow cleanup space","exclude keep reserve quantities categories disposal","AutoRetainer Market Buddy Universalis connection","logs diagnostics log-only testing","silver dye dedicated retainer stacks reset buyout strategy"];
     private void SavePolicy()
     {
         config.Automatic=false;StopQueue();
@@ -74,6 +74,7 @@ public sealed partial class Plugin
                 case 4:DrawOverridesPage();break;
                 case 5:DrawIntegrationsPage();break;
                 case 6:DrawDeveloperPage();break;
+                case 7:DrawSilverStrategy();break;
             }
         }
         ImGui.EndChild();ImGui.End();
@@ -103,6 +104,7 @@ public sealed partial class Plugin
         Section("Features");
         ImGui.TextWrapped("Choose the work Steward should do. Disabling a feature preserves its settings and all item protections. Changes pause automation.");
         DrawMarketFeatureControls();
+        Setting("Prefer faster-selling listings",config.Rules.PreferFasterSales,v=>config.Rules.PreferFasterSales=v,"Prioritise listing quantity divided by average daily sales. Rotate only for a strictly faster replacement with known current activity. Market-wide activity is not a guaranteed sale time.");
         if(ImGui.CollapsingHeader("Glamour collection",ImGuiTreeNodeFlags.DefaultOpen))
         {
             DrawCollectionFeatureControls();
@@ -111,7 +113,7 @@ public sealed partial class Plugin
         if(ImGui.CollapsingHeader("Storage and disposal",ImGuiTreeNodeFlags.DefaultOpen))
         {
             Setting("Store protected overflow in retainers",config.Features.OverflowStorage,v=>config.Features.OverflowStorage=v,"When disabled, protected overflow stays in inventory and remains protected.");
-            Setting("Allow AutoRetainer disposal",config.Features.Disposal,v=>config.Features.Disposal=v,"Allow eligible vendor sales, desynthesis and Grand Company deliveries through AutoRetainer. Turning this off blocks these managed actions while Steward is connected.");
+            Setting("Allow AutoRetainer disposal",config.Features.Disposal,v=>config.Features.Disposal=v,"Allow eligible vendor sales, desynthesis and Grand Company deliveries through AutoRetainer. Turning this off blocks these managed actions while Steward is connected. AutoRetainer demo mode also blocks all three methods independently, so collection can run while disposal stays paused.");
         }
         Section("Run now");
         ImGui.BeginDisabled(!config.ExecutionEnabled||executionFault);
@@ -200,10 +202,11 @@ public sealed partial class Plugin
     private void DrawSalesPage()
     {
         DrawMarketFeatureControls();
+        Setting("Prefer faster-selling listings",config.Rules.PreferFasterSales,v=>config.Rules.PreferFasterSales=v,"Prioritise listing quantity divided by average daily sales. Rotate only for a strictly faster replacement with known current activity. Market-wide activity is not a guaranteed sale time.");
         if(!ImGui.BeginTabBar("SalesSections"))return;
         if(ImGui.BeginTabItem("Retainers"))
         {
-            ImGui.TextWrapped("Sale automation only runs on checked retainers. Unchecked retainers keep their listings untouched. Each sale rule can narrow this selection further.");
+            ImGui.TextWrapped("Ordinary sale automation only runs on checked retainers. Experimental strategies have their own narrowly scoped item exceptions. Each ordinary sale rule can narrow this selection further.");
             DrawRetainerSelection(config.ExcludedSaleRetainers,false);
             ImGui.TextWrapped("Existing listings on enabled retainers are checked against the rules and withdrawn when they no longer qualify. Returned items follow normal collection, sale and disposal rules.");
             ImGui.EndTabItem();

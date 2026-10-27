@@ -9,9 +9,21 @@ namespace Steward.Services;
 public sealed unsafe partial class MarketQueue
 {
     public sealed record ListingWindowPreview(Stock Source,DateTimeOffset? Since,int? MaximumDays);
-    public sealed record RotationProposal(Stock Source,Stock Replacement,DateTimeOffset Since,double DaysListed,string Token,uint ReplacementQuantity,uint ReplacementPrice);
+    public sealed record RotationProposal(Stock Source,Stock Replacement,DateTimeOffset Since,double DaysListed,string Token,uint ReplacementQuantity,uint ReplacementPrice,double? SourceTurnoverDays=null,double? ReplacementTurnoverDays=null);
+    private double TurnoverDays(Stock stock,uint quantity)
+    {
+        var now=DateTimeOffset.UtcNow;
+        return SaleTurnover.Days(quantity,SaleStatistics.Select(view.Evidence,stock.ItemId,stock.Hq,config.Rules.Quality,view.World,now),now,config.Rules.SummaryRefreshHours);
+    }
+    private double CandidateTurnover(Stock stock)
+    {
+        var input=SaleInput(stock,false);if(input==null)return double.PositiveInfinity;
+        var choice=ListingPlanner.Next(input,config.Pricing,view.World,config.Rules.MaximumPriceAgeMinutes,DateTimeOffset.UtcNow);
+        return choice.Eligible?TurnoverDays(stock,choice.Quantity):double.PositiveInfinity;
+    }
     private IEnumerable<Stock> OrderedSaleStock(ulong retainer)=>AvailableSaleStock()
-        .OrderBy(s=>config.ListingWindows.Priority(view.Character,view.World,retainer,s));
+        .OrderBy(s=>config.Rules.PreferFasterSales?CandidateTurnover(s):0)
+        .ThenBy(s=>config.ListingWindows.Priority(view.Character,view.World,retainer,s));
     private void ObserveListingWindows(ulong retainer,List<Stock> listings)
     {
         if(view.Character==0||view.World==0)return;
@@ -19,6 +31,7 @@ public sealed unsafe partial class MarketQueue
     }
     private RotationProposal? FindRotation(ulong retainer,List<Stock> listings)
     {
+        if(config.Silver.Owns(retainer))return null;
         if(!config.Features.NewListings||!config.Features.Rotation||InventoryView.FreeBagSlots()<2||listings.Count!=20||!view.Evidence.ReferencesReady||!view.Evidence.GearsetsReady||!marketPreferencesReady())return null;
         var now=DateTimeOffset.UtcNow;
         foreach(var source in listings.OrderBy(s=>config.ListingWindows.Age(view.Character,view.World,retainer,s)?.Since??DateTimeOffset.MaxValue))
@@ -35,8 +48,10 @@ public sealed unsafe partial class MarketQueue
                 var input=SaleInput(stock,false);if(input==null)continue;
                 var choice=ListingPlanner.Next(input,config.Pricing,view.World,config.Rules.MaximumPriceAgeMinutes,now);
                 if(!choice.Eligible)continue;
+                var sourceDays=TurnoverDays(source,source.Quantity);var replacementDays=TurnoverDays(stock,choice.Quantity);
+                if(config.Rules.PreferFasterSales&&!SaleTurnover.Improves(sourceDays,replacementDays))continue;
                 var token=ListingWindows.Owner(view.Character,view.World,retainer)+source.Slot+"/"+age!.Since.UtcTicks;
-                return new(source,stock,age.Since,(now-age.Since).TotalDays,token,choice.Quantity,choice.UnitPrice);
+                return new(source,stock,age.Since,(now-age.Since).TotalDays,token,choice.Quantity,choice.UnitPrice,double.IsFinite(sourceDays)?sourceDays:null,double.IsFinite(replacementDays)?replacementDays:null);
             }
         }
         return null;
@@ -79,7 +94,10 @@ public sealed unsafe partial class MarketQueue
                 var now=DateTimeOffset.UtcNow;
                 if(proof==null||!proof.Complete||proof.World!=world||proof.At>now||now-proof.At>TimeSpan.FromSeconds(30))return StepResult.Failed;
                 var replacement=SaleInput(proposal.Replacement,true);
-                if(replacement==null||!ListingPlanner.Next(replacement,config.Pricing,world,config.Rules.MaximumPriceAgeMinutes,DateTimeOffset.UtcNow).Eligible)return StepResult.Failed;
+                if(replacement==null)return StepResult.Failed;
+                var choice=ListingPlanner.Next(replacement,config.Pricing,world,config.Rules.MaximumPriceAgeMinutes,DateTimeOffset.UtcNow);
+                if(!choice.Eligible)return StepResult.Failed;
+                if(config.Rules.PreferFasterSales&&!SaleTurnover.Improves(TurnoverDays(source,source.Quantity),TurnoverDays(proposal.Replacement,choice.Quantity)))return StepResult.Completed;
                 }
             }
             var agent=AgentRetainer.Instance();var sale=ui.Get("RetainerSellList");

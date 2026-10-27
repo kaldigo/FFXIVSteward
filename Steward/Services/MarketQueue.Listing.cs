@@ -61,7 +61,14 @@ public sealed unsafe partial class MarketQueue
     }
     private MarketReference ReferenceFromOffers(uint id,bool hq,DateTimeOffset at,IEnumerable<Offering> values)
     {
-        var relevant=values.Where(o=>o.ItemId==id&&(config.Rules.Quality==QualityMode.Combined||o.Hq==hq)).ToArray();
+        var all=values.ToArray();
+        if(all.Length==0&&OwnMinimum(id,hq).HasValue)
+            return new(view.World,null,null,at,"Empty comparison conflicts with an existing own listing; held");
+        if(all.Length==0)
+            return new(view.World,MarketComparison.EmptyMarketAverage(view.Evidence,id,hq,config.Rules.Quality,view.World,
+                DateTimeOffset.UtcNow,config.Rules.SummaryRefreshHours),null,at,
+                "Confirmed empty in-game market; Universalis average",EmptyMarketAverage:true);
+        var relevant=all.Where(o=>o.ItemId==id&&(config.Rules.Quality==QualityMode.Combined||o.Hq==hq)).ToArray();
         var own=OwnMinimum(id,hq);
         var observedOwn=relevant.Where(o=>config.OwnRetainers.Contains(o.RetainerId)).Select(o=>(uint?)o.UnitPrice).Min();
         if(observedOwn.HasValue)own=own.HasValue?Math.Min(own.Value,observedOwn.Value):observedOwn;
@@ -96,14 +103,16 @@ public sealed unsafe partial class MarketQueue
         var retainer=OpenMarketRetainer();
         if(!config.SalesEnabledFor(retainer))return null;
         var decision=marketJudge(stock,retainer,live);
-        var rule=config.Rules.Sales.FirstOrDefault(r=>r.Matches(item,stock,retainer));
+        var rule=MarketRule(item,stock,retainer);
         return new(item,stock,decision,rule,reference??PreviewReference(stock.ItemId,stock.Hq));
     }
     public MarketPreview PreviewMarket()
     {
+        StrategyReviewEntries=[];
         if(!MarketSnapshot(out var retainer,out var listings))
             return new(0,view.World,null,[],"Open your retainer's selling list to load its actual free slots. Log-only does not open game menus or request in-game searches. Universalis may fetch price estimates in the background.");
         if(!config.SalesEnabledFor(retainer))return new(retainer,view.World,null,[],"Sale automation is excluded for this retainer.");
+        if(config.Silver.Owns(retainer))return PreviewSilver(retainer,listings);
         ObserveListingWindows(retainer,listings);
         if(!marketPreferencesReady())return new(retainer,view.World,null,[],"Market preferences unavailable; listing proposals held.");
         if(!view.Evidence.ReferencesReady||!view.Evidence.GearsetsReady)
@@ -124,7 +133,7 @@ public sealed unsafe partial class MarketQueue
                 reprices.Add(new(listing,before,target.Value,reference,decision.Rule?.Name));
         }
         var windows=listings.Select(stock=>new ListingWindowPreview(stock,config.ListingWindows.Age(view.Character,view.World,retainer,stock)?.Since,
-            view.Facts(stock.ItemId) is {} item?config.Rules.Sales.FirstOrDefault(r=>r.Matches(item,stock,retainer))?.MaximumListingDays:null)).ToArray();
+            view.Facts(stock.ItemId) is {} item?MarketRule(item,stock,retainer)?.MaximumListingDays:null)).ToArray();
         var rotation=listings.Any(s=>ReturnReason(s,retainer,false)!=null)?null:FindRotation(retainer,listings);
         return new(retainer,view.World,plan,reprices,$"{listings.Count}/20 slots occupied; {plan.Listings.Count} proposed new listings; {plan.FreeSlotsRemaining} slots remain. Estimates use cached summaries or manually observed prices; execution always rechecks the game market.{(config.Rules.Sales.Any(r=>r.Enabled)?"":" Add an enabled auto-sell rule in Rules to propose new listings.")}",rotation==null?[]:[rotation],windows,listings.Select(s=>new ReturnProposal(s,ReturnReason(s,retainer,false))).Where(r=>r.Reason!=null).ToArray());
     }
@@ -136,6 +145,14 @@ public sealed unsafe partial class MarketQueue
             refreshProtection();
             if(!marketPreferencesReady()||!MarketSnapshot(out var selected,out var listings)||selected!=retainer)return StepResult.Failed;
             if(!config.SalesEnabledFor(retainer))return StepResult.Failed;
+            if(config.Silver.Owns(retainer))
+            {
+                var silverCandidates=AvailableSaleStock().Where(s=>config.Silver.Matches(retainer,s.ItemId)&&!s.Hq&&marketJudge(s,retainer,true).Outcome==Outcome.Market&&config.Silver.NextQuantity(listings,s.Quantity)>0);
+                var silverNext=pass.Next(silverCandidates,listings.Count);
+                if(silverNext!=null)Enqueue(silverNext,retainer,false,coordinated,(source,success)=>{if(!success)pass.Rejected(source);if(config.ExecutionEnabled&&!config.ExecutionReviewRequired)EnqueueListingPump(retainer,coordinated,pass);});
+                else history("Silver strategy refill complete or held: no available stock/quota/free slot. Unrelated listings were left untouched.");
+                return StepResult.Completed;
+            }
             ObserveListingWindows(retainer,listings);
             if(listings.Count>=20)
             {

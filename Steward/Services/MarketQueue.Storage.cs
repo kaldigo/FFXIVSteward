@@ -41,12 +41,12 @@ public sealed unsafe partial class MarketQueue
     }
     private void EnqueueOverflow(ulong character,ulong retainer)
     {
-        if(!config.Features.OverflowStorage)return;
+        if(!config.Features.OverflowStorage||!config.Storage.RetainerEnabled(retainer))return;
         var completed=0;
         var label=retainer.ToString();
         var rm=RetainerManager.Instance();
-        if(rm!=null)foreach(var r in rm->Retainers)if(r.RetainerId==retainer)label=r.Name.ToString();
-        foreach(var source in view.Items.ToArray().Where(s=>s.Quantity==1&&judge(s).Outcome==Outcome.StoreRetainer))
+        if(rm!=null)foreach(var r in rm->Retainers)if(r.RetainerId==retainer)label=r.NameString;
+        foreach(var source in view.Items.ToArray().Where(s=>s.Quantity==1&&view.StorageBlock(s.ItemId,retainer)==null&&judge(s).Outcome==Outcome.StoreRetainer))
         {
             protectCollection(source.ItemId); // Synchronous durable hold precedes any native transfer.
             var sent=false;long beforePlayer=0,beforeRetainer=0;
@@ -60,7 +60,7 @@ public sealed unsafe partial class MarketQueue
                 if(!sent)
                 {
                     if(InventoryView.ReadSlot(source.Container,source.Slot)!=source)return StepResult.Failed;
-                    if(!config.Features.OverflowStorage||judge(source).Outcome!=Outcome.StoreRetainer)return StepResult.Completed;
+                    if(!config.Features.OverflowStorage||view.StorageBlock(source.ItemId,retainer)!=null||judge(source).Outcome!=Outcome.StoreRetainer)return StepResult.Completed;
                     var im=InventoryManager.Instance();var empty=false;
                     foreach(var type in InventoryView.RetainerTypes())
                     {var bag=im->GetInventoryContainer(type);for(var i=0;i<bag->Size;i++)if(bag->GetInventorySlot(i)->ItemId==0)empty=true;}

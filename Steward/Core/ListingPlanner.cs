@@ -1,6 +1,6 @@
 namespace Steward.Core;
 
-public sealed record MarketReference(uint World,uint? Competitor,uint? OwnMinimum,DateTimeOffset Observed,string Source,bool Provisional=false,bool SummaryEstimate=false);
+public sealed record MarketReference(uint World,uint? Competitor,uint? OwnMinimum,DateTimeOffset Observed,string Source,bool Provisional=false,bool SummaryEstimate=false,bool EmptyMarketAverage=false);
 public sealed record ListingInput(ItemFacts Item,Stock Stock,Decision Decision,SaleRule? Rule,MarketReference? Reference);
 public sealed record ListingChoice(uint UnitPrice,uint Quantity,string Reason)
 {public ulong Total=>(ulong)UnitPrice*Quantity;public bool Eligible=>UnitPrice>0&&Quantity>0;}
@@ -20,14 +20,16 @@ public static class ListingPlanner
         var reference=input.Reference;var rule=input.Rule!;
         if(world==0||reference==null||reference.World!=world||reference.Competitor is null or 0||reference.Observed>now||
             !(reference.Provisional&&reference.SummaryEstimate)&&now-reference.Observed>TimeSpan.FromMinutes(Math.Clamp(maxAgeMinutes,1,1440)))return new(0,0,"No fresh competing price on the current world");
-        var target=Pricing.ListingTarget(reference.Competitor.Value,reference.OwnMinimum,pricing,rule.MinimumUnit);
+        var target=reference.EmptyMarketAverage
+            ? (reference.Competitor.Value>=rule.MinimumUnit ? reference.Competitor : null)
+            : Pricing.ListingTarget(reference.Competitor.Value,reference.OwnMinimum,pricing,rule.MinimumUnit);
         if(target==null)return new(0,0,"Undercut/own-price protection cannot meet the unit floor");
         var maximum=Math.Clamp(rule.MaximumStack,1,9999);
         if(pricing.UseMaxStackSize)maximum=Math.Min(maximum,Math.Clamp(pricing.MaximumStackSize,1,9999));
         var quantity=Math.Min(Math.Min(input.Stock.Quantity,input.Decision.MaximumRemovable??input.Stock.Quantity),(uint)maximum);
         if(quantity==0)return new(0,0,"Remaining quantity is reserved");
         if((ulong)target.Value*quantity<rule.MinimumTotal)return new(0,0,"Actual split listing falls below the total-value floor");
-        return new(target.Value,quantity,reference.OwnMinimum==target?"Match own lowest price without undercutting it":"Undercut competing price");
+        return new(target.Value,quantity,reference.EmptyMarketAverage?"Confirmed empty market: use Universalis average without undercutting":reference.OwnMinimum==target?"Match own lowest price without undercutting it":"Undercut competing price");
     }
     public static ListingPlan Plan(IEnumerable<ListingInput> inputs,IReadOnlyList<int> freeSlots,PricingSettings pricing,
         uint world,int maxAgeMinutes,QualityMode quality,DateTimeOffset now)

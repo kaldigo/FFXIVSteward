@@ -56,6 +56,17 @@ public sealed unsafe partial class MarketQueue : IDisposable
         if(observationWorld!=view.World)
         {observationWorld=view.World;observationWorldSince=DateTimeOffset.UtcNow;observedMarkets.Clear();}
         while(packets.TryDequeue(out var packet))
+        {
+        if(packet.Offers.Length==0)
+        {
+            var proxy=FFXIVClientStructs.FFXIV.Client.UI.Info.InfoProxyItemSearch.Instance();
+            if(proxy!=null&&proxy->SearchItemId%1000000!=0&&proxy->CurrentRequestId==packet.Request&&proxy->ListingCount==0)
+            {
+                var emptyItem=proxy->SearchItemId%1000000;
+                ObserveMarket(emptyItem,packet.At,packet.Request,[]);
+                if(comparisonItem==emptyItem&&packet.At>=comparisonOpened)offers[emptyItem]=(packet.At,packet.Request,[]);
+            }
+        }
         foreach(var group in packet.Offers.GroupBy(x=>x.ItemId))
         {
             ObserveMarket(group.Key,packet.At,packet.Request,group.ToList());
@@ -64,11 +75,14 @@ public sealed unsafe partial class MarketQueue : IDisposable
             if(offers.TryGetValue(group.Key,out var old)&&old.Request==packet.Request&&packet.At-old.At<TimeSpan.FromSeconds(20))values.AddRange(old.Offers);
             offers[group.Key]=(packet.At,packet.Request,values.GroupBy(value=>value.ListingId).Select(g=>g.First()).ToList());
         }
+        }
         UpdateObservedMarkets();
     }
     private static bool ComparisonReady(uint item,DateTimeOffset opened,(DateTimeOffset At,int Request,List<Offering> Offers) result)
     {
         var proxy=FFXIVClientStructs.FFXIV.Client.UI.Info.InfoProxyItemSearch.Instance();
+        if(proxy!=null&&MarketComparison.IsConfirmedEmpty(item,proxy->SearchItemId,result.Request,proxy->CurrentRequestId,
+            proxy->WaitingForListings,result.Offers.Count,proxy->ListingCount,result.At,opened,DateTimeOffset.UtcNow))return true;
         return proxy!=null && result.Offers.All(o=>o.ListingId!=0&&o.RetainerId!=0&&o.Quantity>0&&o.UnitPrice>0) && MarketComparison.IsCurrent(item,proxy->SearchItemId,result.Request,proxy->CurrentRequestId,
             proxy->WaitingForListings,result.Offers.Count,proxy->ListingCount,result.At,opened,DateTimeOffset.UtcNow);
     }
@@ -123,7 +137,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
             if(phase<4 && !marketPreferencesReady())return StepResult.Failed;
             var priceOnlyWait=decision is {Outcome:Outcome.Wait,Reason:"No fresh competing price; disposal is blocked"};
             var facts=phase<4?view.Facts(expected.ItemId):null;
-            var saleRule=facts==null?null:config.Rules.Sales.FirstOrDefault(r=>r.Matches(facts,expected,retainer));
+            var saleRule=facts==null?null:MarketRule(facts,expected,retainer);
             if(phase<4 && (reprice ? saleRule==null||decision.SaleRejected||decision.Outcome is not (Outcome.Market or Outcome.Dispose)&&!priceOnlyWait :
                 facts==null||!ListingPlanner.CanConsider(facts,expected,decision,saleRule)))return Finish();
             if(phase==0)
@@ -136,6 +150,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     locked=true;
                 }
                 beforePrice=reprice?(uint)InventoryManager.Instance()->GetRetainerMarketPrice((short)expected.Slot):null;
+                if(reprice&&config.Silver.Matches(retainer,expected.ItemId)&&beforePrice==0)return Finish();
                 if(!MarketSnapshot(out var selected,out var before)||selected!=retainer)return StepResult.Failed;
                 if(!reprice&&!quoteOnly&&before.Count>=20)return Finish();
                 occupiedBefore=before.Select(s=>s.Slot).ToHashSet();
@@ -164,9 +179,17 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 decision=marketJudge(expected,retainer,true);
                 var reference=ReferenceFromOffers(expected.ItemId,expected.Hq,result.At,result.Offers);
                 if(reference.Source.Contains("ignored ",StringComparison.Ordinal))history($"Market price safeguard for {expected.ItemId}: {reference.Source}; reference {reference.Competitor:N0} gil.");
-                if(!reprice)
+                if(config.Silver.Matches(retainer,expected.ItemId))
                 {
-                    facts=view.Facts(expected.ItemId);saleRule=facts==null?null:config.Rules.Sales.FirstOrDefault(r=>r.Matches(facts,expected,retainer));
+                    var choice=SilverChoice(expected,retainer,reprice,result.Offers,true);
+                    if(!choice.Eligible)return Finish();
+                    target=choice.UnitPrice;quantity=(int)choice.Quantity;
+                    if(reprice&&target==beforePrice)return Finish(true);
+                    decision=decision with{Outcome=Outcome.Market,Rule=config.Silver.Rule(),UnitPrice=target};
+                }
+                else if(!reprice)
+                {
+                    facts=view.Facts(expected.ItemId);saleRule=facts==null?null:MarketRule(facts,expected,retainer);
                     if(facts==null)return Finish();
                     var choice=ListingPlanner.Next(new(facts,expected,decision,saleRule,reference),config.Pricing,view.World,config.Rules.MaximumPriceAgeMinutes,DateTimeOffset.UtcNow);
                     if(!choice.Eligible){history("Held listing "+expected.ItemId+": "+choice.Reason);return Finish();}
@@ -199,9 +222,16 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 if(reprice && (uint)InventoryManager.Instance()->GetRetainerMarketPrice((short)expected.Slot)!=beforePrice)return StepResult.Failed;
                 if(!offers.TryGetValue(expected.ItemId,out var result) || !ComparisonReady(expected.ItemId,opened,result))return StepResult.Failed;
                 uint? latest;
-                if(!reprice)
+                if(config.Silver.Matches(retainer,expected.ItemId))
                 {
-                    facts=view.Facts(expected.ItemId);saleRule=facts==null?null:config.Rules.Sales.FirstOrDefault(r=>r.Matches(facts,expected,retainer));
+                    var choice=SilverChoice(expected,retainer,reprice,result.Offers,true);
+                    if(!choice.Eligible||choice.Quantity!=quantity)return StepResult.Failed;
+                    latest=choice.UnitPrice;decision=decision with{Outcome=Outcome.Market,Rule=config.Silver.Rule(),UnitPrice=latest};
+                    if(!reprice&&(!MarketSnapshot(out var selected,out var currentListings,false)||selected!=retainer||!occupiedBefore.SetEquals(currentListings.Select(s=>s.Slot))))return StepResult.Failed;
+                }
+                else if(!reprice)
+                {
+                    facts=view.Facts(expected.ItemId);saleRule=facts==null?null:MarketRule(facts,expected,retainer);
                     if(facts==null)return StepResult.Failed;
                     var choice=ListingPlanner.Next(new(facts,expected,decision,saleRule,ReferenceFromOffers(expected.ItemId,expected.Hq,result.At,result.Offers)),
                         config.Pricing,view.World,config.Rules.MaximumPriceAgeMinutes,DateTimeOffset.UtcNow);
@@ -211,7 +241,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 }
                 else latest=Pricing.Target(expected.ItemId,expected.Hq,beforePrice,result.Offers,config.OwnRetainers,config.Rules.Quality,config.Pricing,decision.Rule?.MinimumUnit??1);
                 var maximum=decision.Rule?.MaximumStack??9999;
-                if(config.Pricing.UseMaxStackSize)maximum=Math.Min(maximum,config.Pricing.MaximumStackSize);
+                if(config.Pricing.UseMaxStackSize&&!config.Silver.Matches(retainer,expected.ItemId))maximum=Math.Min(maximum,config.Pricing.MaximumStackSize);
                 if(latest!=target || !MarketSubmission.CanCommit(expected,InventoryView.ReadSlot(expected.Container,expected.Slot),decision,reprice,
                     target.Value,(uint)quantity,dialog->AskingPrice->Value,dialog->Quantity->Value,maximum))return StepResult.Failed;
                 if(!reprice&&!InventoryView.CanListStock(expected))return StepResult.Failed;
@@ -282,6 +312,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
         var manager=RetainerManager.Instance();
         var retainer=manager==null?0:manager->LastSelectedRetainerId;
         if(retainer==0 || !view.Retainers.Contains(retainer))throw new InvalidOperationException("Withdrawal retainer identity is unavailable");
+        if(!config.Storage.RetainerEnabled(retainer))return;
         EnqueueOverflow(character,retainer);
         if(overflowOnly)return;
         var dresserWithdrawals=0;
@@ -293,7 +324,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
             var sent=false;long before=0;
             Queue.Add(new("Withdraw "+stock.ItemId,()=>
             {
-                if(!config.ExecutionEnabled||view.Character!=character)return StepResult.Failed;
+                if(!config.ExecutionEnabled||view.Character!=character||!config.Storage.RetainerEnabled(retainer))return StepResult.Failed;
                 var currentRetainer=RetainerManager.Instance();
                 if(currentRetainer==null || currentRetainer->LastSelectedRetainerId!=retainer)return StepResult.Failed;
                 if(!pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsHandoff").InvokeFunc(character))return StepResult.Failed;

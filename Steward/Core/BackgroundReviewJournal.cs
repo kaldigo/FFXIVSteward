@@ -8,7 +8,7 @@ namespace Steward.Core;
 public sealed class BackgroundReviewJournal : IDisposable
 {
     public sealed record Completion(string[] History,string? Error,bool Review,string? Key=null);
-    private sealed record Work(DateTimeOffset At,string? Message,string? ReviewPath,ReviewEntry[]? Entries,int Generation,string? PolicyKey=null);
+    private sealed record Work(DateTimeOffset At,string? Message,string? ReviewPath,ReviewEntry[]? Entries,int Generation,string? PolicyKey=null,string Mode="LogOnly");
     private readonly Channel<Work> queue=Channel.CreateBounded<Work>(new BoundedChannelOptions(128){SingleReader=true,SingleWriter=true,FullMode=BoundedChannelFullMode.Wait});
     private readonly ConcurrentQueue<Completion> completed=new();
     private readonly Task worker;
@@ -28,20 +28,20 @@ public sealed class BackgroundReviewJournal : IDisposable
     {
         if(!queue.Writer.TryWrite(new(at,text,null,null,generation)))throw new IOException("History writer is busy or closed");
     }
-    public bool Snapshot(string path,IEnumerable<ReviewEntry> entries)
+    public bool Snapshot(string path,IEnumerable<ReviewEntry> entries,string mode="LogOnly")
     {
         if(Interlocked.CompareExchange(ref pendingReview,1,0)!=0)return false;
         try
         {
-            if(!queue.Writer.TryWrite(new(DateTimeOffset.UtcNow,null,path,entries.ToArray(),generation)))
+            if(!queue.Writer.TryWrite(new(DateTimeOffset.UtcNow,null,path,entries.ToArray(),generation,Mode:mode)))
                 throw new IOException("Review writer is busy or closed");
             return true;
         }
         catch{Volatile.Write(ref pendingReview,0);throw;}
     }
-    public void Proposal(string path,ReviewEntry entry,string key)
+    public void Proposal(string path,ReviewEntry entry,string key,string mode="LogOnly")
     {
-        if(!queue.Writer.TryWrite(new(DateTimeOffset.UtcNow,null,path,[entry],generation,key)))throw new IOException("Review writer is busy or closed");
+        if(!queue.Writer.TryWrite(new(DateTimeOffset.UtcNow,null,path,[entry],generation,key,mode)))throw new IOException("Review writer is busy or closed");
     }
     private async Task Run()
     {
@@ -58,15 +58,15 @@ public sealed class BackgroundReviewJournal : IDisposable
                     if(work.PolicyKey!=null)
                     {
                         Directory.CreateDirectory(Path.GetDirectoryName(work.ReviewPath!)!);
-                        append(work.ReviewPath!,work.Entries!.Select(proposal=>JsonSerializer.Serialize(new{at=work.At,mode="LogOnly",proposal})));
+                        append(work.ReviewPath!,work.Entries!.Select(proposal=>JsonSerializer.Serialize(new{at=work.At,mode=work.Mode,proposal})));
                         changed=work.Entries!;
                     }
                     else
                     {
                         if(appliedGeneration!=work.Generation){journal.Reset();appliedGeneration=work.Generation;}
-                        changed=journal.Snapshot(work.ReviewPath!,work.Entries!);
+                        changed=journal.Snapshot(work.ReviewPath!,work.Entries!,work.Mode);
                     }
-                    messages=changed.Select(e=>$"[LOG ONLY] {e.Action}: {e.Location}; item {e.ItemId} x{e.Quantity}. {e.Reason}").ToArray();
+                    messages=changed.Select(e=>$"[{work.Mode}] {e.Action}: {e.Location}; item {e.ItemId} x{e.Quantity}. {e.Reason}").ToArray();
                 }
                 else messages=[work.Message!];
                 var history=messages.Select(m=>$"{work.At.LocalDateTime:yyyy-MM-dd HH:mm:ss} {m}").ToArray();

@@ -39,7 +39,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private uint[] priceCandidates=[];
     private long nextAutomaticWork;
     private ulong attached;
-    private bool open=true;
+    private bool open=false;
     private bool disposed;
     private bool ownsPostprocess;
     private bool executionFault;
@@ -93,6 +93,7 @@ public sealed partial class Plugin : IDalamudPlugin
         historyPath=Path.Combine(pi.GetPluginConfigDirectory(),"history.jsonl");
         reviewJournal=new(historyPath);
         market=new(pi,board,view,config,new(gui),JudgeLive,Record,RefreshProtection,()=>imports.MarketPreferencesReady,HoldExecution,BeginOperation,CompleteOperation,ProtectCollection,Alert,Judge,Save,JudgeMarket);
+        pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.StrategyRetainer").RegisterFunc(r=>config.ExecutionEnabled&&!executionFault&&config.Connected&&attached==player.ContentId&&player.IsLoaded&&config.Features.AnyMarket&&config.Silver.Owns(r));
         pi.GetIpcProvider<string,string>(Endpoint).RegisterFunc(Evaluate);
         pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.OverflowNeeded").RegisterFunc(OverflowNeeded);
         pi.GetIpcProvider<ulong,string,object>("Steward.InventoryPolicy.Fault").RegisterAction(IntegrationFault);
@@ -156,8 +157,18 @@ public sealed partial class Plugin : IDalamudPlugin
     private Decision JudgeForRetainer(Stock stock,ulong retainer)
     {
         var item=view.Facts(stock.ItemId);
+        if(config.Silver.Owns(retainer))
+        {
+            if(!config.Silver.Matches(retainer,stock.ItemId)||stock.Hq)return new(Outcome.Ignore,"Dedicated strategy retainer: other items untouched");
+            if(item==null||!item.Marketable||!view.Evidence.GearsetsReady||!view.Evidence.ReferencesReady)return new(Outcome.Wait,"Strategy protection evidence unavailable");
+            if(config.Rules.Keep.Contains(stock.ItemId)||config.Rules.QuantityReserves.GetValueOrDefault(stock.ItemId)>0||config.Rules.IgnoredCategories.Contains(item.Category)||view.Evidence.Gearsets.Contains(stock.ItemId))return new(Outcome.Keep,"Strategy item has a keep, category or gearset protection");
+            bool? protectedStrategyItem=null;
+            try{protectedStrategyItem=pi.GetIpcSubscriber<uint,bool>("AutoRetainer.PluginState.IsItemProtected").InvokeFunc(stock.ItemId);}catch{}
+            return UpstreamProtection.Apply(new(Outcome.Market,"Explicit silver strategy; ordinary item exclusion remains in force elsewhere",config.Silver.Rule()),protectedStrategyItem);
+        }
         var decision=item==null?new Decision(Outcome.Wait,"Unknown game item"):Rules.Judge(item,stock,config.Rules,view.Evidence,view.World,DateTimeOffset.UtcNow,retainer);
         if(decision.Outcome==Outcome.Ignore)return decision;
+        if(view.UnlockStatus(stock.ItemId) is not (1 or 4))return new(Outcome.Keep,"Unlearned or unverified unlock item: keep available to use");
         if(!protectionSnapshot.TryGetValue(stock.ItemId,out var protectedItem))
         {
             try{protectedItem=pi.GetIpcSubscriber<uint,bool>("AutoRetainer.PluginState.IsItemProtected").InvokeFunc(stock.ItemId);}
@@ -206,6 +217,8 @@ public sealed partial class Plugin : IDalamudPlugin
     {
         if(character!=0 && character==player.ContentId){HoldExecution("AutoRetainer: "+reason);StopQueue();}
     }
+    private bool StorageCandidate(Decision decision)=>(decision.Outcome!=Outcome.StoreRetainer||config.Features.OverflowStorage)&&decision.Outcome is not (Outcome.CollectArmoire or Outcome.CollectDresser or Outcome.Ignore)&&
+        decision.Reason is not ("AutoRetainer protection is unavailable" or "Explicit AutoRetainer protection" or "Unlearned or unverified unlock item: keep available to use" or "Live dresser or armoire ownership is unavailable" or "Cached collection copy is unverified; preserve until collection is observed");
     private string Evaluate(string request)
     {
         try
@@ -215,6 +228,7 @@ public sealed partial class Plugin : IDalamudPlugin
             Refresh();
             // Protection imports are refreshed again before permission, even between regular refresh intervals.
             imports.Refresh();
+            if(root.GetProperty("Action").GetString()=="Gil")return config.ExecutionEnabled&&!executionFault?"Allow":"Deny";
             var id=root.GetProperty("ItemId").GetUInt32()%1000000;
             var quantity=root.GetProperty("Quantity").GetUInt32();
             var container=root.GetProperty("Container").GetInt32();var slot=root.GetProperty("Slot").GetInt32();
@@ -233,6 +247,16 @@ public sealed partial class Plugin : IDalamudPlugin
                 stock=copies[0];
             }
             var decision=Judge(stock);var action=root.GetProperty("Action").GetString();
+            var target=root.TryGetProperty("Retainer",out var retainerElement)?retainerElement.GetUInt64():0;
+            if(action=="Entrust")
+            {
+                var block=view.StorageBlock(id,target);
+                var storageAllow=block==null&&StorageCandidate(decision)&&config.ExecutionEnabled&&!executionFault&&!market.Queue.Running&&!ownsPostprocess;
+                if(storageAllow&&decision.Outcome==Outcome.StoreRetainer)ProtectCollection(id);
+                return storageAllow?"Allow":"Deny";
+            }
+            if(action is "Store" or "Retrieve" && !config.Storage.RetainerEnabled(target))return "Deny";
+            if(action=="Store"&&view.StorageBlock(id,target)!=null)return "Deny";
             LogPolicyProposal(action,stock,decision);
             var allow=config.Features.Allows(action,decision.Outcome)&&ActionPolicy.Allows(action,decision.Outcome,config.ExecutionEnabled,config.Connected,executionFault,
                 market.Queue.Running||ownsPostprocess,ownsPostprocess);
@@ -323,6 +347,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private void RequestPostprocess(string retainer)
     {
         if(!player.IsLoaded||!config.ExecutionEnabled||executionFault||attached!=player.ContentId||market.Queue.Running)return;
+        if(view.RetainerNames.FirstOrDefault(p=>p.Value==retainer).Key is var retainerId && !config.Storage.RetainerEnabled(retainerId)&&!config.SalesEnabledFor(retainerId))return;
         if(!config.Features.AnyInventoryWork&&!config.Features.AnyMarket)return;
         if(overflowPass && !OverflowNeeded(player.ContentId))return;
         try{pi.GetIpcSubscriber<string,object>("AutoRetainer.RequestPostprocess").InvokeAction("Steward");}
@@ -371,6 +396,7 @@ public sealed partial class Plugin : IDalamudPlugin
         if(config.LogOnly){Record("Log only is enabled. Turn it off in Developer tools before enabling automatic execution.");return;}
         try
         {
+            if(pi.GetIpcSubscriber<int>("AutoRetainer.InventoryPolicy.StorageVersion").InvokeFunc()<3)throw new InvalidOperationException("Update AutoRetainer before enabling managed actions: the shared disposal demo-mode guard is required");
             var ready=!config.LogOnly && player.IsLoaded && config.Connected && attached!=0 && attached==player.ContentId && !executionFault &&
                 !config.ExecutionReviewRequired && !market.Queue.Running && !ownsPostprocess &&
                 !pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.HasFault").InvokeFunc(player.ContentId);
@@ -397,6 +423,7 @@ public sealed partial class Plugin : IDalamudPlugin
         finally
         {
             universalis.Dispose();inventoryMemory.Dispose();reviewJournal.Dispose();
+            pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.StrategyRetainer").UnregisterFunc();
             pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.CollectionNeeded").UnregisterFunc();
             pi.GetIpcProvider<string,string>(Endpoint).UnregisterFunc();
             pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.OverflowNeeded").UnregisterFunc();

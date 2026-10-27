@@ -19,7 +19,7 @@ public sealed partial class Plugin
         RefreshProtection();
         var waiting=view.Items.Where(s=>Judge(s).Outcome==Outcome.CollectDresser).Select(s=>s.ItemId).Distinct().Count();
         var containers=InventoryView.RetainerTypes().Select(t=>(uint)t).ToHashSet();
-        return tracked.Items.Any(r=>view.Retainers.Contains(r.Owner)&&(containers.Contains(r.Stock.Container)||AllaganRetainerPreview.IsPreview(r.Stock.Container))&&
+        return tracked.Items.Any(r=>config.Storage.RetainerEnabled(r.Owner)&&view.Retainers.Contains(r.Owner)&&(containers.Contains(r.Stock.Container)||AllaganRetainerPreview.IsPreview(r.Stock.Container))&&
             !view.Items.Any(s=>s.ItemId==r.Stock.ItemId)&&(Judge(r.Stock).Outcome is Outcome.CollectArmoire or Outcome.CollectDresser)&&config.Features.Enabled(Judge(r.Stock).Outcome)&&
             StoragePolicy.CanWithdraw(Judge(r.Stock).Outcome,view.Evidence.DresserFreeSlots,config.Rules.DresserEmptySlots,waiting,0));
     }
@@ -111,6 +111,25 @@ public sealed partial class Plugin
     private void DrawStorageSettings()
     {
         Setting("Store protected overflow in retainers",config.Features.OverflowStorage,v=>config.Features.OverflowStorage=v,"Disabling storage leaves overflow protected in inventory.");
+        Setting("Use assigned retainer storage categories",config.Storage.Enabled,v=>config.Storage.Enabled=v,"Nonmarketable items use the currency retainer. Gearsets and excluded items are never deposited.");
+        foreach(var (id,name) in view.RetainerNames.OrderBy(p=>p.Value))
+        {
+            var enabled=config.Storage.RetainerEnabled(id);
+            if(ImGui.Checkbox("Manage stored items: "+name,ref enabled)){if(enabled)config.Storage.ExcludedRetainers.Remove(id);else config.Storage.ExcludedRetainers.Add(id);SavePolicy();}
+        }
+        if(ImGui.BeginCombo("Nonmarketable items and currencies",view.RetainerNames.GetValueOrDefault(config.Storage.NonmarketableRetainer,"Not assigned")))
+        {
+            foreach(var (id,name) in view.RetainerNames.Where(p=>config.Storage.RetainerEnabled(p.Key)))
+                if(ImGui.Selectable(name,id==config.Storage.NonmarketableRetainer)){config.Storage.NonmarketableRetainer=id;SavePolicy();}
+            ImGui.EndCombo();
+        }
+        DrawCategorySelection("Never store these categories",config.Storage.ExcludedCategories,"None selected","These stay with you even if nonmarketable. Triple Triad cards are always excluded.");
+        foreach(var (id,name) in view.RetainerNames.Where(p=>config.Storage.RetainerEnabled(p.Key)&&p.Key!=config.Storage.NonmarketableRetainer))
+        {
+            if(!config.Storage.Categories.TryGetValue(id,out var categories))config.Storage.Categories[id]=categories=[];
+            DrawCategorySelection("Store with "+name,categories,"No categories assigned","Marketable items only. Empty means no storage. AutoRetainer must also have a matching storage plan.");
+        }
+        ImGui.TextWrapped("Triple Triad cards are never stored. Unlearned or unverified unlocks stay available to use. Storage exclusions do not grant disposal permission.");
         var reserve=config.Rules.DresserEmptySlots;
         if(ImGui.SliderInt("Leave empty dresser slots",ref reserve,0,800)){config.Rules.DresserEmptySlots=reserve;SavePolicy();}
         ImGui.TextWrapped("Armoire items do not use this allowance. Protected dresser overflow goes to retainers and remains protected until collection is confirmed.");

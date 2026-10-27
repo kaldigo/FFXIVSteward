@@ -52,6 +52,7 @@ public sealed class RuleSettings
     public int SummaryRefreshHours { get; set; } = 2;
     public int SummaryHistoryDays { get; set; } = 28;
     public QualityMode Quality { get; set; } = QualityMode.Separate;
+    public bool PreferFasterSales { get; set; }
     public int DresserEmptySlots { get; set; } = 20;
 }
 public sealed class Evidence

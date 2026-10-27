@@ -11,7 +11,7 @@ public sealed class ReviewJournal
     private Dictionary<string,ReviewEntry> previous=[];
     private readonly Action<string,IEnumerable<string>> append;
     public ReviewJournal(Action<string,IEnumerable<string>>? append=null)=>this.append=append??File.AppendAllLines;
-    public IReadOnlyList<ReviewEntry> Snapshot(string path,IEnumerable<ReviewEntry> entries)
+    public IReadOnlyList<ReviewEntry> Snapshot(string path,IEnumerable<ReviewEntry> entries,string mode="LogOnly")
     {
         var current=entries.Distinct().ToDictionary(e=>$"{e.Character}/{e.Location}/{e.ItemId}/{e.Action}");
         // Observation time alone must not rewrite every unchanged proposal on every five-second scan.
@@ -20,7 +20,7 @@ public sealed class ReviewJournal
         if(changed.Length>0)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            append(path,changed.Select(e=>JsonSerializer.Serialize(new{at=DateTimeOffset.UtcNow,mode="LogOnly",proposal=e})));
+            append(path,changed.Select(e=>JsonSerializer.Serialize(new{at=DateTimeOffset.UtcNow,mode,proposal=e})));
         }
         previous=current; // Never suppress a record whose write failed.
         return changed;

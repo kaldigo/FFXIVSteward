@@ -50,7 +50,7 @@ class ReviewWiring(unittest.TestCase):
         self.assertNotIn('InvokeFunc(player.ContentId,"',review)
         self.assertIn('cached {AllaganRetainerPreview.Location(stock)}',review)
         self.assertNotIn('File.AppendAll',review)
-        self.assertIn('reviewJournal.Proposal(ReviewPath,entry,key)',review)
+        self.assertIn('reviewJournal.Proposal(ReviewPath,entry,key,config.LogOnly?"LogOnly":"DisposalReview")',review)
         self.assertIn('ProtectedPendingCollection',review)
 
     def test_live_hold_release_uses_confirmed_ownership_and_rollback(self):

@@ -8,6 +8,7 @@ public sealed unsafe partial class MarketQueue
     public sealed record ReturnProposal(Stock Source,string? Reason);
     private string? ReturnReason(Stock source,ulong retainer,bool live)
     {
+        if(config.Silver.Owns(retainer))return null; // Never apply ordinary returns or rotation to the dedicated strategy.
         if(!config.Features.ListingReturns||!config.SalesEnabledFor(retainer)||InventoryView.FreeBagSlots()<1)return null;
         var item=view.Facts(source.ItemId);if(item==null)return null;
         var decision=marketJudge(source,retainer,live);

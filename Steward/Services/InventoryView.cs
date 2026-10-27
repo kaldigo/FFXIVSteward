@@ -69,6 +69,22 @@ public sealed unsafe class InventoryView
         return facts with{Source=source};
     }
 
+    public long? UnlockStatus(uint id)
+    {
+        if(!data.GetExcelSheet<Sheets.Item>().TryGetRow(id,out var item))return null;
+        if(item.ItemAction.RowId==0)return 4;
+        var row=FFXIVClientStructs.FFXIV.Component.Exd.ExdModule.GetItemRowById(id);
+        var state=UIState.Instance();
+        return row==null||state==null?null:state->IsItemActionUnlocked(row);
+    }
+    public string? StorageBlock(uint id,ulong retainer)
+    {
+        var facts=Facts(id);
+        if(facts==null||config.Rules.IsIgnored(facts))return "Unknown or globally excluded item";
+        if(config.Rules.Keep.Contains(id)||config.Rules.QuantityReserves.GetValueOrDefault(id)>0)return "Keep-in-inventory override or quantity reserve";
+        return config.Storage.Block(facts,Evidence,retainer,UnlockStatus(id));
+    }
+
     public void Refresh(ulong character)
     {
         Evidence.InvalidateLive();

@@ -6,7 +6,7 @@ class FeatureWiring(unittest.TestCase):
         plugin=(ROOT/'Plugin.cs').read_text()
         self.assertIn('config.Features.Allows(action,decision.Outcome)&&ActionPolicy.Allows(',plugin)
         review=(ROOT/'Plugin.Review.cs').read_text()
-        self.assertIn('if(!config.Features.Enabled(decision.Outcome))',review)
+        self.assertIn('if(!config.Features.Enabled(decision.Outcome)&&!(decision.Outcome==Outcome.Dispose&&config.LogDisposal))',review)
         self.assertIn('"FeatureDisabled"',review)
         self.assertNotIn('Features',(ROOT/'Core/Rules.cs').read_text())
     def test_collection_and_sales_are_independent(self):
