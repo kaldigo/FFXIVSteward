@@ -4,8 +4,31 @@ ROOT=Path(__file__).resolve().parents[1]/'Steward'
 class FeatureWiring(unittest.TestCase):
     def test_withdrawal_capacity_counts_survive_live_refresh(self):
         queue=(ROOT/'Services/MarketQueue.cs').read_text()
-        self.assertEqual(queue.count('StoragePolicy.CountWaitingForDresser(view.Items,judge)'),2)
+        self.assertEqual(queue.count('StoragePolicy.CountWaitingForDresser(view.Items,previewJudge)'),2)
         self.assertNotIn('view.Items.Where(s=>judge(s)',queue)
+    def test_planning_does_not_replace_submission_checks(self):
+        queue=(ROOT/'Services/MarketQueue.cs').read_text()
+        self.assertIn('StoragePolicy.PlanWithdrawals(stored,previewJudge,config.Features.Enabled,DisposalSelected,collectionOnly)',queue)
+        self.assertIn('var decision=judge(stock);if(!config.Features.Enabled(decision.Outcome))',queue)
+        self.assertIn('if(InventoryView.ReadSlot(stock.Container,stock.Slot)!=stock)',queue)
+        self.assertIn('if(!selected){history(',queue)
+        plugin=(ROOT/'Plugin.cs').read_text().split('private string Evaluate')[1].split('private void Update')[0]
+        self.assertIn('view.Refresh(player.ContentId);',plugin)
+        self.assertIn('imports.RefreshReferences();',plugin)
+        self.assertNotIn('tracked.Refresh',plugin)
+        self.assertNotIn('imports.Refresh();',plugin)
+    def test_dresser_selection_does_not_close_windows(self):
+        ui=(ROOT/'Services/NativeUi.cs').read_text()
+        self.assertIn('SelectDresserItem(int row)=>CallbackCore("MiragePrismPrismBoxCrystallize",false,[0,row])',ui)
+        queue=(ROOT/'Services/MarketQueue.cs').read_text()
+        self.assertIn('ui.SelectDresserItem(selected)',queue)
+        self.assertIn('ConfirmationOwnership.Matches(confirmationOwner,confirm->ParentId,confirm->HostId)',queue)
+        deposit=queue.split('Queue.Add(new("Store dresser item "+source.ItemId')[1]
+        self.assertLess(deposit.index('if(phase==2)'),deposit.index('ui.Get("MiragePrismPrismBoxCrystallize")'))
+        self.assertIn('StockTransition.Removed(source,live,1,true)',deposit)
+        self.assertIn('view.Evidence.Dresser.Contains(source.ItemId)',deposit)
+        self.assertIn('phase==1?StepResult.Waiting:RejectDresser',deposit)
+        self.assertIn('TimeoutMs:12000',deposit)
 
     def test_permissions_and_review_are_gated_without_changing_rules(self):
         plugin=(ROOT/'Plugin.cs').read_text()

@@ -225,9 +225,12 @@ public sealed partial class Plugin : IDalamudPlugin
         {
             using var doc=JsonDocument.Parse(request);var root=doc.RootElement;
             if(!player.IsLoaded || attached==0 || attached!=player.ContentId || root.GetProperty("Version").GetInt32()!=6 || root.GetProperty("Character").GetUInt64()!=player.ContentId || !config.Connected)return "Deny";
-            Refresh();
-            // Protection imports are refreshed again before permission, even between regular refresh intervals.
-            imports.Refresh();
+            // Submission checks need live protections, not another tracked-inventory scan,
+            // price prefetch and full market-cache import for every candidate slot.
+            view.World=objects.LocalPlayer?.CurrentWorld.RowId??0;
+            view.Refresh(player.ContentId);
+            protectionSnapshot.Clear();
+            imports.RefreshReferences();
             if(root.GetProperty("Action").GetString()=="Gil")return config.ExecutionEnabled&&!executionFault?"Allow":"Deny";
             var id=root.GetProperty("ItemId").GetUInt32()%1000000;
             var quantity=root.GetProperty("Quantity").GetUInt32();

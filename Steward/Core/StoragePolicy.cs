@@ -2,6 +2,29 @@ namespace Steward.Core;
 
 public static class StoragePolicy
 {
+    public static Stock[] PlanWithdrawals(IEnumerable<Stock> inventory,Func<Stock,Decision> judge,
+        Func<Outcome,bool> enabled,Func<Stock,bool> disposalSelected,bool collectionOnly) =>
+        inventory.ToArray().Where(stock=>
+        {
+            var decision=judge(stock);
+            return enabled(decision.Outcome)&&(decision.Outcome is Outcome.CollectArmoire or Outcome.CollectDresser ||
+                !collectionOnly&&decision.Outcome==Outcome.Dispose&&disposalSelected(stock));
+        }).ToArray();
+
+    // Route planning may request live storage observations; it never grants item-action permission.
+    public static bool NeedsCollectionVisit(ItemFacts item,Stock stock,RuleSettings rules,Evidence evidence,bool armoire)
+    {
+        if(rules.IsIgnored(item)||rules.Keep.Contains(item.Id)||!evidence.ReferencesReady||!evidence.GearsetsReady||evidence.Gearsets.Contains(item.Id))return false;
+        if(QuantityReserve.Removable(stock,rules.QuantityReserves.GetValueOrDefault(item.Id),evidence.ReserveStocks) is not >0)return false;
+        var matches=GlamourProtection.Match(item,rules,evidence);
+        if(matches is GlamourMatch.None or GlamourMatch.Unknown)return false;
+        if(armoire)
+            return !evidence.ArmoireKnown || item.ArmoireEligible&&!evidence.Armoire.Contains(item.Id);
+        if(!item.Equipment||item.ArmoireEligible)return false;
+        return !evidence.DresserKnown || !evidence.Dresser.Contains(item.Id)&&!evidence.Armoire.Contains(item.Id)&&
+            Available(evidence.DresserFreeSlots,rules.DresserEmptySlots)>0;
+    }
+
     // Live judgement refreshes the source inventory. Capture candidates before invoking it;
     // this snapshot counts capacity only and never authorizes a transfer.
     public static int CountWaitingForDresser(IEnumerable<Stock> inventory,Func<Stock,Decision> judge) =>

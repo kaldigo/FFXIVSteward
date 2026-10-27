@@ -39,11 +39,14 @@ public sealed unsafe class NativeUi(IGameGui gui)
         return Steward.Core.ConfirmationOwnership.Matches(owner,addon->ParentId,addon->HostId) && ClickButton(&addon->AtkUnitBase,addon->NoButton);
     }
     public bool Callback(string name,params int[] values)
+        =>CallbackCore(name,true,values);
+    public bool SelectDresserItem(int row)=>CallbackCore("MiragePrismPrismBoxCrystallize",false,[0,row]);
+    private bool CallbackCore(string name,bool close,int[] values)
     {
         var addon=Get(name);if(addon==null)return false;
         var data=stackalloc AtkValue[values.Length];
         for(var i=0;i<values.Length;i++)data[i]=new(){Type=AtkValueType.Int,Int=values[i]};
-        return addon->FireCallback((uint)values.Length,data,true);
+        return addon->FireCallback((uint)values.Length,data,close);
     }
     public void Close(string name){var a=Get(name);if(a!=null)a->Close(true);}
 }

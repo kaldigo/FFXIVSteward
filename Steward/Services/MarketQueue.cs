@@ -313,12 +313,18 @@ public sealed unsafe partial class MarketQueue : IDisposable
         var retainer=manager==null?0:manager->LastSelectedRetainerId;
         if(retainer==0 || !view.Retainers.Contains(retainer))throw new InvalidOperationException("Withdrawal retainer identity is unavailable");
         if(!config.Storage.RetainerEnabled(retainer))return;
+        refreshProtection();
         EnqueueOverflow(character,retainer);
         if(overflowOnly)return;
         var dresserWithdrawals=0;
-        var initialWaiting=StoragePolicy.CountWaitingForDresser(view.Items,judge);
+        var initialWaiting=StoragePolicy.CountWaitingForDresser(view.Items,previewJudge);
         List<Stock> stored=[];foreach(var type in InventoryView.RetainerTypes())InventoryView.Read(type,stored);
-        foreach(var stock in stored.Where(s=>config.Features.Enabled(judge(s).Outcome)&&(judge(s).Outcome is Outcome.CollectArmoire or Outcome.CollectDresser || !collectionOnly&&judge(s).Outcome==Outcome.Dispose))
+        bool DisposalSelected(Stock stock)
+        {
+            try{return pi.GetIpcSubscriber<uint,uint,bool>("AutoRetainer.InventoryPolicy.DisposalSelected").InvokeFunc(stock.ItemId,stock.Quantity);}
+            catch{return false;}
+        }
+        foreach(var stock in StoragePolicy.PlanWithdrawals(stored,previewJudge,config.Features.Enabled,DisposalSelected,collectionOnly)
             .OrderBy(s=>view.Facts(s.ItemId) is {} f?StoragePolicy.Priority(f,config.Rules,view.Evidence):int.MaxValue).ThenBy(s=>s.ItemId))
         {
             var sent=false;long before=0;
@@ -343,7 +349,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                         if(!selected){history("Retainer item "+stock.ItemId+" left in storage: no enabled AutoRetainer disposal selection.");return StepResult.Completed;}
                     }
                     if(decision.Outcome is Outcome.CollectArmoire or Outcome.CollectDresser && view.Items.Any(s=>s.ItemId==stock.ItemId))return StepResult.Completed;
-                    var waiting=Math.Max(initialWaiting,StoragePolicy.CountWaitingForDresser(view.Items,judge)-dresserWithdrawals);
+                    var waiting=Math.Max(initialWaiting,StoragePolicy.CountWaitingForDresser(view.Items,previewJudge)-dresserWithdrawals);
                     if(!StoragePolicy.CanWithdraw(decision.Outcome,view.Evidence.DresserFreeSlots,config.Rules.DresserEmptySlots,waiting,dresserWithdrawals))return StepResult.Completed;
                     if(InventoryView.FreeBagSlots()<2)return StepResult.Completed;
                     if(decision.Outcome is Outcome.CollectDresser or Outcome.CollectArmoire)protectCollection(stock.ItemId);
@@ -428,8 +434,9 @@ public sealed unsafe partial class MarketQueue : IDisposable
     {
         if(Queue.Running||!config.ExecutionEnabled||!config.Features.DresserCollection||ui.Get("MiragePrismPrismBoxCrystallize")==null||view.Evidence.DresserFreeSlots==null)return;
         if(config.ExecutionReviewRequired || !config.Connected || !AcquireManualCoordination())return;
+        refreshProtection();
         Queue.Begin();
-        foreach(var source in view.Items.ToArray().Where(s=>judge(s).Outcome==Outcome.CollectDresser).GroupBy(s=>s.ItemId).Select(g=>g.First()).OrderBy(s=>view.Facts(s.ItemId) is {} f?StoragePolicy.Priority(f,config.Rules,view.Evidence):int.MaxValue).ThenBy(s=>s.ItemId))
+        foreach(var source in view.Items.ToArray().Where(s=>previewJudge(s).Outcome==Outcome.CollectDresser).GroupBy(s=>s.ItemId).Select(g=>g.First()).OrderBy(s=>view.Facts(s.ItemId) is {} f?StoragePolicy.Priority(f,config.Rules,view.Evidence):int.MaxValue).ThenBy(s=>s.ItemId))
         {
             var phase=0;ushort confirmationOwner=0;
             StepResult RejectDresser(string reason)
@@ -442,8 +449,18 @@ public sealed unsafe partial class MarketQueue : IDisposable
             Queue.Add(new("Store dresser item "+source.ItemId,()=>
             {
                 if(!config.ExecutionEnabled||view.Character==0)return RejectDresser("execution is no longer enabled for this character");
-                if(ui.Get("MiragePrismPrismBoxCrystallize")==null)return RejectDresser("the dresser item-selection window is no longer ready or visible");
                 var live=InventoryView.ReadSlot(source.Container,source.Slot);
+                if(phase==2)
+                {
+                    // Confirmation can rebuild the selection UI; acknowledge inventory evidence, not window visibility.
+                    if(live==source||ui.Visible("SelectYesno"))return StepResult.Waiting;
+                    if(!InventoryView.Loaded(source.Container)||!view.Evidence.DresserKnown)return StepResult.Waiting;
+                    if(!StockTransition.Removed(source,live,1,true))return StepResult.Failed;
+                    if(!view.Evidence.Dresser.Contains(source.ItemId))return StepResult.Waiting;
+                    history("Confirmed dresser storage of "+source.ItemId);return StepResult.Completed;
+                }
+                if(ui.Get("MiragePrismPrismBoxCrystallize")==null)
+                    return phase==1?StepResult.Waiting:RejectDresser("the dresser item-selection window is no longer ready or visible");
                 if(phase<2 && live!=source)return RejectDresser("the source inventory slot changed before confirmation");
                 if(phase<2 && (!config.Features.DresserCollection||judge(source).Outcome!=Outcome.CollectDresser))return StepResult.Completed;
                 var agent=AgentMiragePrismPrismBox.Instance();
@@ -463,28 +480,24 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     if(item->GetConditionPercentage()!=100||im->GetInventoryItemCount(21800)<1){notify("Dresser deposit needs fully repaired gear and a glamour prism. Item "+source.ItemId+" remains protected.");return StepResult.Completed;}
                     confirmationOwner=ui.Get("MiragePrismPrismBoxCrystallize")->Id;
                     history($"Dresser deposit selection requested: item={source.ItemId}, source={source.Container}/{source.Slot}, row={selected}; {ui.Describe("MiragePrismPrismBox")}; {ui.Describe("MiragePrismPrismBoxCrystallize")}");
-                    if(!ui.Callback("MiragePrismPrismBoxCrystallize",0,selected))return RejectDresser("the game rejected the dresser selection callback");
+                    if(!ui.SelectDresserItem(selected))return RejectDresser("the game rejected the dresser selection callback");
                     phase=1;return StepResult.Waiting;
                 }
                 if(phase==1)
                 {
+                    if(ui.Visible("MiragePrismPrismSetConvert"))return RejectDresser("an unsupported outfit conversion window opened");
+                    var confirm=(FFXIVClientStructs.FFXIV.Client.UI.AddonSelectYesno*)ui.Get("SelectYesno");
+                    if(confirm==null)return StepResult.Waiting; // Bounded by the operation timeout; never confirm partial UI state.
                     // Never acknowledge an unrelated confirmation. The agent must still identify our exact source.
                     var selected=agent->Data->CrystallizeSelectedItem;
                     if(selected.ItemId%1000000!=source.ItemId||(uint)selected.Inventory!=source.Container||selected.Slot!=source.Slot)return RejectDresser("the selected dresser item does not match the requested source");
-                    if(ui.Visible("MiragePrismPrismSetConvert"))return RejectDresser("an unsupported outfit conversion window opened"); // Hold for review; never progress through an unsupported dialog.
-                    var confirm=(FFXIVClientStructs.FFXIV.Client.UI.AddonSelectYesno*)ui.Get("SelectYesno");
-                    if(confirm==null)return StepResult.Waiting;
                     var sourceAddon=ui.Get("MiragePrismPrismBoxCrystallize");
                     if(sourceAddon==null || sourceAddon->Id!=confirmationOwner || !ConfirmationOwnership.Matches(confirmationOwner,confirm->ParentId,confirm->HostId))return RejectDresser("the confirmation is not owned by the expected dresser window");
                     var name=view.Facts(source.ItemId)?.Name;
                     if(name==null||confirm->PromptText==null||!confirm->PromptText->NodeText.ToString().Contains(name,StringComparison.Ordinal))return RejectDresser("the confirmation text does not identify the requested item");
                     if(!ui.Callback("SelectYesno",0))return RejectDresser("the game rejected the owned dresser confirmation");phase=2;return StepResult.Waiting;
                 }
-                if(live==source||ui.Visible("SelectYesno"))return StepResult.Waiting;
-                if(!InventoryView.Loaded(source.Container)||!view.Evidence.DresserKnown)return StepResult.Failed;
-                if(!StockTransition.Removed(source,live,1,true))return StepResult.Failed;
-                if(!view.Evidence.Dresser.Contains(source.ItemId))return StepResult.Waiting;
-                history("Confirmed dresser storage of "+source.ItemId);return StepResult.Completed;
+                return StepResult.Failed;
             },()=>
             {
                 if(phase!=1)return;

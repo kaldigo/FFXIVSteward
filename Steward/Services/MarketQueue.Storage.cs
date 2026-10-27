@@ -46,7 +46,7 @@ public sealed unsafe partial class MarketQueue
         var label=retainer.ToString();
         var rm=RetainerManager.Instance();
         if(rm!=null)foreach(var r in rm->Retainers)if(r.RetainerId==retainer)label=r.NameString;
-        foreach(var source in view.Items.ToArray().Where(s=>s.Quantity==1&&view.StorageBlock(s.ItemId,retainer)==null&&judge(s).Outcome==Outcome.StoreRetainer))
+        foreach(var source in view.Items.ToArray().Where(s=>s.Quantity==1&&view.StorageBlock(s.ItemId,retainer)==null&&previewJudge(s).Outcome==Outcome.StoreRetainer))
         {
             protectCollection(source.ItemId); // Synchronous durable hold precedes any native transfer.
             var sent=false;long beforePlayer=0,beforeRetainer=0;

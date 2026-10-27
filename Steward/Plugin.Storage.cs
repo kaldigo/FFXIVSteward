@@ -75,14 +75,14 @@ public sealed partial class Plugin
             }
             catch{collectionPass=false;throw;}
         }
-        if(config.Features.ArmoireStorage&&view.Items.Any(s=>Judge(s).Outcome==Outcome.CollectArmoire))
+        if(config.Features.ArmoireStorage&&NeedsCollectionVisit(true))
         {
             if(!market.CloseDresserForStorage())return false;
             if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,"Armoire"))return true;
         }
         if(market.DresserOpen)cleanupVisited=true;
         if(!market.DresserOpen&&Environment.TickCount64>=nextDresserAttempt&&
-            (config.Features.DresserCollection&&view.Items.Any(s=>Judge(s).Outcome==Outcome.CollectDresser)||config.CleanDresser&&!cleanupVisited))
+            (config.Features.DresserCollection&&NeedsCollectionVisit(false)||config.CleanDresser&&!cleanupVisited))
         {
             nextDresserAttempt=Environment.TickCount64+60000;
             if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,"Dresser"))return true;
@@ -92,6 +92,10 @@ public sealed partial class Plugin
         {StartOverflow();return overflowPass;}
         return false;
     }
+    private bool NeedsCollectionVisit(bool armoire)=>view.Items.Concat(tracked.Items
+        .Where(row=>view.Retainers.Contains(row.Owner)&&config.Storage.RetainerEnabled(row.Owner)).Select(row=>row.Stock))
+        .Any(stock=>view.Facts(stock.ItemId) is {} item&&
+        StoragePolicy.NeedsCollectionVisit(item,stock,config.Rules,view.Evidence,armoire));
     private void StartOverflow()
     {
         if(!config.Features.OverflowStorage)return;

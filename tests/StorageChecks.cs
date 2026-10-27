@@ -5,6 +5,34 @@ static class StorageChecks
 {
     public static void Run(Action<bool,string> check,DateTimeOffset now)
     {
+        var routeRules=new RuleSettings();
+        var routeEvidence=new Evidence{ReferencesReady=true,GearsetsReady=true};
+        var routeItem=new ItemFacts(14799,"Chestwrap",true,2,60,false,false,SourceKind.Special,35);
+        var routeStock=new Stock(14799,false,1,0,15);
+        check(StoragePolicy.NeedsCollectionVisit(routeItem,routeStock,routeRules,routeEvidence,false),"Missing live dresser observations request a visit");
+        check(StoragePolicy.NeedsCollectionVisit(routeItem,routeStock,routeRules,routeEvidence,true),"Unknown armoire ownership requests observation before collection");
+        check(Rules.Judge(routeItem,routeStock,routeRules,routeEvidence,1,now).Outcome==Outcome.Wait,"A route request never grants a deposit or disposal without live ownership");
+        routeEvidence.Gearsets.Add(14799);
+        check(!StoragePolicy.NeedsCollectionVisit(routeItem,routeStock,routeRules,routeEvidence,false),"Gearset items do not trigger storage visits");
+        routeEvidence.Gearsets.Clear();routeRules.Ignored.Add(14799);
+        check(!StoragePolicy.NeedsCollectionVisit(routeItem,routeStock,routeRules,routeEvidence,false),"Ignored items do not trigger visits");
+        routeRules.Ignored.Clear();routeEvidence.DresserKnown=routeEvidence.ArmoireKnown=true;routeEvidence.DresserFreeSlots=20;
+        check(!StoragePolicy.NeedsCollectionVisit(routeItem,routeStock,routeRules,routeEvidence,false),"A full reserved dresser does not cause repeated visits");
+        routeEvidence.DresserFreeSlots=21;
+        check(StoragePolicy.NeedsCollectionVisit(routeItem,routeStock,routeRules,routeEvidence,false),"Available dresser capacity allows collection visit");
+        routeEvidence.Dresser.Add(14799);
+        check(!StoragePolicy.NeedsCollectionVisit(routeItem,routeStock,routeRules,routeEvidence,false),"A known collected copy does not trigger another visit");
+        var planningJudgements=0;var disposalQueries=0;
+        var rejected=Enumerable.Range(1,421).Select(i=>new Stock((uint)i,false,1,10000,(ushort)(i%25))).ToArray();
+        var planned=StoragePolicy.PlanWithdrawals(rejected,s=>{planningJudgements++;return new(Outcome.Dispose,"test");},_=>true,s=>{disposalQueries++;return false;},false);
+        check(planned.Length==0&&planningJudgements==421&&disposalQueries==421,"421 unselected disposal candidates produce no queued withdrawal operations");
+        disposalQueries=0;
+        planned=StoragePolicy.PlanWithdrawals([routeStock],_=>new(Outcome.CollectDresser,"Missing copy"),_=>true,_=>{disposalQueries++;return false;},true);
+        check(planned.Length==1&&disposalQueries==0,"Collection-only planning does not depend on disposal selection");
+        check(StoragePolicy.PlanWithdrawals([routeStock],_=>new(Outcome.Dispose,"test"),_=>true,_=>true,true).Length==0,"Collection-only planning never retrieves disposal stock");
+        check(StoragePolicy.PlanWithdrawals([routeStock],_=>new(Outcome.Wait,"Unknown"),_=>true,_=>true,false).Length==0,"Unknown evidence remains a hold during batch planning");
+        check(StoragePolicy.PlanWithdrawals([routeStock],_=>new(Outcome.CollectDresser,"Missing copy"),_=>false,_=>true,false).Length==0,"Feature switches still block planned withdrawals");
+
         List<Stock> liveInventory=[new(42,false,1,0,0),new(42,false,1,0,1),new(43,false,1,0,2),new(44,false,1,0,3)];
         var decisions=0;
         Decision RefreshingJudge(Stock candidate)
