@@ -1,3 +1,7 @@
+## 0.1.0.49
+
+Wait 500 ms and retry at most twice after a dresser restoration explicitly returns false (no command submitted). Require unchanged source identity, stored-part bytes and source/destination counts, plus fresh protection and control checks; accepted or uncertain submissions never retry. Log every retained dresser entry and its rule reason so skipped items can be distinguished from unprocessed items after a stop. Native acceptance remains pending.
+
 ## 0.1.0.48
 
 Resolve queued dresser restoration sources against current positions after each removal. Verify exact dresser-copy loss and player-copy gain rather than assuming positions remain stable, wait for transient loading, hold already-carried unique items, and report precise preflight/native/acknowledgement failures. Preserve per-action last-copy protection and verify the owned control lease. The reported Eternal Shade stop has insufficient diagnostics to prove its cause; in-game acceptance remains pending.

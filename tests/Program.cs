@@ -306,3 +306,17 @@ Console.WriteLine($"{total} checks passed including confirmed-empty market prici
     Check(DresserRestoration.Acknowledge(0,0,0,1)==StepResult.Failed,"Unobserved source cannot acknowledge restoration");
 }
 Console.WriteLine($"{total} checks passed including dresser restoration refresh and acknowledgement.");
+
+{
+    var state=new DresserRestoreState(50000,34,0,0,2,0);
+    var retry=new DresserRestoreRetry();
+    Check(retry.Ready(1000)&&retry.Unchanged(state),"First restoration needs no retry delay");
+    Check(retry.Rejected(state,1000),"First explicit native rejection can defer");
+    Check(!retry.Ready(1499)&&retry.Ready(1500),"Native rejection waits half a second");
+    foreach(var changed in new[]{state with{Raw=50001},state with{Slot=35},state with{First=1},state with{Second=4},state with{Copies=1},state with{Carried=1}})
+        Check(!retry.Unchanged(changed),"Any source or quantity change prevents native retry");
+    Check(!retry.Rejected(state with{Copies=1},1500),"Changed state cannot schedule another request");
+    Check(retry.Rejected(state,1500),"Second unchanged rejection can defer");
+    Check(!retry.Rejected(state,2000),"Third rejection stops instead of looping");
+}
+Console.WriteLine($"{total} checks passed including bounded rejected dresser submissions.");

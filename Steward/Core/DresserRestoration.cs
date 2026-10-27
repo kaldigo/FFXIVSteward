@@ -1,5 +1,23 @@
 namespace Steward.Core;
 
+public sealed record DresserRestoreState(uint Raw,int Slot,byte First,byte Second,int Copies,long Carried);
+
+// Used only for a native false return (no command submitted). Accepted requests never retry.
+public sealed class DresserRestoreRetry
+{
+    private DresserRestoreState? rejected;
+    private int attempts;
+    private long next;
+    public bool Ready(long now)=>now>=next;
+    public bool Unchanged(DresserRestoreState state)=>rejected==null||rejected==state;
+    public bool Rejected(DresserRestoreState state,long now)
+    {
+        if(!Unchanged(state))return false;
+        rejected=state;next=now+500;
+        return ++attempts<3;
+    }
+}
+
 public static class DresserRestoration
 {
     // Re-resolve moved entries, but never guess between multiple replacement positions.
