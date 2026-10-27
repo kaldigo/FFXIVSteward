@@ -42,17 +42,15 @@ class FeatureWiring(unittest.TestCase):
         self.assertIn('DresserSource.Find(rows,agentIndex,source)',ui)
         self.assertNotIn('StringValues',ui)
         self.assertNotIn('CallbackCore("MiragePrismPrismBoxCrystallize"',ui)
-        queue=(ROOT/'Services/MarketQueue.cs').read_text()
-        self.assertIn('ui.SelectDresserItem(source,selected,out var treeIndex)',queue)
-        self.assertIn('ui.OwnsDresserConfirmation(confirmationOwner,source)',queue)
-        self.assertIn('ui.ClickDresserConfirmation(confirmationOwner,source,true)',queue)
-        self.assertIn('ui.CancelDresserConfirmation(confirmationOwner,source)',queue)
-        deposit=queue.split('Queue.Add(new("Store dresser item "+source.ItemId')[1]
-        self.assertLess(deposit.index('if(phase==2)'),deposit.index('ui.Get("MiragePrismPrismBoxCrystallize")'))
+        deposit=(ROOT/'Services/MarketQueue.cs').read_text().split('private void DepositOpenDresserCore()')[1]
+        for forbidden in ['ui.SelectDresserItem(', 'ui.ClickDresserConfirmation(', 'PromptText', 'ui.AdvanceDresserCategory(']:
+            self.assertNotIn(forbidden,deposit)
+        self.assertIn('view.LiveDresserContains(source.ItemId)',deposit)
         self.assertIn('DresserConfirmation.Acknowledge(source,live',deposit)
-        self.assertIn('view.Evidence.Dresser.Contains(source.ItemId)',deposit)
-        self.assertIn('phase==1?StepResult.Waiting:RejectDresser',deposit)
-        self.assertIn('TimeoutMs:12000',deposit)
+        self.assertLess(deposit.index('if(submitted)'),deposit.index('dresserStore.Submit('))
+        self.assertIn('AutoRetainer.InventoryPolicy.OwnsControl',deposit)
+        self.assertIn('judge(source).Outcome!=Outcome.CollectDresser',deposit)
+        self.assertIn('TimeoutMs:30000',deposit)
 
     def test_collection_completion_resumes_storage_before_retry_timer(self):
         plugin=(ROOT/'Plugin.cs').read_text()
@@ -68,16 +66,16 @@ class FeatureWiring(unittest.TestCase):
         self.assertLess(flow.index('CollectionNeeded(player.ContentId)'),flow.index('NeedsCollectionVisit(false)'))
         self.assertIn('nextCollectionAttempt=Math.Max(nextCollectionAttempt,Environment.TickCount64+5000)',transition)
 
-    def test_dresser_category_waits_for_native_acknowledgement(self):
+    def test_native_dresser_binding_and_source_guards(self):
+        native=(ROOT/'Services/NativeDresserStore.cs').read_text()
+        self.assertIn('target==body',native)
+        self.assertIn('InventoryType.Invalid',native)
+        self.assertIn('StoreNewOutfit(plan.Target,containers,slots)',native)
+        self.assertIn('StoreExistingOutfit(plan.Target,containers,slots)',native)
+        self.assertIn('source.Quantity!=1',native)
         queue=(ROOT/'Services/MarketQueue.cs').read_text().split('private void DepositOpenDresserCore()')[1]
-        self.assertIn('DresserSource.Category(source.Container)',queue)
-        self.assertIn('if(currentCategory!=requestedCategory)return StepResult.Waiting',queue)
-        self.assertLess(queue.index('ui.AdvanceDresserCategory()'),queue.index('ui.SelectDresserItem(source'))
-        ui=(ROOT/'Services/NativeUi.cs').read_text()
-        self.assertIn('CategoryDropDown->GetSelectedItemIndex()==category',ui)
-        self.assertIn('!agent->Data->IsPopulatingList&&agent->Data->IsPopulatingComplete',ui)
-        self.assertNotIn('CrystallizeCategory =',ui)
-        self.assertIn('candidate.Slot!=source.Slot',ui)
+        self.assertIn('view.DresserEligible(source.ItemId)',queue)
+        self.assertIn('InventoryView.ReadSlot(source.Container,source.Slot)!=source',queue)
 
     def test_permissions_and_review_are_gated_without_changing_rules(self):
         plugin=(ROOT/'Plugin.cs').read_text()

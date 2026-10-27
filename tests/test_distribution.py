@@ -49,7 +49,7 @@ class Distribution(unittest.TestCase):
   self.assertNotIn('local pricing settings apply',source)
  def test_dresser_compatibility_does_not_mean_designed_for_glamour(self):
   source=(ROOT/'Steward/Services/InventoryView.cs').read_text()
-  self.assertNotIn('row.IsGlamorous',source)
+  self.assertNotIn('row.IsGlamorous',source.split('public ItemFacts? Facts')[1].split('public long? UnlockStatus')[0])
   self.assertIn('row.LevelItem.RowId==1',source)
  def test_owned_control_and_immediate_planning_faults(self):
   source=(ROOT/'Steward/Services/MarketQueue.cs').read_text()
@@ -69,23 +69,24 @@ class Distribution(unittest.TestCase):
   self.assertIn('proxy->WaitingForListings',source)
   self.assertIn('dialog->AskingPrice->Value!=target',source)
   self.assertIn('agent->SellItemQuantity!=quantity',source)
-  self.assertIn('ui.OwnsDresserConfirmation(',source)
+  self.assertIn('InventoryView.ReadSlot(source.Container,source.Slot)!=source',source)
  def test_backend_uncertainty_is_persisted_and_cleared_in_both_plugins(self):
   source=((ROOT/'Steward/Plugin.cs').read_text()+(ROOT/'Steward/Plugin.Settings.cs').read_text())
   self.assertIn('RegisterAction(IntegrationFault)',source)
   self.assertIn('AutoRetainer.InventoryPolicy.HasFault',source)
   self.assertIn('AutoRetainer.InventoryPolicy.ClearFault',source)
   self.assertIn('AutoRetainer.InventoryPolicy.Hold',source)
- def test_pending_owned_dresser_prompt_is_cancelled(self):
-  source=(ROOT/'Steward/Services/MarketQueue.cs').read_text()
-  self.assertIn('ui.CancelDresserConfirmation(confirmationOwner,source)',source)
-  self.assertIn('sourceAddon->Id!=confirmationOwner',source)
-  self.assertIn('ui.OwnsDresserConfirmation(confirmationOwner,source)',source)
-  cleanup=source.split('if(phase!=1)return;')[-1].split('TimeoutMs:12000')[0]
-  self.assertNotIn('ui.Get(',cleanup)
-  self.assertIn('Dresser deposit rejected:',source)
-  source=(ROOT/'Steward/Services/NativeUi.cs').read_text()
-  self.assertIn('ClickButton(&addon->AtkUnitBase,addon->NoButton)',source)
+ def test_native_dresser_does_not_confirm_other_dialogs(self):
+  source=(ROOT/'Steward/Services/MarketQueue.cs').read_text().split('private void DepositOpenDresserCore()')[1]
+  self.assertIn('ui.Visible("SelectYesno")',source)
+  self.assertIn('ui.Visible("MiragePrismPrismSetConvert")',source)
+  self.assertNotIn('ClickDresserConfirmation',source)
+  self.assertNotIn('CancelDresserConfirmation',source)
+  self.assertIn('submitted=true;',source)
+  self.assertIn('DresserConfirmation.Acknowledge',source)
+  native=(ROOT/'Steward/Services/NativeDresserStore.cs').read_text()
+  self.assertIn('!config.ExecutionEnabled',native)
+  self.assertIn('config.ExecutionReviewRequired',native)
  def test_failed_save_cannot_enable_or_clear_review_in_memory(self):
   source=((ROOT/'Steward/Plugin.cs').read_text()+(ROOT/'Steward/Plugin.Settings.cs').read_text())
   self.assertIn('ExecutionMode.Enable(',source)
@@ -103,7 +104,7 @@ class Distribution(unittest.TestCase):
   self.assertIn('protectionSnapshot.Clear();',refresh)
  def test_all_queue_paths_use_durable_start_and_acknowledgement(self):
   plugin=((ROOT/'Steward/Plugin.cs').read_text()+(ROOT/'Steward/Plugin.Settings.cs').read_text());queue=(ROOT/'Steward/Services/MarketQueue.cs').read_text()
-  self.assertIn('HoldExecution,BeginOperation,CompleteOperation,ProtectCollection,Alert,Judge,Save,JudgeMarket)',plugin)
+  self.assertIn('HoldExecution,BeginOperation,CompleteOperation,ProtectCollection,Alert,Judge,Save,JudgeMarket,',plugin)
   self.assertIn('Queue=new(begin,complete)',queue)
   self.assertLess(plugin.index('if(!string.IsNullOrEmpty(config.PendingOperation))'),plugin.index('framework.Update+=Update'))
   self.assertIn('ExecutionMode.Persist(()=>AtomicState.Write(statePath,config)',plugin)
@@ -111,7 +112,8 @@ class Distribution(unittest.TestCase):
   source=(ROOT/'Steward/Services/MarketQueue.cs').read_text()
   self.assertIn('currentRetainer->LastSelectedRetainerId!=retainer',source)
   self.assertIn('StockTransition.Removed(expected,live',source)
-  self.assertIn('view.Evidence.DresserKnown,view.Evidence.Dresser.Contains(source.ItemId)',source)
+  self.assertIn('var owned=view.LiveDresserContains(source.ItemId);',source)
+  self.assertIn('owned.HasValue,owned==true',source)
   self.assertIn('!dresserKnown',(ROOT/'Steward/Core/DresserConfirmation.cs').read_text())
   self.assertIn('ui.Visible("RetainerSell")',source)
   self.assertIn('after!=before+1',source)

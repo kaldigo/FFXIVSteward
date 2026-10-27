@@ -48,6 +48,24 @@ foreach(var invalid in new[]{-1,140,int.MaxValue})
     Check(!DresserConfirmation.Matches(129,129,131,131,traced,14799,0,1),"Wrong slot rejected");
     Check(!DresserConfirmation.Matches(0,0,131,131,traced,14799,0,0),"Unknown source owner rejected");
 }
+// Outfit routing uses current destination contents and quality, never unrelated inventory pieces.
+{
+    var piece=new Stock(42,false,1,0,7);
+    DresserOutfit[] definitions=[new(500,[42,43,44]),new(501,[42,45])];
+    Check(DresserDeposit.Choose(piece with{ItemId=99},definitions,[]).Kind==DresserDepositKind.Ordinary,"Non-outfit gear uses ordinary deposit");
+    Check(DresserDeposit.Choose(piece,definitions,[])==new DresserDeposit(DresserDepositKind.NewOutfit,500),"First outfit piece creates deterministic outfit");
+    Check(DresserDeposit.Choose(piece with{Hq=true},definitions,[])==new DresserDeposit(DresserDepositKind.NewOutfit,1000500),"HQ outfit encoding matches native quality check");
+    StoredDresserOutfit[] stored=[new(501,false,12,new HashSet<uint>{45}),new(500,true,3,new HashSet<uint>{43})];
+    Check(DresserDeposit.Choose(piece,definitions,stored)==new DresserDeposit(DresserDepositKind.ExistingOutfit,12),"Existing partial outfit preferred across alternative definitions");
+    Check(DresserDeposit.Choose(piece with{Hq=true},definitions,stored)==new DresserDeposit(DresserDepositKind.ExistingOutfit,3),"HQ and NQ destinations are not mixed");
+    Check(DresserDeposit.Choose(piece,definitions,[new(500,false,0,new HashSet<uint>{43})]).Target==0,"Dresser slot zero is a valid destination");
+    Check(DresserDeposit.Choose(piece,definitions,[new(999,false,4,new HashSet<uint>())]).Kind==DresserDepositKind.NewOutfit,"Unrelated stored set cannot receive a piece");
+    Check(DresserDeposit.Choose(piece,definitions,[new(500,false,4,new HashSet<uint>{42})]).Kind==DresserDepositKind.NewOutfit,"Already-unlocked destination slot is never selected for addition; collection judge separately prevents duplicate submission");
+    Check(DresserConfirmation.Acknowledge(piece,null,false,true,false,true)==StepResult.Waiting,"Native success cannot rely on cached ownership");
+    Check(DresserConfirmation.Acknowledge(piece,piece,false,true,true,true)==StepResult.Waiting,"Owned destination without source removal cannot acknowledge");
+    Check(DresserConfirmation.Acknowledge(piece,null,false,true,true,false)==StepResult.Waiting,"Source removal without destination cannot acknowledge");
+    Check(DresserConfirmation.Acknowledge(piece,null,false,true,true,true)==StepResult.Completed,"Native ordinary/outfit transfer requires both endpoints");
+}
 var now=DateTimeOffset.UtcNow;
 var settings=new RuleSettings();
 var e=new Evidence{ReferencesReady=true,GearsetsReady=true,DresserKnown=true,ArmoireKnown=true};

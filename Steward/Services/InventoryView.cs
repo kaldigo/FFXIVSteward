@@ -43,6 +43,39 @@ public sealed unsafe class InventoryView
         outfits=data.GetExcelSheet<Sheets.MirageStoreSetItem>().ToDictionary(r=>r.RowId,r=>new[]{r.MainHand.RowId,r.OffHand.RowId,r.Head.RowId,r.Body.RowId,r.Hands.RowId,r.Legs.RowId,r.Feet.RowId,r.Earrings.RowId,r.Necklace.RowId,r.Bracelets.RowId,r.Ring.RowId});
         crafted=data.GetExcelSheet<Sheets.Recipe>().Where(r=>r.ItemResult.RowId!=0).Select(r=>r.ItemResult.RowId).ToHashSet();
     }
+    public bool DresserEligible(uint id)=>data.GetExcelSheet<Sheets.Item>().TryGetRow(id,out var row)&&row.IsGlamorous;
+    public DresserDeposit DresserDepositFor(Stock source)
+    {
+        var manager=MirageManager.Instance();
+        if(manager==null||!manager->PrismBoxLoaded)throw new InvalidOperationException("Live dresser contents unavailable");
+        var stored=new List<StoredDresserOutfit>();
+        for(var i=0;i<manager->PrismBoxItemIds.Length;i++)
+        {
+            var raw=manager->PrismBoxItemIds[i];
+            if(!outfits.TryGetValue(raw%1000000,out var pieces))continue;
+            var unlocked=new HashSet<uint>();
+            for(var part=0;part<pieces.Length;part++)
+                if(pieces[part]!=0&&manager->IsSetSlotUnlocked((uint)i,part))unlocked.Add(pieces[part]);
+            stored.Add(new(raw%1000000,raw is >1000000 and <2000000,(uint)i,unlocked));
+        }
+        return DresserDeposit.Choose(source,outfits.Select(o=>new DresserOutfit(o.Key,o.Value)),stored);
+    }
+    public bool? LiveDresserContains(uint id)
+    {
+        var manager=MirageManager.Instance();
+        if(manager==null||!manager->PrismBoxLoaded)return null;
+        for(var i=0;i<manager->PrismBoxItemIds.Length;i++)
+        {
+            var raw=manager->PrismBoxItemIds[i]%1000000;
+            if(outfits.TryGetValue(raw,out var pieces))
+            {
+                for(var part=0;part<pieces.Length;part++)
+                    if(pieces[part]==id&&manager->IsSetSlotUnlocked((uint)i,part))return true;
+            }
+            else if(raw==id)return true;
+        }
+        return false;
+    }
     private (uint Id,string Name)[]? searchableItems;
     public IReadOnlyList<(uint Id,string Name)> SearchItems(string query)
     {

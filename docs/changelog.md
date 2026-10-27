@@ -1,3 +1,10 @@
+## 0.1.0.44
+
+- Replace ordinary dresser row selection and confirmation clicks with a verified MirageManager member-function binding. Both function and caller signatures must agree; unavailable bindings hold storage.
+- Use existing native outfit calls to create outfits and fill missing pieces in matching-quality outfits. Submit one approved inventory source at a time.
+- Preserve live protection checks, gearset exclusions, owned AutoRetainer coordination, repair/prism requirements and reserved dresser space. Require source removal plus live collection ownership before acknowledging each deposit; uncertain submissions are never retried automatically.
+- Log the ordinary, new-outfit or existing-outfit route and confirmed transfer for the upcoming in-game test. Automated and static verification are complete; live acceptance of these three routes is not yet established.
+
 ## 0.1.0.43
 
 - Fix the native crash when selecting a dresser item. The generic list-event helper omitted the tree-item pointer required by the dresser. Submit the exact unsigned callback payload used by the game's ordinary left-click handler instead.
