@@ -34,7 +34,10 @@ class FeatureWiring(unittest.TestCase):
         self.assertNotIn('imports.Refresh();',plugin)
     def test_dresser_selection_does_not_close_windows(self):
         ui=(ROOT/'Services/NativeUi.cs').read_text()
-        self.assertIn('list->DispatchItemEvent(selected,AtkEventType.ListItemClick)',ui)
+        self.assertNotIn('->DispatchItemEvent(',ui)
+        self.assertIn('DresserSource.SelectionArguments(agentIndex)',ui)
+        self.assertIn('Type=AtkValueType.UInt,UInt=arguments[i]',ui)
+        self.assertIn('addon->FireCallback((uint)arguments.Length,values,true)',ui)
         self.assertIn('entry->UIntValues[1],entry->UIntValues[3],entry->UIntValues[4]',ui)
         self.assertIn('DresserSource.Find(rows,agentIndex,source)',ui)
         self.assertNotIn('StringValues',ui)

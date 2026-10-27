@@ -87,7 +87,12 @@ public sealed unsafe class NativeUi(IGameGui gui)
         var item=list->Items[selected].Value;
         if(item->IsHidden||(item->State&TreeListItemState.Disabled)!=0)return false;
         treeIndex=selected;
-        list->DispatchItemEvent(selected,AtkEventType.ListItemClick);
+        // The native tree click translates to UInt callbacks [14, agentIndex, 0].
+        // AtkComponentList.DispatchItemEvent omits ListItemData.ListItem and crashes this tree's handler.
+        var arguments=DresserSource.SelectionArguments(agentIndex);
+        var values=stackalloc AtkValue[arguments.Length];
+        for(var i=0;i<arguments.Length;i++)values[i]=new(){Type=AtkValueType.UInt,UInt=arguments[i]};
+        addon->FireCallback((uint)arguments.Length,values,true); // Match the game's own click-handler bridge.
         return true; // Submission only. Exact source and dialog ownership are verified before Yes.
     }
     public bool OwnsDresserConfirmation(ushort owner,Stock source)

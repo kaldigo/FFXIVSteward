@@ -1,3 +1,9 @@
+## 0.1.0.43
+
+- Fix the native crash when selecting a dresser item. The generic list-event helper omitted the tree-item pointer required by the dresser. Submit the exact unsigned callback payload used by the game's ordinary left-click handler instead.
+- Preserve native source/category validation, confirmation ownership, final protections and source/destination acknowledgement. Crash-recovery review holds remain in place.
+- The preceding live run confirmed 31 withdrawals and prompt return travel; it crashed on the first dresser selection before confirmation. Automated checks cannot establish live native acceptance.
+
 ## 0.1.0.42
 
 - Restore retainer collection when eligible gear is already in player inventory or the armoury chest. Existing carried gear no longer prevents missing-copy withdrawals; space, duplicate and protection checks remain.

@@ -14,6 +14,12 @@ public static class DresserSource
         3209 or 3300=>5,
         _=>-1,
     };
+    // Ordinary left-click translation from AddonMiragePrismPrismBoxCrystallize.ReceiveEvent.
+    public static uint[] SelectionArguments(int agentIndex)
+    {
+        if(agentIndex is <0 or >=140)throw new ArgumentOutOfRangeException(nameof(agentIndex));
+        return [14,(uint)agentIndex,0];
+    }
     // The six native integer fields are type, agent index, icon, container, slot, flags.
     // Names are formatted display data, not inventory identity. Headers do not map to an item.
     public static int Find(IEnumerable<DresserTreeRow> rows,int agentIndex,Stock source)

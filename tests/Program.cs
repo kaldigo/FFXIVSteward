@@ -2,6 +2,16 @@ using Steward.Core;
 
 var total=0;
 void Check(bool condition,string name) { total++; if(!condition) throw new Exception(name); }
+// Crash regression: native ordinary left-click callbacks use the agent index, not the tree index.
+Check(DresserSource.SelectionArguments(0).SequenceEqual(new uint[]{14,0,0}),"Manual chestwrap callback translation");
+Check(DresserSource.SelectionArguments(13).SequenceEqual(new uint[]{14,13,0}),"Crashed source row callback translation uses agent row thirteen");
+Check(DresserSource.SelectionArguments(139).SequenceEqual(new uint[]{14,139,0}),"Last valid native candidate index");
+foreach(var invalid in new[]{-1,140,int.MaxValue})
+{
+    var rejected=false;
+    try{DresserSource.SelectionArguments(invalid);}catch(ArgumentOutOfRangeException){rejected=true;}
+    Check(rejected,"Invalid native index cannot be submitted");
+}
 // Real native source-category table and tree metadata; no display names or ordinal assumptions.
 {
     uint[][] categories=[[0,1,2,3],[3500,3200],[3201,3202,3203],[3205,3206],[3207,3208],[3209,3300]];
