@@ -2,6 +2,24 @@ using Steward.Core;
 
 var total=0;
 void Check(bool condition,string name) { total++; if(!condition) throw new Exception(name); }
+{
+    var run=new StorageRun();
+    Check(!run.Allows(12,true),"Enabling automation at startup does not start storage");
+    run.Begin(12,false);
+    Check(!run.Allows(12,true),"Unowned AutoRetainer handoff does not authorize storage");
+    run.Begin(12,true);
+    Check(run.Allows(12,true),"Owned retainer handoff permits collection follow-up");
+    Check(run.Allows(12,true),"Authorization survives withdrawal and dresser stages");
+    Check(!run.Allows(13,true),"Storage run cannot cross characters");
+    Check(!run.Allows(12,false),"Log-only or disabled execution blocks the active run");
+    run.End();
+    Check(!run.Allows(12,true),"Stopping then re-enabling does not revive an old storage run");
+    run.Begin(12,true);
+    Check(run.Allows(12,true),"Explicit successful Run now can start a fresh run");
+    run.End();
+    Check(!run.Allows(12,true),"Completed storage waits for another AutoRetainer handoff");
+    Check(!new StorageRun().Allows(12,true),"Plugin reload never restores a storage run from enabled settings");
+}
 // Crash regression: native ordinary left-click callbacks use the agent index, not the tree index.
 Check(DresserSource.SelectionArguments(0).SequenceEqual(new uint[]{14,0,0}),"Manual chestwrap callback translation");
 Check(DresserSource.SelectionArguments(13).SequenceEqual(new uint[]{14,13,0}),"Crashed source row callback translation uses agent row thirteen");
@@ -65,6 +83,18 @@ foreach(var invalid in new[]{-1,140,int.MaxValue})
     Check(DresserConfirmation.Acknowledge(piece,piece,false,true,true,true)==StepResult.Waiting,"Owned destination without source removal cannot acknowledge");
     Check(DresserConfirmation.Acknowledge(piece,null,false,true,true,false)==StepResult.Waiting,"Source removal without destination cannot acknowledge");
     Check(DresserConfirmation.Acknowledge(piece,null,false,true,true,true)==StepResult.Completed,"Native ordinary/outfit transfer requires both endpoints");
+}
+// Dresser preparation is batch-level and accepts self-repairs above 100 percent.
+{
+    var a=new Stock(42,false,1,0,0);var b=new Stock(43,false,1,0,1);
+    Check(!DresserPreparation.Check([new(a,99)],10).Ready,"Damaged collection gear blocks the dresser visit");
+    Check(DresserPreparation.Check([new(a,100),new(b,200)],10).Ready,"Both NPC and self-repaired gear are ready");
+    var both=DresserPreparation.Check([new(a,50),new(b,100)],0);
+    Check(both.RepairItems.SequenceEqual(new uint[]{42})&&both.MissingPrisms,"Repairs and prisms are reported separately");
+    Check(!DresserPreparation.Check([new(a,null)],10).Ready,"Unknown condition cannot pass preparation");
+    Check(DresserPreparation.Check([],0).Ready,"A data-only dresser visit does not require repair or prisms");
+    Check(DresserPreparation.Check([new(a,100)],1).Ready,"Repair completion unblocks on the next observation");
+    Check(DresserPreparation.Check([new(a,20),new(a,20)],5).RepairItems.Length==1,"Repair summary does not repeat identical item IDs");
 }
 var now=DateTimeOffset.UtcNow;
 var settings=new RuleSettings();

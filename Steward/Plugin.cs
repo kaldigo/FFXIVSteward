@@ -351,17 +351,22 @@ public sealed partial class Plugin : IDalamudPlugin
                 if(!busy)
                 {
                     dungeonSources.Tick();
-                    var storageStarted=AutomaticStorageWork();
-                    if(!storageStarted && config.ExecutionEnabled && !executionFault)
+                    if(storageRun.Allows(player.ContentId,config.ExecutionEnabled)&&!executionFault)
                     {
-                        if(!market.Queue.Running)market.DepositOpenDresser();
-                        if(!market.Queue.Running)market.CleanupDresser();
+                        var storageStarted=AutomaticStorageWork();
+                        if(!storageStarted)
+                        {
+                            if(!market.Queue.Running)market.DepositOpenDresser();
+                            if(!market.Queue.Running)market.CleanupDresser();
+                            if(!market.Queue.Running&&!StorageWorkRemaining())storageRun.End();
+                        }
                     }
                 }
             }
 
             if(overflowPass && !ownsPostprocess && !market.Queue.Running && !pi.GetIpcSubscriber<bool>("AutoRetainer.PluginState.IsBusy").InvokeFunc())
             {overflowPass=false;if(view.Items.Any(s=>Judge(s).Outcome==Outcome.StoreRetainer))Alert("Retainer storage could not fit all protected overflow. Remaining items are still protected in inventory; free retainer space and try again.");}
+            if(market.DresserPreparationStatus is {} preparation)status=preparation;
             if(executionFault)status="Execution held after an uncertain/failed operation. Check inventory and clear the stopped run before continuing.";
         }
         catch(Exception ex)
@@ -391,6 +396,7 @@ public sealed partial class Plugin : IDalamudPlugin
         {FinishPostprocess();return;}
         try{Refresh();
             if(!config.Features.AnyInventoryWork&&!config.Features.AnyMarket){FinishPostprocess();return;}
+            BeginStorageRun(pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsHandoff").InvokeFunc(player.ContentId));
             openingInventory=config.Features.AnyInventoryWork;openingMarket=!openingInventory&&config.Features.AnyMarket;marketOpenDeadline=Environment.TickCount64+15000;}
         catch(Exception ex){log.Error(ex,"Retainer postprocess planning failed");HoldExecution("Retainer postprocess planning failed: "+ex.Message);StopQueue();}
     }
@@ -414,6 +420,7 @@ public sealed partial class Plugin : IDalamudPlugin
     }
     private void StopQueue()
     {
+        storageRun.End();
         if(market.Queue.Running && !executionFault)HoldExecution("An active operation was cancelled; its last game action may still complete");
         openingInventory=withdrawing=openingMarket=false;overflowPass=collectionPass=false;cleanupVisited=false;
         try{market.Stop();}finally{FinishPostprocess();}
@@ -422,6 +429,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private void SetAutomatic(bool enabled)
     {
         if(!enabled){Stop();return;}
+        storageRun.End();
         if(config.LogOnly){Record("Log only is enabled. Turn it off in Developer tools before enabling automatic execution.");return;}
         try
         {
@@ -441,7 +449,9 @@ public sealed partial class Plugin : IDalamudPlugin
         if(executionFault){Record("Check inventory and clear the stopped run first");return;}
         if(!config.ExecutionEnabled){Record("Dry run: would request AutoRetainer "+operation);return;}
         if(market.Queue.Running){Record("Wait for the current operation to finish");return;}
-        try{var result=pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,operation);Record(result?"Requested AutoRetainer "+operation:"AutoRetainer could not start "+operation+"; check its settings, dependencies and current task");}
+        try{var result=pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,operation);
+            if(result)BeginStorageRun(true);
+            Record(result?"Requested AutoRetainer "+operation:"AutoRetainer could not start "+operation+"; check its settings, dependencies and current task");}
         catch(Exception ex){HoldExecution("AutoRetainer request failed after a possible partial enqueue: "+ex.Message);StopQueue();}
     }
     public void Dispose()

@@ -1,3 +1,9 @@
+## 0.1.0.46
+
+- Enabling automation now waits for an actual AutoRetainer retainer handoff. It no longer starts a dresser, armoire, cleanup or overflow run from the idle timer. Explicit Run now actions still work, and authorized collection can finish its withdrawal/storage stages. Run permission is not saved and is cleared when stopped, completed, or automation is re-enabled.
+- Check carried glamour gear for required repairs and missing glamour prisms before requesting the dresser route. Report what needs attention and resume the authorized pass when it is ready; self-repaired gear above 100% condition remains eligible.
+- Regression coverage includes idle enable/reload, owned handoffs, character changes, stop/re-enable, manual runs, and repair/prism preparation. In-game acceptance remains pending.
+
 ## 0.1.0.45
 
 - Fix ordinary dresser binding resolution: Dalamud's single-match scanner follows leading call instructions. Use literal multi-match scanning and require exactly one body and caller match before verifying their agreement.

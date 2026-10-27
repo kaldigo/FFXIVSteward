@@ -99,3 +99,22 @@ stubs, reproduces ScanText call-following behaviour with allocated test memory, 
 checks successful literal resolution plus missing, ambiguous and mismatched cases.
 No game function is invoked by these tests. Ordinary and existing-outfit native
 acceptance still require live tests.
+
+
+## Live 0.1.0.45 acceptance — 2026-10-27
+
+The 08:19:55–08:21:13 UTC run logged 40 native submissions and 40 matching
+confirmations: 32 ordinary items, five new outfits and three existing-outfit
+additions. Each confirmation required source consumption and live collection
+ownership. The ordinary route covered both player bags and armoury containers,
+including an HQ item. No unresolved pending operation or new execution-review
+hold remained when inspected. HQ outfit creation/addition was not exercised.
+
+Eight items hit the combined repair/prism guard during the first pass and were
+successfully deposited in the later pass; the user reported needing to mend them.
+The next change adds a preparation check before the dresser route and before
+acquiring deposit control, reporting damaged items and missing prisms separately.
+It resumes from fresh inventory observations without a failed-run hold. Repair
+condition checks now accept at least 100%, including self-repairs above 100%.
+AutoRetainer's inspected repair tasks concern workshop vessels, so this change
+requests player mending rather than introducing a new automatic repair executor.

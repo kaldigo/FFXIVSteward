@@ -435,6 +435,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
     private void DepositOpenDresserCore()
     {
         if(Queue.Running||!config.ExecutionEnabled||!config.Features.DresserCollection||ui.Get("MiragePrismPrismBox")==null||view.Evidence.DresserFreeSlots==null)return;
+        if(!DresserPreparationReady())return;
         if(config.ExecutionReviewRequired || !config.Connected || !AcquireManualCoordination())return;
         refreshProtection();
         var character=view.Character;
@@ -468,7 +469,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 var im=InventoryManager.Instance();
                 var inv=im==null?null:im->GetInventoryContainer((InventoryType)source.Container);
                 var item=inv==null?null:inv->GetInventorySlot(source.Slot);
-                if(item==null||item->GetConditionPercentage()!=100||im->GetInventoryItemCount(21800)<1)
+                if(item==null||item->GetConditionPercentage()<100||im->GetInventoryItemCount(21800)<1)
                 {notify("Dresser deposit needs fully repaired gear and a glamour prism. Item "+source.ItemId+" remains protected.");return StepResult.Completed;}
                 plan=view.DresserDepositFor(source);
                 if(plan.Kind==DresserDepositKind.Ordinary&&!dresserStore.OrdinaryAvailable)

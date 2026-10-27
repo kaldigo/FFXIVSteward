@@ -87,6 +87,7 @@ public sealed partial class Plugin
         ImGui.BeginDisabled(config.LogOnly||executionFault);
         var automatic=config.Automatic;if(ImGui.Checkbox("Enable automation",ref automatic))SetAutomatic(automatic);
         ImGui.EndDisabled();
+        ImGui.TextWrapped("Enabling automation lets Steward join AutoRetainer's retainer runs. It does not start travel or collection by itself. Use Run now to request work manually.");
         ImGui.TextDisabled("Editing rules or storage settings pauses automation.");
         DrawRecoveryControls();
         Section("Readiness");

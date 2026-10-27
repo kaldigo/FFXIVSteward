@@ -2,6 +2,15 @@ import unittest
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]/'Steward'
 class FeatureWiring(unittest.TestCase):
+    def test_dresser_preparation_precedes_travel_and_control(self):
+        travel=(ROOT/'Plugin.Storage.cs').read_text().split('if(!market.DresserOpen&&')[1]
+        self.assertLess(travel.index('market.DresserPreparationReady()'),travel.index('nextDresserAttempt=Environment.TickCount64+60000'))
+        self.assertLess(travel.index('market.DresserPreparationReady()'),travel.index('"Dresser"'))
+        deposit=(ROOT/'Services/MarketQueue.cs').read_text().split('private void DepositOpenDresserCore()')[1]
+        self.assertLess(deposit.index('DresserPreparationReady()'),deposit.index('AcquireManualCoordination()'))
+        self.assertIn('item->GetConditionPercentage()<100',deposit)
+        self.assertNotIn('item->GetConditionPercentage()!=100',deposit)
+
     def test_manual_dresser_trace_is_passive_and_guarded(self):
         trace=(ROOT/'Services/DresserTrace.cs').read_text()
         for forbidden in ['FireCallback(', 'ReceiveEvent(', 'ui.Click(', 'ui.Close(', '->Open(', 'StoreNewOutfit(', 'StoreExistingOutfit(']:
@@ -65,6 +74,25 @@ class FeatureWiring(unittest.TestCase):
         flow=storage.split('private bool AutomaticStorageWork()')[1]
         self.assertLess(flow.index('CollectionNeeded(player.ContentId)'),flow.index('NeedsCollectionVisit(false)'))
         self.assertIn('nextCollectionAttempt=Math.Max(nextCollectionAttempt,Environment.TickCount64+5000)',transition)
+
+    def test_storage_starts_only_from_handoff_or_explicit_run(self):
+        plugin=(ROOT/'Plugin.cs').read_text()
+        automatic=plugin.split('private void SetAutomatic(bool enabled)')[1].split('private void Run(')[0]
+        self.assertNotIn('storageRun.Begin',automatic)
+        self.assertNotIn('BeginStorageRun',automatic)
+        self.assertIn('storageRun.End()',automatic)
+        stop=plugin.split('private void StopQueue()')[1].split('private void Stop()')[0]
+        self.assertIn('storageRun.End()',stop)
+        postprocess=plugin.split('private void Postprocess(')[1].split('private void FinishPostprocess()')[0]
+        self.assertIn('BeginStorageRun(pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsHandoff")',postprocess)
+        idle=plugin.split('dungeonSources.Tick();')[1].split('if(overflowPass &&')[0]
+        self.assertLess(idle.index('storageRun.Allows'),idle.index('AutomaticStorageWork()'))
+        self.assertLess(idle.index('storageRun.Allows'),idle.index('market.DepositOpenDresser()'))
+        self.assertLess(idle.index('storageRun.Allows'),idle.index('market.CleanupDresser()'))
+        storage=(ROOT/'Plugin.Storage.cs').read_text().split('private bool AutomaticStorageWork()')[1]
+        self.assertLess(storage.index('storageRun.Allows'),storage.index('"AutoRetainer.InventoryPolicy.Run"'))
+        manual=plugin.split('private void Run(')[1].split('public void Dispose()')[0]
+        self.assertIn('if(result)BeginStorageRun',manual)
 
     def test_native_dresser_binding_and_source_guards(self):
         native=(ROOT/'Services/NativeDresserStore.cs').read_text()

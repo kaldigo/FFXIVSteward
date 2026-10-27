@@ -12,6 +12,16 @@ public sealed partial class Plugin
     private long nextCollectionAttempt;
     private long nextDresserAttempt;
     private bool cleanupVisited;
+    private readonly StorageRun storageRun=new();
+    private void BeginStorageRun(bool authorized)
+    {
+        if(authorized&&!storageRun.Allows(player.ContentId,config.ExecutionEnabled))
+        {
+            cleanupVisited=false;
+            nextCollectionAttempt=nextDresserAttempt=nextOverflowAttempt=nextAutomaticWork=0;
+        }
+        storageRun.Begin(player.ContentId,authorized);
+    }
     private bool CollectionNeeded(ulong character)
     {
         if(!config.Features.DresserCollection&&!config.Features.ArmoireStorage)return false;
@@ -62,6 +72,7 @@ public sealed partial class Plugin
     }
     private bool AutomaticStorageWork()
     {
+        if(!storageRun.Allows(player.ContentId,config.ExecutionEnabled))return false;
         if(!player.IsLoaded||attached!=player.ContentId||!config.Connected||!config.ExecutionEnabled||executionFault||market.Queue.Running||ownsPostprocess||overflowPass||collectionPass)return false;
         // Existing player/armoury items must not suppress missing-item retainer collection.
         if(Environment.TickCount64>=nextCollectionAttempt&&CollectionNeeded(player.ContentId))
@@ -86,6 +97,8 @@ public sealed partial class Plugin
         if(!market.DresserOpen&&Environment.TickCount64>=nextDresserAttempt&&
             (config.Features.DresserCollection&&NeedsCollectionVisit(false)||config.CleanDresser&&!cleanupVisited))
         {
+            if(config.Features.DresserCollection&&!market.DresserPreparationReady())
+            {status=market.DresserPreparationStatus!;return true;}
             nextDresserAttempt=Environment.TickCount64+60000;
             if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,"Dresser"))return true;
             Alert("Glamour collection is waiting for AutoRetainer's dresser route. Check its travel dependencies; protected items remain safe.");
@@ -94,6 +107,11 @@ public sealed partial class Plugin
         {StartOverflow();return overflowPass;}
         return false;
     }
+    private bool StorageWorkRemaining()=>
+        config.Features.ArmoireStorage&&NeedsCollectionVisit(true)||
+        config.Features.DresserCollection&&NeedsCollectionVisit(false)||
+        config.CleanDresser&&!cleanupVisited||
+        config.Features.OverflowStorage&&view.Items.Any(s=>Judge(s).Outcome==Outcome.StoreRetainer);
     private bool NeedsCollectionVisit(bool armoire)=>view.Items.Concat(tracked.Items
         .Where(row=>view.Retainers.Contains(row.Owner)&&config.Storage.RetainerEnabled(row.Owner)).Select(row=>row.Stock))
         .Any(stock=>view.Facts(stock.ItemId) is {} item&&
