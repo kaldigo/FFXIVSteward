@@ -63,7 +63,11 @@ public sealed partial class Plugin
     private bool AutomaticStorageWork()
     {
         if(!player.IsLoaded||attached!=player.ContentId||!config.Connected||!config.ExecutionEnabled||executionFault||market.Queue.Running||ownsPostprocess||overflowPass||collectionPass)return false;
-        if(Environment.TickCount64>=nextCollectionAttempt&&CollectionNeeded(player.ContentId))
+        // Finish the carried batch before requesting more retainer withdrawals or another trip.
+        var carriedActions=view.Items.ToArray().Select(s=>Judge(s).Outcome).Where(config.Features.Enabled).ToHashSet();
+        var carriedCollection=carriedActions.Contains(Outcome.CollectDresser)||carriedActions.Contains(Outcome.CollectArmoire);
+        if(market.DresserOpen&&carriedActions.Contains(Outcome.CollectDresser))return false;
+        if(!carriedCollection&&Environment.TickCount64>=nextCollectionAttempt&&CollectionNeeded(player.ContentId))
         {
             if(!market.CloseDresserForStorage())return false;
             nextCollectionAttempt=Environment.TickCount64+60000;

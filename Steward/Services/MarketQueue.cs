@@ -453,21 +453,25 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 if(phase==2)
                 {
                     // Confirmation can rebuild the selection UI; acknowledge inventory evidence, not window visibility.
-                    if(live==source||ui.Visible("SelectYesno"))return StepResult.Waiting;
-                    if(!InventoryView.Loaded(source.Container)||!view.Evidence.DresserKnown)return StepResult.Waiting;
-                    if(!StockTransition.Removed(source,live,1,true))return StepResult.Failed;
-                    if(!view.Evidence.Dresser.Contains(source.ItemId))return StepResult.Waiting;
-                    history("Confirmed dresser storage of "+source.ItemId);return StepResult.Completed;
+                    var result=DresserConfirmation.Acknowledge(source,live,ui.Visible("SelectYesno"),
+                        InventoryView.Loaded(source.Container),view.Evidence.DresserKnown,view.Evidence.Dresser.Contains(source.ItemId));
+                    if(result==StepResult.Completed)history("Confirmed dresser storage of "+source.ItemId);
+                    return result;
                 }
                 if(ui.Get("MiragePrismPrismBoxCrystallize")==null)
                     return phase==1?StepResult.Waiting:RejectDresser("the dresser item-selection window is no longer ready or visible");
                 if(phase<2 && live!=source)return RejectDresser("the source inventory slot changed before confirmation");
-                if(phase<2 && (!config.Features.DresserCollection||judge(source).Outcome!=Outcome.CollectDresser))return StepResult.Completed;
+                if(phase<2 && (!config.Features.DresserCollection||judge(source).Outcome!=Outcome.CollectDresser))
+                {
+                    if(phase==1&&!ui.CancelDresserConfirmation(confirmationOwner,source))return RejectDresser("changed protection rules left an unverified confirmation");
+                    return StepResult.Completed;
+                }
                 var agent=AgentMiragePrismPrismBox.Instance();
                 if(agent==null||agent->Data==null)return RejectDresser("the dresser selection data is unavailable");
                 if(phase==0)
                 {
                     if(ui.Visible("SelectYesno"))return RejectDresser("another confirmation is already open");
+                    if(!ui.DresserSelectionReady())return StepResult.Waiting;
                     var selected=-1;
                     for(var i=0;i<agent->Data->CrystallizeItemCount;i++)
                     {
@@ -480,8 +484,11 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     if(item->GetConditionPercentage()!=100||im->GetInventoryItemCount(21800)<1){notify("Dresser deposit needs fully repaired gear and a glamour prism. Item "+source.ItemId+" remains protected.");return StepResult.Completed;}
                     confirmationOwner=ui.Get("MiragePrismPrismBoxCrystallize")->Id;
                     history($"Dresser deposit selection requested: item={source.ItemId}, source={source.Container}/{source.Slot}, row={selected}; {ui.Describe("MiragePrismPrismBox")}; {ui.Describe("MiragePrismPrismBoxCrystallize")}");
-                    if(!ui.SelectDresserItem(selected))return RejectDresser("the game rejected the dresser selection callback");
-                    phase=1;return StepResult.Waiting;
+                    var itemName=view.Facts(source.ItemId)?.Name;
+                    if(itemName==null||!ui.SelectDresserItem(itemName,out var treeIndex))return RejectDresser("the dresser tree has no unique ready item matching the requested gear");
+                    phase=1;
+                    history($"Dresser list click submitted: item={source.ItemId}, agent row={selected}, tree index={treeIndex}; waiting for exact source confirmation");
+                    return StepResult.Waiting;
                 }
                 if(phase==1)
                 {
@@ -492,10 +499,10 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     var selected=agent->Data->CrystallizeSelectedItem;
                     if(selected.ItemId%1000000!=source.ItemId||(uint)selected.Inventory!=source.Container||selected.Slot!=source.Slot)return RejectDresser("the selected dresser item does not match the requested source");
                     var sourceAddon=ui.Get("MiragePrismPrismBoxCrystallize");
-                    if(sourceAddon==null || sourceAddon->Id!=confirmationOwner || !ConfirmationOwnership.Matches(confirmationOwner,confirm->ParentId,confirm->HostId))return RejectDresser("the confirmation is not owned by the expected dresser window");
+                    if(sourceAddon==null || sourceAddon->Id!=confirmationOwner || !ui.OwnsDresserConfirmation(confirmationOwner,source))return RejectDresser("the confirmation is not owned by the expected dresser window");
                     var name=view.Facts(source.ItemId)?.Name;
                     if(name==null||confirm->PromptText==null||!confirm->PromptText->NodeText.ToString().Contains(name,StringComparison.Ordinal))return RejectDresser("the confirmation text does not identify the requested item");
-                    if(!ui.Callback("SelectYesno",0))return RejectDresser("the game rejected the owned dresser confirmation");phase=2;return StepResult.Waiting;
+                    if(!ui.ClickDresserConfirmation(confirmationOwner,source,true))return RejectDresser("the owned dresser confirmation is not ready");phase=2;return StepResult.Waiting;
                 }
                 return StepResult.Failed;
             },()=>
@@ -503,7 +510,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 if(phase!=1)return;
                 // The source window may have closed. Absence of a confirmation is already safe;
                 // if one remains, cancellation must still match the captured owner.
-                if(!ui.CancelOwnedConfirmation(confirmationOwner))
+                if(!ui.CancelDresserConfirmation(confirmationOwner,source))
                     throw new InvalidOperationException("Pending dresser confirmation could not be safely cancelled");
             },TimeoutMs:12000));
         }

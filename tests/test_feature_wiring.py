@@ -34,16 +34,31 @@ class FeatureWiring(unittest.TestCase):
         self.assertNotIn('imports.Refresh();',plugin)
     def test_dresser_selection_does_not_close_windows(self):
         ui=(ROOT/'Services/NativeUi.cs').read_text()
-        self.assertIn('SelectDresserItem(int row)=>CallbackCore("MiragePrismPrismBoxCrystallize",false,[0,row])',ui)
+        self.assertIn('list->DispatchItemEvent(selected,AtkEventType.ListItemClick)',ui)
+        self.assertIn('TreeListItemType.Group|TreeListItemType.SectionHeader',ui)
+        self.assertIn('if(selected>=0)return false',ui)
+        self.assertNotIn('CallbackCore("MiragePrismPrismBoxCrystallize"',ui)
         queue=(ROOT/'Services/MarketQueue.cs').read_text()
-        self.assertIn('ui.SelectDresserItem(selected)',queue)
-        self.assertIn('ConfirmationOwnership.Matches(confirmationOwner,confirm->ParentId,confirm->HostId)',queue)
+        self.assertIn('ui.SelectDresserItem(itemName,out var treeIndex)',queue)
+        self.assertIn('ui.OwnsDresserConfirmation(confirmationOwner,source)',queue)
+        self.assertIn('ui.ClickDresserConfirmation(confirmationOwner,source,true)',queue)
+        self.assertIn('ui.CancelDresserConfirmation(confirmationOwner,source)',queue)
         deposit=queue.split('Queue.Add(new("Store dresser item "+source.ItemId')[1]
         self.assertLess(deposit.index('if(phase==2)'),deposit.index('ui.Get("MiragePrismPrismBoxCrystallize")'))
-        self.assertIn('StockTransition.Removed(source,live,1,true)',deposit)
+        self.assertIn('DresserConfirmation.Acknowledge(source,live',deposit)
         self.assertIn('view.Evidence.Dresser.Contains(source.ItemId)',deposit)
         self.assertIn('phase==1?StepResult.Waiting:RejectDresser',deposit)
         self.assertIn('TimeoutMs:12000',deposit)
+
+    def test_collection_completion_resumes_storage_before_retry_timer(self):
+        plugin=(ROOT/'Plugin.cs').read_text()
+        transition=plugin.split('if(collectionPass&&!ownsPostprocess')[1].split('if(!ownsPostprocess&&!market.Queue.Running&&Environment.TickCount64>=nextAutomaticWork')[0]
+        self.assertIn('!market.Queue.Running',transition)
+        self.assertIn('AutoRetainer.PluginState.IsBusy',transition)
+        self.assertIn('nextDresserAttempt=0;nextAutomaticWork=0',transition)
+        storage=(ROOT/'Plugin.Storage.cs').read_text()
+        self.assertIn('if(market.DresserOpen&&carriedActions.Contains(Outcome.CollectDresser))return false',storage)
+        self.assertIn('if(!carriedCollection&&Environment.TickCount64>=nextCollectionAttempt',storage)
 
     def test_permissions_and_review_are_gated_without_changing_rules(self):
         plugin=(ROOT/'Plugin.cs').read_text()

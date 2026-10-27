@@ -336,6 +336,12 @@ public sealed partial class Plugin : IDalamudPlugin
                 {openingMarket=false;Refresh();market.Start(true);if(!market.Queue.Running)FinishPostprocess();}
             }
             if(ownsPostprocess && !openingInventory && !withdrawing && !openingMarket && !market.Queue.Running)FinishPostprocess();
+            if(collectionPass&&!ownsPostprocess&&!market.Queue.Running&&!pi.GetIpcSubscriber<bool>("AutoRetainer.PluginState.IsBusy").InvokeFunc())
+            {
+                collectionPass=false;
+                nextDresserAttempt=0;nextAutomaticWork=0;
+                Record("Collection retainer pass finished; collection storage may resume immediately");
+            }
             if(!ownsPostprocess&&!market.Queue.Running&&Environment.TickCount64>=nextAutomaticWork&&attached==player.ContentId&&attached!=0)
             {
                 nextAutomaticWork=Environment.TickCount64+5000;
@@ -351,7 +357,7 @@ public sealed partial class Plugin : IDalamudPlugin
                     }
                 }
             }
-            if(collectionPass&&!ownsPostprocess&&!market.Queue.Running&&!pi.GetIpcSubscriber<bool>("AutoRetainer.PluginState.IsBusy").InvokeFunc())collectionPass=false;
+
             if(overflowPass && !ownsPostprocess && !market.Queue.Running && !pi.GetIpcSubscriber<bool>("AutoRetainer.PluginState.IsBusy").InvokeFunc())
             {overflowPass=false;if(view.Items.Any(s=>Judge(s).Outcome==Outcome.StoreRetainer))Alert("Retainer storage could not fit all protected overflow. Remaining items are still protected in inventory; free retainer space and try again.");}
             if(executionFault)status="Execution held after an uncertain/failed operation. Check inventory and clear the stopped run before continuing.";

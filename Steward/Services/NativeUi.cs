@@ -1,4 +1,7 @@
 using Dalamud.Plugin.Services;
+using Steward.Core;
+using FFXIVClientStructs.FFXIV.Client.UI;
+using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 
 namespace Steward.Services;
@@ -40,7 +43,53 @@ public sealed unsafe class NativeUi(IGameGui gui)
     }
     public bool Callback(string name,params int[] values)
         =>CallbackCore(name,true,values);
-    public bool SelectDresserItem(int row)=>CallbackCore("MiragePrismPrismBoxCrystallize",false,[0,row]);
+    public bool DresserSelectionReady()
+    {
+        var addon=(AddonMiragePrismPrismBoxCrystallize*)Get("MiragePrismPrismBoxCrystallize");
+        return addon!=null&&addon->ItemTreeList!=null&&!addon->ItemTreeList->LayoutRefreshPending&&!addon->ItemTreeList->IsUpdatePending;
+    }
+    public bool SelectDresserItem(string name,out int treeIndex)
+    {
+        treeIndex=-1;
+        var addon=(AddonMiragePrismPrismBoxCrystallize*)Get("MiragePrismPrismBoxCrystallize");
+        if(addon==null||addon->ItemTreeList==null)return false;
+        var list=addon->ItemTreeList;
+        if(list->LayoutRefreshPending||list->IsUpdatePending)return false;
+        // Tree indices include headers: the recorded chestwrap was tree index 1, agent row 0.
+        // Match a unique named leaf, then validate the exact native source before confirmation.
+        var selected=-1;
+        for(var i=0;i<list->Items.Count;i++)
+        {
+            var entry=list->Items[i].Value;
+            if(entry==null||(entry->Type&(TreeListItemType.Group|TreeListItemType.SectionHeader))!=0||entry->StringValues.Count==0)continue;
+            if(entry->StringValues[0].ToString()!=name)continue;
+            if(selected>=0)return false;
+            if(entry->IsHidden||(entry->State&TreeListItemState.Disabled)!=0)return false;
+            selected=i;
+        }
+        if(selected<0)return false;
+        treeIndex=selected;
+        list->DispatchItemEvent(selected,AtkEventType.ListItemClick);
+        return true; // Submission only. The queue verifies native selection and ownership next frame.
+    }
+    public bool OwnsDresserConfirmation(ushort owner,Stock source)
+    {
+        var window=Get("MiragePrismPrismBoxCrystallize");
+        var confirm=Get("SelectYesno");
+        var agent=AgentMiragePrismPrismBox.Instance();
+        if(window==null||confirm==null||agent==null||agent->Data==null)return false;
+        var selected=agent->Data->CrystallizeSelectedItem;
+        return DresserConfirmation.Matches(owner,window->Id,confirm->Id,agent->ContextAddonId,
+            source,selected.ItemId%1000000,(uint)selected.Inventory,selected.Slot);
+    }
+    public bool ClickDresserConfirmation(ushort owner,Stock source,bool accept)
+    {
+        if(!OwnsDresserConfirmation(owner,source))return false;
+        var confirm=(AddonSelectYesno*)Get("SelectYesno");
+        return ClickButton(&confirm->AtkUnitBase,accept?confirm->YesButton:confirm->NoButton);
+    }
+    public bool CancelDresserConfirmation(ushort owner,Stock source)
+        =>!Visible("SelectYesno")||ClickDresserConfirmation(owner,source,false);
     private bool CallbackCore(string name,bool close,int[] values)
     {
         var addon=Get(name);if(addon==null)return false;

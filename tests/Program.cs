@@ -2,6 +2,25 @@ using Steward.Core;
 
 var total=0;
 void Check(bool condition,string name) { total++; if(!condition) throw new Exception(name); }
+// Replay the manual trace's parentless Yes/No ownership, and reject replacement dialogs/sources.
+{
+    var traced=new Stock(14799,false,1,0,0);
+    Check(DresserConfirmation.Acknowledge(traced,traced,true,true,true,false)==StepResult.Waiting,"Trace: confirmation opened, no transfer yet");
+    Check(DresserConfirmation.Acknowledge(traced,traced,false,true,true,false)==StepResult.Waiting,"Trace: yes closes dialog before server transfer");
+    Check(DresserConfirmation.Acknowledge(traced,null,false,true,true,false)==StepResult.Waiting,"Source removed but destination not observed waits");
+    Check(DresserConfirmation.Acknowledge(traced,null,false,true,false,true)==StepResult.Waiting,"Cached ownership does not acknowledge");
+    Check(DresserConfirmation.Acknowledge(traced,null,false,false,true,true)==StepResult.Waiting,"Unloaded source does not count as removed");
+    Check(DresserConfirmation.Acknowledge(traced,null,false,true,true,true)==StepResult.Completed,"Trace: exact source removed and dresser ownership observed");
+    Check(DresserConfirmation.Acknowledge(traced,traced with{ItemId=42},false,true,true,true)==StepResult.Failed,"Unexpected slot replacement holds the run");
+    Check(DresserConfirmation.Matches(129,129,131,131,traced,14799,0,0),"Manual dresser trace context owns parentless confirmation");
+    Check(!DresserConfirmation.Matches(129,129,131,0,traced,14799,0,0),"No context after confirmation does not authorize another click");
+    Check(!DresserConfirmation.Matches(129,129,132,131,traced,14799,0,0),"Unrelated confirmation rejected");
+    Check(!DresserConfirmation.Matches(129,130,131,131,traced,14799,0,0),"Recreated source window rejected");
+    Check(!DresserConfirmation.Matches(129,129,131,131,traced,14800,0,0),"Wrong item rejected");
+    Check(!DresserConfirmation.Matches(129,129,131,131,traced,14799,1,0),"Wrong inventory rejected");
+    Check(!DresserConfirmation.Matches(129,129,131,131,traced,14799,0,1),"Wrong slot rejected");
+    Check(!DresserConfirmation.Matches(0,0,131,131,traced,14799,0,0),"Unknown source owner rejected");
+}
 var now=DateTimeOffset.UtcNow;
 var settings=new RuleSettings();
 var e=new Evidence{ReferencesReady=true,GearsetsReady=true,DresserKnown=true,ArmoireKnown=true};

@@ -69,7 +69,7 @@ class Distribution(unittest.TestCase):
   self.assertIn('proxy->WaitingForListings',source)
   self.assertIn('dialog->AskingPrice->Value!=target',source)
   self.assertIn('agent->SellItemQuantity!=quantity',source)
-  self.assertIn('ConfirmationOwnership.Matches(',source)
+  self.assertIn('ui.OwnsDresserConfirmation(',source)
  def test_backend_uncertainty_is_persisted_and_cleared_in_both_plugins(self):
   source=((ROOT/'Steward/Plugin.cs').read_text()+(ROOT/'Steward/Plugin.Settings.cs').read_text())
   self.assertIn('RegisterAction(IntegrationFault)',source)
@@ -78,9 +78,9 @@ class Distribution(unittest.TestCase):
   self.assertIn('AutoRetainer.InventoryPolicy.Hold',source)
  def test_pending_owned_dresser_prompt_is_cancelled(self):
   source=(ROOT/'Steward/Services/MarketQueue.cs').read_text()
-  self.assertIn('ui.CancelOwnedConfirmation(confirmationOwner)',source)
+  self.assertIn('ui.CancelDresserConfirmation(confirmationOwner,source)',source)
   self.assertIn('sourceAddon->Id!=confirmationOwner',source)
-  self.assertIn('ConfirmationOwnership.Matches(confirmationOwner,confirm->ParentId,confirm->HostId)',source)
+  self.assertIn('ui.OwnsDresserConfirmation(confirmationOwner,source)',source)
   cleanup=source.split('if(phase!=1)return;')[-1].split('TimeoutMs:12000')[0]
   self.assertNotIn('ui.Get(',cleanup)
   self.assertIn('Dresser deposit rejected:',source)
@@ -111,7 +111,8 @@ class Distribution(unittest.TestCase):
   source=(ROOT/'Steward/Services/MarketQueue.cs').read_text()
   self.assertIn('currentRetainer->LastSelectedRetainerId!=retainer',source)
   self.assertIn('StockTransition.Removed(expected,live',source)
-  self.assertIn('!view.Evidence.DresserKnown',source)
+  self.assertIn('view.Evidence.DresserKnown,view.Evidence.Dresser.Contains(source.ItemId)',source)
+  self.assertIn('!dresserKnown',(ROOT/'Steward/Core/DresserConfirmation.cs').read_text())
   self.assertIn('ui.Visible("RetainerSell")',source)
   self.assertIn('after!=before+1',source)
   source=((ROOT/'Steward/Plugin.cs').read_text()+(ROOT/'Steward/Plugin.Settings.cs').read_text())
