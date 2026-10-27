@@ -340,7 +340,7 @@ public sealed partial class Plugin : IDalamudPlugin
             status=ex.Message;
             var key="refresh-error/"+ex.Message;
             if(!recentDecisions.TryGetValue(key,out var last)||Environment.TickCount64-last>60000)
-            {recentDecisions[key]=Environment.TickCount64;Record("Steward refresh failed; review may be incomplete: "+ex.Message);}
+            {recentDecisions[key]=Environment.TickCount64;log.Error(ex,"Steward update failed");Record("Steward refresh failed; review may be incomplete: "+ex.Message);}
             if(config.Automatic || market.Queue.Running || ownsPostprocess)HoldExecution(ex.Message);StopQueue();
         }
     }
@@ -363,7 +363,7 @@ public sealed partial class Plugin : IDalamudPlugin
         try{Refresh();
             if(!config.Features.AnyInventoryWork&&!config.Features.AnyMarket){FinishPostprocess();return;}
             openingInventory=config.Features.AnyInventoryWork;openingMarket=!openingInventory&&config.Features.AnyMarket;marketOpenDeadline=Environment.TickCount64+15000;}
-        catch(Exception ex){HoldExecution("Retainer postprocess planning failed: "+ex.Message);StopQueue();}
+        catch(Exception ex){log.Error(ex,"Retainer postprocess planning failed");HoldExecution("Retainer postprocess planning failed: "+ex.Message);StopQueue();}
     }
     private void FinishPostprocess()
     {

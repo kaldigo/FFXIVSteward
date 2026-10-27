@@ -316,7 +316,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
         EnqueueOverflow(character,retainer);
         if(overflowOnly)return;
         var dresserWithdrawals=0;
-        var initialWaiting=view.Items.Where(s=>judge(s).Outcome==Outcome.CollectDresser).Select(s=>s.ItemId).Distinct().Count();
+        var initialWaiting=StoragePolicy.CountWaitingForDresser(view.Items,judge);
         List<Stock> stored=[];foreach(var type in InventoryView.RetainerTypes())InventoryView.Read(type,stored);
         foreach(var stock in stored.Where(s=>config.Features.Enabled(judge(s).Outcome)&&(judge(s).Outcome is Outcome.CollectArmoire or Outcome.CollectDresser || !collectionOnly&&judge(s).Outcome==Outcome.Dispose))
             .OrderBy(s=>view.Facts(s.ItemId) is {} f?StoragePolicy.Priority(f,config.Rules,view.Evidence):int.MaxValue).ThenBy(s=>s.ItemId))
@@ -343,7 +343,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                         if(!selected){history("Retainer item "+stock.ItemId+" left in storage: no enabled AutoRetainer disposal selection.");return StepResult.Completed;}
                     }
                     if(decision.Outcome is Outcome.CollectArmoire or Outcome.CollectDresser && view.Items.Any(s=>s.ItemId==stock.ItemId))return StepResult.Completed;
-                    var waiting=Math.Max(initialWaiting,view.Items.Where(s=>judge(s).Outcome==Outcome.CollectDresser).Select(s=>s.ItemId).Distinct().Count()-dresserWithdrawals);
+                    var waiting=Math.Max(initialWaiting,StoragePolicy.CountWaitingForDresser(view.Items,judge)-dresserWithdrawals);
                     if(!StoragePolicy.CanWithdraw(decision.Outcome,view.Evidence.DresserFreeSlots,config.Rules.DresserEmptySlots,waiting,dresserWithdrawals))return StepResult.Completed;
                     if(InventoryView.FreeBagSlots()<2)return StepResult.Completed;
                     if(decision.Outcome is Outcome.CollectDresser or Outcome.CollectArmoire)protectCollection(stock.ItemId);

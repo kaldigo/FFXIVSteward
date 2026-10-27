@@ -5,6 +5,25 @@ static class StorageChecks
 {
     public static void Run(Action<bool,string> check,DateTimeOffset now)
     {
+        List<Stock> liveInventory=[new(42,false,1,0,0),new(42,false,1,0,1),new(43,false,1,0,2),new(44,false,1,0,3)];
+        var decisions=0;
+        Decision RefreshingJudge(Stock candidate)
+        {
+            // Production JudgeLive refreshes InventoryView, clearing and repopulating this same list.
+            var observed=liveInventory.ToArray();liveInventory.Clear();liveInventory.AddRange(observed);
+            decisions++;
+            return new(candidate.ItemId==44?Outcome.CollectArmoire:Outcome.CollectDresser,"Live evidence");
+        }
+        check(StoragePolicy.CountWaitingForDresser(liveInventory,RefreshingJudge)==2,"Live refresh during dresser counting preserves distinct missing-item count");
+        check(decisions==4,"Each captured candidate is judged despite inventory refreshes");
+        check(!StoragePolicy.CanWithdraw(Outcome.CollectDresser,22,20,2,0),"Snapshot counting preserves reserved dresser capacity");
+        check(StoragePolicy.CanWithdraw(Outcome.CollectArmoire,0,20,2,0),"Armoire items do not consume dresser capacity");
+        check(StoragePolicy.CountWaitingForDresser([], _=>throw new InvalidOperationException())==0,"Empty inventory does not invoke live judgement");
+        var failedClosed=false;
+        try{StoragePolicy.CountWaitingForDresser(liveInventory,_=>throw new InvalidOperationException("Evidence unavailable"));}
+        catch(InvalidOperationException){failedClosed=true;}
+        check(failedClosed,"Failed live judgement stops planning rather than fabricating free capacity");
+
         var settings=new RuleSettings();
         var evidence=new Evidence{ReferencesReady=true,GearsetsReady=true,DresserKnown=true,ArmoireKnown=true,DresserFreeSlots=100};
         var facts=new ItemFacts(42,"Blue",true,3,90,false,false,SourceKind.NormalRaid,1);

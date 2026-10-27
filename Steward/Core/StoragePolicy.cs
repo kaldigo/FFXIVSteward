@@ -2,6 +2,11 @@ namespace Steward.Core;
 
 public static class StoragePolicy
 {
+    // Live judgement refreshes the source inventory. Capture candidates before invoking it;
+    // this snapshot counts capacity only and never authorizes a transfer.
+    public static int CountWaitingForDresser(IEnumerable<Stock> inventory,Func<Stock,Decision> judge) =>
+        inventory.ToArray().Where(s=>judge(s).Outcome==Outcome.CollectDresser).Select(s=>s.ItemId).Distinct().Count();
+
     public static Decision WithoutDresserCopy(Evidence evidence,uint id,int copies,Func<Decision> judge)
     {
         if(copies<=0)return new(Outcome.Wait,"Dresser source copy is not confirmed");

@@ -2,6 +2,11 @@ import unittest
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]/'Steward'
 class FeatureWiring(unittest.TestCase):
+    def test_withdrawal_capacity_counts_survive_live_refresh(self):
+        queue=(ROOT/'Services/MarketQueue.cs').read_text()
+        self.assertEqual(queue.count('StoragePolicy.CountWaitingForDresser(view.Items,judge)'),2)
+        self.assertNotIn('view.Items.Where(s=>judge(s)',queue)
+
     def test_permissions_and_review_are_gated_without_changing_rules(self):
         plugin=(ROOT/'Plugin.cs').read_text()
         self.assertIn('config.Features.Allows(action,decision.Outcome)&&ActionPolicy.Allows(',plugin)
