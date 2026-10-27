@@ -23,6 +23,7 @@ public sealed class SaleRule
     public uint MinimumUnit { get; set; } = 1000;
     public uint MinimumTotal { get; set; } = 5000;
     public int MaximumStack { get; set; } = 99;
+    public int? MaximumListingDays { get; set; }
     public double? MinimumDailySales { get; set; }
     public bool AllowOlderSaleValue { get; set; } = true;
     public bool Matches(ItemFacts item, Stock stock) => Enabled &&
@@ -57,6 +58,7 @@ public sealed class Evidence
         DresserKnown=ArmoireKnown=GearsetsReady=ReferencesReady=false;
     }
     public bool ReferencesReady { get; set; }
+    public HashSet<uint> RelistingHolds { get; set; }=[];
     public HashSet<uint> References { get; set; } = [];
     public HashSet<uint> CuratedGlamour { get; set; } = [];
     public HashSet<uint> Gearsets { get; set; } = [];
@@ -118,7 +120,7 @@ public static class Rules
         if(item.Marketable)
         {
             if(world==0)return new(Outcome.Wait,"Current world is unavailable; market valuation is blocked");
-            if(evidence.StatisticsRequired)
+            if(evidence.StatisticsRequired||rule?.MinimumDailySales!=null)
             {
                 var value=SaleStatistics.Select(evidence,item.Id,stock.Hq,settings.Quality,world,now);
                 if(value==null)return new(Outcome.Wait,"Average sale value unavailable; sale and disposal held",rule);
@@ -155,6 +157,7 @@ public static class Rules
         if(!item.Equipment && !settings.NonEquipmentDisposal.Contains(item.Id))
             return new(Outcome.Keep, "Non-equipment disposal requires explicit item permission",rule,SaleRejected:saleRejected);
         if(removable<stock.Quantity)return new(Outcome.Keep,"Stack contains a quantity reserve; whole-stack disposal blocked",rule);
+        if(evidence.RelistingHolds.Contains(item.Id))return new(Outcome.Keep,"Reserved for later relisting; disposal blocked",rule,SaleRejected:saleRejected);
         return new(Outcome.Dispose, collect ? "Exact copy already collected; surplus may use AutoRetainer disposal rules" : "Outside collection rules; use AutoRetainer disposal rules",rule,SaleRejected:saleRejected);
     }
 }

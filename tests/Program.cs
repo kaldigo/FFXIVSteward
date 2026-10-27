@@ -85,6 +85,7 @@ await FeatureAuditChecks.Run(Check,now);
 await AggregateRecoveryChecks.Run(Check,now);
 PersistentObservationChecks.Run(Check,now);
 await ImportAndLoggingChecks.Run(Check);
+ListingWindowChecks.Run(Check);
 ReferenceRefreshChecks.Run(Check);
 GlamourFilterChecks.Run(Check,now);
 Console.WriteLine($"{total} checks passed including disposal/protection safety regressions.");

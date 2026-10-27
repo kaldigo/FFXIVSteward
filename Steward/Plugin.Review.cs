@@ -100,6 +100,18 @@ public sealed partial class Plugin
                 for(var i=0;i<plan.Held.Count;i++)
                     entries.Add(new(player.ContentId,$"Market planning hold {i+1}",0,0,false,"MarketHeld",plan.Held[i],World:marketPreview.World,Retainer:marketPreview.Retainer));
             }
+            foreach(var window in marketPreview.Windows??[])
+                entries.Add(new(player.ContentId,$"Retainer {marketPreview.Retainer}, tracked listing slot {window.Source.Slot}",window.Source.ItemId,window.Source.Quantity,window.Source.Hq,"ListingWindow",
+                    $"{view.Facts(window.Source.ItemId)?.Name}: tracked since {window.Since:O}; {(window.Since.HasValue?(int)(DateTimeOffset.UtcNow-window.Since.Value).TotalDays:0)} days observed. Rotation limit: {(window.MaximumDays.HasValue?window.MaximumDays.Value+" days":"disabled")}. Age before first observation is unknown.",World:marketPreview.World,Retainer:marketPreview.Retainer));
+            foreach(var rotation in marketPreview.Rotations??[])
+            {
+                entries.Add(new(player.ContentId,$"Retainer {marketPreview.Retainer}, listing slot {rotation.Source.Slot}",rotation.Source.ItemId,rotation.Source.Quantity,rotation.Source.Hq,"WouldRotateListing",
+                    $"{view.Facts(rotation.Source.ItemId)?.Name}: first observed {rotation.Since:O}; {rotation.DaysListed:N1} tracked days. Return to inventory and protect for relisting; waiting replacement: {view.Facts(rotation.Replacement.ItemId)?.Name}. Live replacement comparison and return acknowledgement required.",World:marketPreview.World,Retainer:marketPreview.Retainer,Collection:CopyEvidence(rotation.Source.ItemId)));
+                entries.Add(new(player.ContentId,$"Retainer {marketPreview.Retainer}, replacement for slot {rotation.Source.Slot}",rotation.Replacement.ItemId,rotation.ReplacementQuantity,rotation.Replacement.Hq,"WouldListAfterRotation",
+                    $"{view.Facts(rotation.Replacement.ItemId)?.Name}: proposed replacement after confirmed return; {rotation.ReplacementQuantity} at {rotation.ReplacementPrice:N0} gil each. Estimate, subject to live comparison.",rotation.ReplacementPrice,(ulong)rotation.ReplacementPrice*rotation.ReplacementQuantity,marketPreview.World,marketPreview.Retainer,Collection:CopyEvidence(rotation.Replacement.ItemId)));
+            }
+            foreach(var hold in config.ListingWindows.Holds.Where(h=>h.Character==player.ContentId))
+                entries.Add(new(player.ContentId,"Reserved listing return "+hold.Token,hold.ItemId,hold.Quantity,hold.Hq,"ProtectedForRelisting","Reserved after listing rotation; cannot dispose while waiting to relist.",Collection:CopyEvidence(hold.ItemId)));
             entries.Add(new(player.ContentId,"Market preview summary",0,0,false,"MarketSnapshot",marketPreview.Status,World:marketPreview.World,Retainer:marketPreview.Retainer));
             entries.Add(new(player.ContentId,"Market price source",0,0,false,"PriceSourceStatus",universalis.Status+" "+universalis.Freshness,World:view.World));
             if(config.UseUniversalis)

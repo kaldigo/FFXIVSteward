@@ -10,7 +10,7 @@ public sealed unsafe partial class MarketQueue
     private uint observationWorld;
     private DateTimeOffset observationWorldSince;
     public sealed record RepriceProposal(Stock Source,uint Before,uint After,MarketReference Reference,string? RuleName=null);
-    public sealed record MarketPreview(ulong Retainer,uint World,ListingPlan? Plan,IReadOnlyList<RepriceProposal> Reprices,string Status);
+    public sealed record MarketPreview(ulong Retainer,uint World,ListingPlan? Plan,IReadOnlyList<RepriceProposal> Reprices,string Status,IReadOnlyList<RotationProposal>? Rotations=null,IReadOnlyList<ListingWindowPreview>? Windows=null);
 
     private void ObserveMarket(uint item,DateTimeOffset at,int request,List<Offering> values)
     {
@@ -41,6 +41,7 @@ public sealed unsafe partial class MarketQueue
         InventoryView.Read(InventoryType.RetainerMarket,listings);
         return listings.Count<=20&&listings.All(s=>s.Slot<20)&&listings.Select(s=>s.Slot).Distinct().Count()==listings.Count;
     }
+    public ulong OpenMarketRetainer()=>MarketSnapshot(out var owner,out _)?owner:0;
     public IReadOnlyList<Stock> PriceCandidates()
     {
         return MarketSnapshot(out _,out var listings)?listings.Concat(AvailableSaleStock()).Distinct().ToArray():[];
@@ -97,11 +98,12 @@ public sealed unsafe partial class MarketQueue
     {
         if(!MarketSnapshot(out var retainer,out var listings))
             return new(0,view.World,null,[],"Open your retainer's selling list to load its actual free slots. Log-only does not open game menus or request in-game searches. Universalis may fetch price estimates in the background.");
+        ObserveListingWindows(retainer,listings);
         if(!marketPreferencesReady())return new(retainer,view.World,null,[],"Market preferences unavailable; listing proposals held.");
         if(!view.Evidence.ReferencesReady||!view.Evidence.GearsetsReady)
             return new(retainer,view.World,null,[],"Protection references unavailable; listing proposals held. Load the native glamour plate editor and Glamaholic references; gearset evidence must also be ready.");
         var free=Enumerable.Range(0,20).Except(listings.Select(s=>(int)s.Slot)).ToArray();
-        var inputs=AvailableSaleStock().Select(s=>SaleInput(s,false)).OfType<ListingInput>()
+        var inputs=OrderedSaleStock(retainer).Select(s=>SaleInput(s,false)).OfType<ListingInput>()
             .Where(i=>ListingPlanner.CanConsider(i.Item,i.Stock,i.Decision,i.Rule)).ToArray();
         var plan=ListingPlanner.Plan(inputs,free,config.Pricing,view.World,config.Rules.MaximumPriceAgeMinutes,config.Rules.Quality,DateTimeOffset.UtcNow);
         List<RepriceProposal> reprices=[];
@@ -115,7 +117,10 @@ public sealed unsafe partial class MarketQueue
             if(target.HasValue&&MarketSubmission.CanCommit(listing,listing,decision,true,target.Value,listing.Quantity,(int)target.Value,(int)listing.Quantity,9999))
                 reprices.Add(new(listing,before,target.Value,reference,decision.Rule?.Name));
         }
-        return new(retainer,view.World,plan,reprices,$"{listings.Count}/20 slots occupied; {plan.Listings.Count} proposed new listings; {plan.FreeSlotsRemaining} slots remain. Estimates use cached summaries or manually observed prices; execution always rechecks the game market.{(config.Rules.Sales.Any(r=>r.Enabled)?"":" Add an enabled auto-sell rule in Rules to propose new listings.")}");
+        var windows=listings.Select(stock=>new ListingWindowPreview(stock,config.ListingWindows.Age(view.Character,view.World,retainer,stock)?.Since,
+            view.Facts(stock.ItemId) is {} item?config.Rules.Sales.FirstOrDefault(r=>r.Matches(item,stock))?.MaximumListingDays:null)).ToArray();
+        var rotation=FindRotation(retainer,listings);
+        return new(retainer,view.World,plan,reprices,$"{listings.Count}/20 slots occupied; {plan.Listings.Count} proposed new listings; {plan.FreeSlotsRemaining} slots remain. Estimates use cached summaries or manually observed prices; execution always rechecks the game market.{(config.Rules.Sales.Any(r=>r.Enabled)?"":" Add an enabled auto-sell rule in Rules to propose new listings.")}",rotation==null?[]:[rotation],windows);
     }
     private void EnqueueListingPump(ulong retainer,bool coordinated,ListingPass pass)
     {
@@ -124,8 +129,20 @@ public sealed unsafe partial class MarketQueue
             if(!config.ExecutionEnabled||config.ExecutionReviewRequired)return StepResult.Failed;
             refreshProtection();
             if(!marketPreferencesReady()||!MarketSnapshot(out var selected,out var listings)||selected!=retainer)return StepResult.Failed;
-            if(listings.Count>=20){history("Retainer market slots are full.");return StepResult.Completed;}
-            var candidates=AvailableSaleStock().Where(s=>SaleInput(s,true) is {} input&&ListingPlanner.CanConsider(input.Item,s,input.Decision,input.Rule));
+            ObserveListingWindows(retainer,listings);
+            if(listings.Count>=20)
+            {
+                var rotation=pass.RotationUsed?null:FindRotation(retainer,listings);
+                if(rotation!=null)
+                {
+                    pass.RotationUsed=true;
+                    Enqueue(rotation.Replacement,retainer,false,coordinated,(_,valid)=>
+                    {if(valid)EnqueueRotation(rotation,retainer,coordinated,pass);else history("Listing rotation held: replacement could not pass a fresh market comparison.");},quoteOnly:true);
+                }
+                else history("Retainer market slots are full; no eligible rotation.");
+                return StepResult.Completed;
+            }
+            var candidates=OrderedSaleStock(retainer).Where(s=>SaleInput(s,true) is {} input&&ListingPlanner.CanConsider(input.Item,s,input.Decision,input.Rule));
             var next=pass.Next(candidates,listings.Count);
             if(next==null){history($"Listing pass finished: {20-listings.Count} market slot(s) remain; no further eligible source stacks.");return StepResult.Completed;}
             Enqueue(next,retainer,false,coordinated,(source,success)=>

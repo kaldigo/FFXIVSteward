@@ -6,12 +6,24 @@ namespace Steward;
 public sealed partial class Plugin
 {
     private MarketQueue.MarketPreview? marketPreview;
+    private ulong previewOwner;
+    private uint previewWorld;
+    private long nextMarketPreview;
+    private void UpdateAutomaticMarketPreview()
+    {
+        if(Environment.TickCount64<nextMarketPreview)return;
+        nextMarketPreview=Environment.TickCount64+500;
+        var owner=market.OpenMarketRetainer();
+        var changed=owner!=previewOwner||view.World!=previewWorld;
+        previewOwner=owner;previewWorld=view.World;
+        if(owner==0){marketPreview=null;return;}
+        if(changed&&config.LogOnly){reviewJournal.Reset();nextReview=0;}
+        marketPreview=market.PreviewMarket();
+    }
     private void DrawSalePreview()
     {
         Section("Current retainer preview");
-        ImGui.TextWrapped("Open a retainer's selling list to preview free slots, stack splits and prices. This preview does not change any items.");
-        if(ImGui.Button("Refresh proposed listings")){RefreshProtection();marketPreview=market.PreviewMarket();if(config.LogOnly){reviewJournal.Reset();nextReview=0;}}
-        if(config.LogOnly)ImGui.TextDisabled("Refreshing also requests a new review log snapshot.");
+        ImGui.TextWrapped("Opening a retainer's selling list automatically refreshes these proposals. Log-only mode records them automatically; no button click is needed.");
         if(marketPreview==null)return;
         ImGui.TextWrapped(marketPreview.Status);
         if(marketPreview.Plan is not {} plan)return;
@@ -27,6 +39,11 @@ public sealed partial class Plugin
             ImGui.EndTable();
         }
         foreach(var price in marketPreview.Reprices)ImGui.TextWrapped($"{view.Facts(price.Source.ItemId)?.Name??"Unknown item"}: {price.Before:N0} → {price.After:N0} gil each");
+        if(ImGui.CollapsingHeader("Existing listing windows"))
+            foreach(var window in marketPreview.Windows??[])
+                ImGui.TextWrapped($"{view.Facts(window.Source.ItemId)?.Name}: {(window.Since.HasValue?(int)(DateTimeOffset.UtcNow-window.Since.Value).TotalDays:0)} days tracked · {(window.MaximumDays.HasValue?"rotate after "+window.MaximumDays.Value+" days":"rotation disabled")}");
+        foreach(var rotation in marketPreview.Rotations??[])
+            ImGui.TextWrapped($"Would return {view.Facts(rotation.Source.ItemId)?.Name} to inventory after {rotation.DaysListed:N0} tracked days, making room for {view.Facts(rotation.Replacement.ItemId)?.Name} × {rotation.ReplacementQuantity} at an estimated {rotation.ReplacementPrice:N0} gil each. The returned item stays protected for later relisting.");
         if(plan.Held.Count>0)ImGui.TextWrapped($"{plan.Held.Count} candidates are waiting for suitable prices or complete evidence.");
         ImGui.TextWrapped("Estimates are rechecked against the market, your own listings and item protections before posting.");
     }

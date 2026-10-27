@@ -223,7 +223,12 @@ public sealed partial class Plugin
             if(ImGui.InputInt("Maximum items per stack",ref stack)){rule.MaximumStack=Math.Clamp(stack,1,9999);SavePolicy();}
             Setting("Require minimum sales activity",rule.MinimumDailySales.HasValue,v=>rule.MinimumDailySales=v ? 0.1 : null);
             if(rule.MinimumDailySales.HasValue)
-            {var velocity=(float)rule.MinimumDailySales.Value;if(ImGui.InputFloat("Minimum units sold per day",ref velocity,.01f,.1f,"%.3f")){rule.MinimumDailySales=float.IsFinite(velocity)?Math.Max(0,velocity):0;SavePolicy();}}
+            {var velocity=(float)rule.MinimumDailySales.Value;if(ImGui.InputFloat("Minimum average units sold per day",ref velocity,.01f,.1f,"%.3f")){rule.MinimumDailySales=float.IsFinite(velocity)?Math.Max(0,velocity):0;SavePolicy();}}
+            if(rule.MinimumDailySales is >0)ImGui.TextWrapped($"{rule.MinimumDailySales.Value:0.###} units/day means about one unit every {1/rule.MinimumDailySales.Value:0.#} days. This is market-wide demand, not your own retainer's sales.");
+            Setting("Rotate long-unsold listings when another item is waiting",rule.MaximumListingDays.HasValue,v=>rule.MaximumListingDays=v?60:null);
+            if(rule.MaximumListingDays.HasValue)
+            {var days=rule.MaximumListingDays.Value;if(ImGui.InputInt("Maximum listing window (days)",ref days)){rule.MaximumListingDays=Math.Clamp(days,1,3650);SavePolicy();}}
+            ImGui.TextWrapped("Rotation only replaces a full market slot when another eligible item is waiting. Returned items join the waiting list and remain protected from disposal until relisted. Existing listings start tracking when first observed; repricing does not reset their window.");
             Setting("Allow older known values for slow sellers",rule.AllowOlderSaleValue,v=>rule.AllowOlderSaleValue=v);
             ImGui.TextWrapped("Missing activity data holds an item when a minimum is enabled. Older prices may support a sale proposal, but cannot authorize disposal. Price floors also apply to the final listing price.");
     }
@@ -234,6 +239,10 @@ public sealed partial class Plugin
         ImGui.BeginDisabled(!config.ExecutionEnabled||!config.CleanDresser||executionFault);
         if(ImGui.Button("Clean open dresser now"))market.CleanupDresser();
         ImGui.EndDisabled();
+        Section("Waiting to relist");
+        var returns=config.ListingWindows.Holds.Where(h=>h.Character==view.Character).ToArray();
+        if(returns.Length==0)ImGui.TextDisabled("No returned listings waiting.");
+        foreach(var hold in returns)ImGui.TextWrapped($"{view.Facts(hold.ItemId)?.Name??hold.ItemId.ToString()} × {hold.Quantity}: protected from disposal until relisted.");
         Section("Inventory memory");
         ImGui.TextWrapped("Retainer, dresser and armoire observations are saved per character without a time limit. Opening storage refreshes its contents. Cached collection copies never authorize disposal or removal of a protected last copy.");
     }
@@ -304,6 +313,7 @@ public sealed partial class Plugin
     private void DetachPolicy()
     {
         Stop();
+        if(config.ListingWindows.Holds.Any(h=>h.Character==player.ContentId)){Alert("Relist reserved market items before disconnecting Steward.");return;}
         if(config.PendingCollection.TryGetValue(player.ContentId,out var waiting)&&waiting.Count>0){Alert("Collect protected overflow before disconnecting Steward.");return;}
         try{if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Detach").InvokeFunc(player.ContentId,Endpoint)){config.Connected=false;attached=0;Save();}else Alert("Resolve the stopped run and stop AutoRetainer's queue before disconnecting.");}
         catch(Exception ex){Alert("Could not disconnect Steward: "+ex.Message);}

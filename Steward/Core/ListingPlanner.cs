@@ -59,6 +59,7 @@ public static class ListingPlanner
 
 public sealed class ListingPass
 {
+    public bool RotationUsed { get; set; }
     private readonly HashSet<Stock> skipped=[];
     public Stock? Next(IEnumerable<Stock> candidates,int occupied)=>occupied>=20?null:candidates.FirstOrDefault(s=>!skipped.Contains(s));
     public void Rejected(Stock stock)=>skipped.Add(stock);

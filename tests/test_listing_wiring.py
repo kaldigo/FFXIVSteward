@@ -24,7 +24,7 @@ class ListingWiring(unittest.TestCase):
     def test_next_split_only_scheduled_after_acknowledgement_and_cleanup(self):
         source=(ROOT/'Steward/Services/MarketQueue.cs').read_text(encoding='utf-8')
         scope=source.split('private void Enqueue(Stock expected')[1].split('public void Advance')[0]
-        self.assertLess(scope.index('StockTransition.Removed(expected,live'),scope.index('return Finish(true)'))
+        self.assertLess(scope.index('StockTransition.Removed(expected,live'),scope.rindex('return Finish(true)'))
         self.assertLess(scope.index('Marketbuddy.Unlock'),scope.index('completed?.Invoke(expected,successful)'))
         self.assertIn('if(finished)completed?.Invoke',scope)
         self.assertIn('view.World!=expectedWorld',scope)
@@ -52,3 +52,21 @@ class ListingWiring(unittest.TestCase):
         self.assertIn('at<observationWorldSince',source)
         self.assertIn('ComparisonReady(id,snapshot.At,result)',source)
         self.assertIn('snapshot.World==view.World',source)
+
+    def test_automatic_preview_and_rotation_submission_gates(self):
+        plugin=(ROOT/'Steward/Plugin.cs').read_text(encoding='utf-8')
+        self.assertIn('UpdateAutomaticMarketPreview();',plugin)
+        preview=(ROOT/'Steward/Plugin.MarketPreview.cs').read_text(encoding='utf-8')
+        self.assertIn('if(changed&&config.LogOnly){reviewJournal.Reset();nextReview=0;}',preview)
+        self.assertNotIn('ImGui.Button("Refresh proposed listings")',preview)
+        rotation=(ROOT/'Steward/Services/MarketQueue.Rotation.cs').read_text(encoding='utf-8')
+        self.assertLess(rotation.index('ReserveReturn('),rotation.index('ui.Callback("ContextMenu",0,choice'))
+        self.assertIn('!config.ExecutionEnabled||config.ExecutionReviewRequired',rotation)
+        self.assertIn('BagQuantity(source)!=beforeQuantity+source.Quantity',rotation)
+        self.assertIn('ConfirmationOwnership.Matches',rotation)
+        self.assertIn('if(acknowledged)Enqueue(proposal.Replacement',rotation)
+        self.assertIn('else if(replan)EnqueueListingPump',rotation)
+        queue=(ROOT/'Steward/Services/MarketQueue.cs').read_text(encoding='utf-8')
+        scope=queue.split('if(quoteOnly)return Finish(true);')[0]
+        self.assertIn('if(!choice.Eligible)',scope)
+        self.assertNotIn('ui.Click("RetainerSell",21)',scope.split('private void Enqueue(Stock expected')[1])

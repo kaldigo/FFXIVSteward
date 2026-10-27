@@ -62,10 +62,10 @@ public sealed partial class Plugin : IDalamudPlugin
         // A failed Stop write must never let a later process restore an old enabled flag.
         config.Automatic=false;
         if(config.SummaryCacheRevision<1){config.Rules.SummaryRefreshHours=Math.Clamp(config.Rules.SummaryRefreshHours,1,2);config.SummaryCacheRevision=1;}
-        if(config.SafetyRevision<6)
+        if(config.SafetyRevision<7)
         {
             config.Automatic=false;
-            config.SafetyRevision=6;
+            config.SafetyRevision=7;config.LogOnly=true;config.ListingWindows=new();
             Save();
         }
         executionFault=config.ExecutionReviewRequired;
@@ -88,7 +88,7 @@ public sealed partial class Plugin : IDalamudPlugin
         dungeonSources=new(pi,data,config,Save);
         historyPath=Path.Combine(pi.GetPluginConfigDirectory(),"history.jsonl");
         reviewJournal=new(historyPath);
-        market=new(pi,board,view,config,new(gui),JudgeLive,Record,RefreshProtection,()=>imports.MarketPreferencesReady,HoldExecution,BeginOperation,CompleteOperation,ProtectCollection,Alert,Judge);
+        market=new(pi,board,view,config,new(gui),JudgeLive,Record,RefreshProtection,()=>imports.MarketPreferencesReady,HoldExecution,BeginOperation,CompleteOperation,ProtectCollection,Alert,Judge,Save);
         pi.GetIpcProvider<string,string>(Endpoint).RegisterFunc(Evaluate);
         pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.OverflowNeeded").RegisterFunc(OverflowNeeded);
         pi.GetIpcProvider<ulong,string,object>("Steward.InventoryPolicy.Fault").RegisterAction(IntegrationFault);
@@ -252,6 +252,7 @@ public sealed partial class Plugin : IDalamudPlugin
             }
             if(ownsPostprocess && !pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsHandoff").InvokeFunc(player.ContentId))
             {HoldExecution("AutoRetainer handoff ownership was lost");StopQueue();return;}
+            UpdateAutomaticMarketPreview();
             ReviewTick();
             market.Advance(Environment.TickCount64);
             if(market.Queue.Status.StartsWith("Stopped:",StringComparison.Ordinal) && !executionFault)

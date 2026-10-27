@@ -33,6 +33,9 @@ public sealed class Configuration : IPluginConfiguration, IJsonOnDeserialized
     public bool UseBundledGlamourList { get; set; } = true;
     public int ControlsRevision { get; set; }
     public bool CleanDresser { get; set; }
+    private ListingWindows listingWindows=new();
+    private bool listingWindowsRead;
+    public ListingWindows ListingWindows {get=>listingWindows;set{listingWindows=value;listingWindowsRead=true;}}
     private Dictionary<ulong,HashSet<uint>> pendingCollection=[];
     private bool pendingCollectionRead;
     public Dictionary<ulong,HashSet<uint>> PendingCollection
@@ -49,6 +52,8 @@ public sealed class Configuration : IPluginConfiguration, IJsonOnDeserialized
     void IJsonOnDeserialized.OnDeserialized()
     {
         MigrateControls();
+        if(ListingWindows==null||SafetyRevision>=7&&!listingWindowsRead)throw new System.Text.Json.JsonException("Missing listing rotation safety state");
+        ListingWindows.Validate();
         // Preserve legacy single-category rules when opening the multi-category editor.
         foreach(var rule in Rules.Sales)
             if(rule.Category!=0){rule.Categories.Add(rule.Category);rule.Category=0;}

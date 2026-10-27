@@ -16,6 +16,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
     private readonly Configuration config;
     private readonly NativeUi ui;
     private readonly Action<string> history;
+    private readonly Action save;
     private readonly Func<Stock,Decision> judge;
     private readonly Func<Stock,Decision> previewJudge;
     private readonly Action refreshProtection;
@@ -30,8 +31,8 @@ public sealed unsafe partial class MarketQueue : IDisposable
     private uint comparisonItem;
     private DateTimeOffset comparisonOpened;
     public OperationQueue Queue { get; }
-    public MarketQueue(IDalamudPluginInterface pi,IMarketBoard market,InventoryView view,Configuration config,NativeUi ui,Func<Stock,Decision> judge,Action<string> history,Action refreshProtection,Func<bool> marketPreferencesReady,Action<string> fault,Action<string> begin,Action complete,Action<uint> protectCollection,Action<string> notify,Func<Stock,Decision> previewJudge)
-    {this.pi=pi;this.market=market;this.view=view;this.config=config;this.ui=ui;this.judge=judge;this.history=history;this.refreshProtection=refreshProtection;this.marketPreferencesReady=marketPreferencesReady;this.fault=fault;this.protectCollection=protectCollection;this.notify=notify;this.previewJudge=previewJudge;Queue=new(begin,complete);market.OfferingsReceived+=Received;}
+    public MarketQueue(IDalamudPluginInterface pi,IMarketBoard market,InventoryView view,Configuration config,NativeUi ui,Func<Stock,Decision> judge,Action<string> history,Action refreshProtection,Func<bool> marketPreferencesReady,Action<string> fault,Action<string> begin,Action complete,Action<uint> protectCollection,Action<string> notify,Func<Stock,Decision> previewJudge,Action save)
+    {this.save=save;this.pi=pi;this.market=market;this.view=view;this.config=config;this.ui=ui;this.judge=judge;this.history=history;this.refreshProtection=refreshProtection;this.marketPreferencesReady=marketPreferencesReady;this.fault=fault;this.protectCollection=protectCollection;this.notify=notify;this.previewJudge=previewJudge;Queue=new(begin,complete);market.OfferingsReceived+=Received;}
     private void CheckFault(){if(Queue.Status.StartsWith("Stopped:",StringComparison.Ordinal))fault(Queue.Status);}
     private bool AcquireManualCoordination()
     {
@@ -97,7 +98,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
         EnqueueListingPump(retainer,coordinated,new ListingPass());
         if(!Queue.Running)ReleaseManualCoordination();
     }
-    private void Enqueue(Stock expected,ulong retainer,bool reprice,bool coordinated,Action<Stock,bool>? completed=null)
+    private void Enqueue(Stock expected,ulong retainer,bool reprice,bool coordinated,Action<Stock,bool>? completed=null,bool quoteOnly=false)
     {
         var phase=0;var expectedWorld=view.World;var finished=false;var successful=false;
         StepResult Finish(bool success=false){finished=true;successful=success;return StepResult.Completed;}
@@ -130,7 +131,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 }
                 beforePrice=reprice?(uint)InventoryManager.Instance()->GetRetainerMarketPrice((short)expected.Slot):null;
                 if(!MarketSnapshot(out var selected,out var before)||selected!=retainer)return StepResult.Failed;
-                if(!reprice&&before.Count>=20)return Finish();
+                if(!reprice&&!quoteOnly&&before.Count>=20)return Finish();
                 occupiedBefore=before.Select(s=>s.Slot).ToHashSet();
                 opened=DateTimeOffset.UtcNow;
                 AgentRetainer.Instance()->OpenRetainerSell((InventoryType)expected.Container,expected.Slot);phase=1;return StepResult.Waiting;
@@ -173,6 +174,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 }
                 var agent=AgentRetainer.Instance();
                 if(agent==null||agent->SellItemInventoryType!=(InventoryType)expected.Container||agent->SellItemInventorySlot!=expected.Slot)return StepResult.Failed;
+                if(quoteOnly)return Finish(true);
                 ui.Close("ItemSearchResult");
                 if(!ui.Callback("RetainerSell",2,(int)target.Value))return StepResult.Failed;
                 if(!reprice && !ui.Callback("RetainerSell",3,quantity))return StepResult.Failed;
@@ -224,6 +226,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 if(!listed.Any(s=>!occupiedBefore.Contains(s.Slot)&&s.ItemId==expected.ItemId&&s.Hq==expected.Hq&&s.Quantity==quantity&&
                     (uint)InventoryManager.Instance()->GetRetainerMarketPrice((short)s.Slot)==target))return StepResult.Waiting;
             }
+            if(!reprice)config.ListingWindows.Posted(view.Character,expected.ItemId,expected.Hq,(uint)quantity,save);
             history($"Confirmed {(reprice?"repriced":"listed")} {expected.ItemId} x{quantity} at {target} gil");return Finish(true);
         },()=>
         {
@@ -248,7 +251,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
         DrainPackets();
         if(Queue.Running && manualControl!=0 && !pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsControl").InvokeFunc(manualControl))
             Queue.Stop("Stopped: standalone control ownership was lost");
-        if(Queue.Running)view.Refresh(view.Character);
+        if(Queue.Running)refreshProtection();
         Queue.Advance(now);CheckFault();if(!Queue.Running)ReleaseManualCoordination();
     }
     public void Stop(){try{Queue.Stop("Stopped");}finally{ReleaseManualCoordination();}}
