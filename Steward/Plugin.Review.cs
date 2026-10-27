@@ -106,9 +106,9 @@ public sealed partial class Plugin
             foreach(var stock in view.Items.Distinct())
                 foreach(var (retainer,name) in view.RetainerNames)
                 {
-                    var blocked=view.StorageBlock(stock.ItemId,retainer);
+                    var blocked=view.StorageBlock(stock,retainer);
                     if(blocked==null&&StorageCandidate(Judge(stock)))
-                        entries.Add(new(player.ContentId,$"Player {stock.Container}:{stock.Slot}; destination {name}",stock.ItemId,stock.Quantity,stock.Hq,"WouldStore",$"{view.Facts(stock.ItemId)?.Name}: assigned storage destination; AutoRetainer plan and live capacity still required",Retainer:retainer,Collection:CopyEvidence(stock.ItemId)));
+                        entries.Add(new(player.ContentId,$"Player {stock.Container}:{stock.Slot}; destination {name}",stock.ItemId,stock.Quantity,stock.Hq,"WouldStore",$"{view.Facts(stock.ItemId)?.Name}: Source stack eligible under AutoRetainer entrust settings; AutoRetainer determines transfer quantity and live capacity",Retainer:retainer,Collection:CopyEvidence(stock.ItemId)));
                 }
             foreach(var (retainer,name) in view.RetainerNames.Where(p=>config.WithdrawGilRetainers.Contains(p.Key)))
                 entries.Add(new(player.ContentId,$"Retainer {name}",0,0,false,"WouldWithdrawGil","Configured 100% withdrawal; actual amount and player gil capacity checked by AutoRetainer. Blocked in log-only mode.",Retainer:retainer));

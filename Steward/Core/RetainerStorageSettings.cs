@@ -2,6 +2,8 @@ namespace Steward.Core;
 
 public sealed class RetainerStorageSettings
 {
+    // Legacy destination settings are read only for one-time migration into
+    // AutoRetainer. They no longer select or veto ordinary entrust destinations.
     public bool Enabled { get; set; }
     public HashSet<ulong> ExcludedRetainers { get; set; } = [];
     public HashSet<uint> ExcludedItems { get; set; } = [];
@@ -20,10 +22,6 @@ public sealed class RetainerStorageSettings
         if(item.Category==86)return "Triple Triad cards are never stored";
         // 1=learned, 2=unlearned, 3=unknown, 4=not an unlock. Null is unavailable.
         if(unlockStatus is not (1 or 4))return "Unlearned or unverified unlock item: keep available to use";
-        if(!Enabled)return null;
-        if(!item.Equipment&&!CategoryDisplay.IsHousing(item.Category)&&(!item.Marketable||item.Category==100))
-            return retainer==NonmarketableRetainer?null:"Currencies and other nonmarketable items belong on the currency retainer";
-        if(retainer==NonmarketableRetainer)return "Currency retainer only accepts currencies and other nonmarketable items, excluding gear and housing";
-        return Categories.TryGetValue(retainer,out var categories)&&categories.Contains(item.Category)?null:"Item belongs to another storage category";
+        return null;
     }
 }

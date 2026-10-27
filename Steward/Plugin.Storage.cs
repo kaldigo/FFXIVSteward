@@ -135,24 +135,13 @@ public sealed partial class Plugin
     private void DrawStorageSettings()
     {
         Setting("Store protected overflow in retainers",config.Features.OverflowStorage,v=>config.Features.OverflowStorage=v,"Disabling storage leaves overflow protected in inventory.");
-        Setting("Use assigned retainer storage categories",config.Storage.Enabled,v=>config.Storage.Enabled=v,"Gear and housing use their assigned categories regardless of marketability. Currencies and other nonmarketable items use the currency retainer. Gearsets and excluded items are never deposited.");
+        ImGui.TextWrapped("Set storage destinations, categories, item lists and quantities in AutoRetainer. Steward checks protections before deposits; it does not keep a second assignment list.");
         foreach(var (id,name) in view.RetainerNames.OrderBy(p=>p.Value))
         {
             var enabled=config.Storage.RetainerEnabled(id);
             if(ImGui.Checkbox("Manage stored items: "+name,ref enabled)){if(enabled)config.Storage.ExcludedRetainers.Remove(id);else config.Storage.ExcludedRetainers.Add(id);SavePolicy();}
         }
-        if(ImGui.BeginCombo("Currencies and other nonmarketable items",view.RetainerNames.GetValueOrDefault(config.Storage.NonmarketableRetainer,"Not assigned")))
-        {
-            foreach(var (id,name) in view.RetainerNames.Where(p=>config.Storage.RetainerEnabled(p.Key)))
-                if(ImGui.Selectable(name,id==config.Storage.NonmarketableRetainer)){config.Storage.NonmarketableRetainer=id;SavePolicy();}
-            ImGui.EndCombo();
-        }
         DrawCategorySelection("Never store these categories",config.Storage.ExcludedCategories,"None selected","These stay with you even if nonmarketable. Triple Triad cards are always excluded.");
-        foreach(var (id,name) in view.RetainerNames.Where(p=>config.Storage.RetainerEnabled(p.Key)&&p.Key!=config.Storage.NonmarketableRetainer))
-        {
-            if(!config.Storage.Categories.TryGetValue(id,out var categories))config.Storage.Categories[id]=categories=[];
-            DrawCategorySelection("Store with "+name,categories,"No categories assigned","Marketable items only. Empty means no storage. AutoRetainer must also have a matching storage plan.");
-        }
         ImGui.TextWrapped("Triple Triad cards are never stored. Unlearned or unverified unlocks stay available to use. Storage exclusions do not grant disposal permission.");
         var reserve=config.Rules.DresserEmptySlots;
         if(ImGui.SliderInt("Leave empty dresser slots",ref reserve,0,800)){config.Rules.DresserEmptySlots=reserve;SavePolicy();}

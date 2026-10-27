@@ -174,62 +174,35 @@ queue.Add(new("Throwing cleanup",()=>StepResult.Waiting,()=>throw new InvalidOpe
 queue.Add(new("Must still release",()=>StepResult.Completed,()=>released++));queue.Advance(300);queue.Stop("cancel");
 Check(released==4&&!queue.Running&&queue.Status.Contains("cleanup failure"),"One failed cleanup cannot strand later locks");
 {
-    var storage=new RetainerStorageSettings{Enabled=true,NonmarketableRetainer=2,ExcludedRetainers=[3],ExcludedCategories=[44,46,55],ExcludedItems=[21800],Categories=new(){[1]=[48],[2]=[]}};
+    var storage=new RetainerStorageSettings{Enabled=true,NonmarketableRetainer=2,ExcludedRetainers=[3],ExcludedCategories=[46,55],ExcludedItems=[21800],Categories=new(){[1]=[48],[2]=[]}};
     var proof=new Evidence{GearsetsReady=true};
     var material=new ItemFacts(100,"Stone",false,1,0,true,false,SourceKind.Ordinary,48);
     Check(storage.Block(material,proof,1,4)==null,"Assigned marketable material can be stored");
-    Check(storage.Block(material,proof,2,4)!=null,"Wrong category destination denied");
-    Check(storage.Block(material with{Marketable=false},proof,2,4)==null,"Nonmarketable override uses currency retainer");
-    Check(storage.Block(material with{Marketable=false},proof,1,4)!=null,"Nonmarketable cannot leak to ordinary category destination");
-    Check(storage.Block(material,proof,3,4)!=null,"Manual retainer denied");
-    foreach(var cat in new uint[]{44,46,55,86})Check(storage.Block(material with{Category=cat,Marketable=false},proof,2,1)!=null,"Consumption/card exclusion beats nonmarketable routing");
-    Check(storage.Block(material with{Id=21800,Marketable=false},proof,2,4)!=null,"Prisms excluded");
-    proof.Gearsets.Add(100);Check(storage.Block(material,proof,1,4)!=null,"Gearsets excluded even at correct destination");proof.Gearsets.Clear();
+    Check(storage.Block(material with{Category=44},proof,1,4)==null,"AutoRetainer medicine assignment is not vetoed by a stale Steward map");
+    foreach(var marketable in new[]{false,true})
+    foreach(var category in new uint[]{1,35,44,48,57,64,95,100})
+    {
+        var candidate=material with{Category=category,Equipment=category is 1 or 35,Marketable=marketable};
+        foreach(var destination in new ulong[]{1,2,12})
+            Check(storage.Block(candidate,proof,destination,4)==null,"Steward protections do not duplicate AutoRetainer destination selection");
+        Check(storage.Block(candidate,proof,3,4)!=null,"Manual retainer exclusion still applies");
+        storage.ExcludedItems.Add(candidate.Id);
+        Check(storage.Block(candidate,proof,1,4)!=null,"Explicit item exclusion still applies");
+        storage.ExcludedItems.Remove(candidate.Id);
+        storage.ExcludedCategories.Add(category);
+        Check(storage.Block(candidate,proof,1,4)!=null,"Explicit category exclusion still applies");
+        storage.ExcludedCategories.Remove(category);
+    }
+    foreach(var cat in new uint[]{44,46,55,86})
+    {
+        if(cat!=86)storage.ExcludedCategories.Add(cat);
+        Check(storage.Block(material with{Category=cat},proof,1,1)!=null,"Consumption/card exclusions remain holds");
+    }
+    Check(storage.Block(material with{Id=21800},proof,1,4)!=null,"Prisms excluded");
+    proof.Gearsets.Add(100);Check(storage.Block(material,proof,1,4)!=null,"Gearsets excluded even when AutoRetainer selects item");proof.Gearsets.Clear();
     proof.GearsetsReady=false;Check(storage.Block(material,proof,1,4)!=null,"Unknown gearsets hold storage");proof.GearsetsReady=true;
     foreach(long? status in new long?[]{null,0,2,3})Check(storage.Block(material,proof,1,status)!=null,"Unknown/unlearned unlock held");
     Check(storage.Block(material,proof,1,1)==null,"Learned duplicate eligible");
-    Check(storage.Block(material with{Category=100},proof,2,4)==null,"Currency category overrides marketability");
-    storage.Categories[10]=[1,22]; // Weapons and tools.
-    storage.Categories[11]=[34,35,43]; // Armour and accessories.
-    foreach(var marketable in new[]{false,true})
-    foreach(var (category,destination) in new (uint,ulong)[]{(1,10),(22,10),(34,11),(35,11),(43,11)})
-    {
-        var gearItem=material with{Equipment=true,Category=category,Marketable=marketable};
-        Check(storage.Block(gearItem,proof,destination,4)==null,"All gear uses its category destination regardless of marketability");
-        Check(storage.Block(gearItem,proof,destination==10?11ul:10ul,4)!=null,"Gear cannot leak to the other gear destination");
-        Check(storage.Block(gearItem,proof,2,4)!=null,"Currency retainer never receives gear");
-        proof.Gearsets.Add(gearItem.Id);
-        Check(storage.Block(gearItem,proof,destination,4)!=null,"Gearset protection still overrides gear destination");
-        proof.Gearsets.Clear();
-        storage.ExcludedItems.Add(gearItem.Id);
-        Check(storage.Block(gearItem,proof,destination,4)!=null,"Explicit item exclusion still overrides gear destination");
-        storage.ExcludedItems.Remove(gearItem.Id);
-    }
-    storage.Categories[2]=[1,48];
-    Check(storage.Block(material with{Equipment=true,Category=1,Marketable=false},proof,2,4)!=null,"Legacy currency category overlap cannot admit gear");
-    Check(storage.Block(material,proof,2,4)!=null,"Currency retainer does not take marketable non-gear categories");
-    uint[] housingCategories=[57,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,82,95];
-    storage.Categories[12]=[..housingCategories];
-    foreach(var category in housingCategories)
-    foreach(var marketable in new[]{false,true})
-    {
-        var housing=material with{Category=category,Marketable=marketable};
-        Check(storage.Block(housing,proof,12,4)==null,"Housing stays together regardless of marketability");
-        storage.Categories[2].Add(category);
-        Check(storage.Block(housing,proof,2,4)!=null,"Currency retainer cannot take housing even with overlapping categories");
-        Check(storage.Block(housing,proof,1,4)!=null,"Housing cannot leak to unrelated storage");
-        storage.Categories[12].Remove(category);
-        Check(storage.Block(housing,proof,12,4)!=null,"Unassigned housing is held rather than sent to another destination");
-        storage.Categories[12].Add(category);
-        storage.ExcludedCategories.Add(category);
-        Check(storage.Block(housing,proof,12,4)!=null,"Housing category exclusion still wins");
-        storage.ExcludedCategories.Remove(category);
-        storage.ExcludedItems.Add(housing.Id);
-        Check(storage.Block(housing,proof,12,4)!=null,"Housing item exclusion still wins");
-        storage.ExcludedItems.Remove(housing.Id);
-        Check(storage.Block(housing,proof,12,null)!=null,"Unavailable unlock evidence still holds housing");
-    }
-    Check(storage.Block(material with{Marketable=false},proof,2,4)==null,"Other nonmarketable items still use currency retainer after housing changes");
     var writes=new List<string>();var journal=new ReviewJournal((_,lines)=>writes.AddRange(lines));
     journal.Snapshot(Path.Combine(Path.GetTempPath(),"steward-review-mode","log.jsonl"),[new ReviewEntry(1,"test",100,1,false,"WouldDispose","Disabled")],"DisposalReview");
     Check(writes.Count==1&&writes[0].Contains("DisposalReview"),"Disposal-only review has truthful mode label");
@@ -361,3 +334,38 @@ Console.WriteLine($"{total} checks passed including dresser restoration refresh 
     Check(!retry.Rejected(state,2000),"Third rejection stops instead of looping");
 }
 Console.WriteLine($"{total} checks passed including bounded rejected dresser submissions.");
+
+{
+    var observed=DateTimeOffset.UtcNow;
+    var materialItem=new ItemFacts(600,"Material",false,1,0,true,false,SourceKind.Ordinary,48);
+    var source=new Stock(600,false,30,0,0);
+    var rules=new RuleSettings{Sales=[new SaleRule{Name="Materials",Categories=[48],MinimumUnit=1000,MinimumTotal=5000,MaximumStack=30,MinimumDailySales=1d/14}]};
+    var proof=new Evidence{ReferencesReady=true,GearsetsReady=true,DresserKnown=true,ArmoireKnown=true,StatisticsRequired=true};
+    SaleStatistic value=new(1,600,false,500,1,observed,observed,500,true);
+    proof.SaleStatistics[(600,false)]=value;
+    Decision JudgeMaterial()=>Rules.Judge(materialItem,source,rules,proof,1,observed);
+    Check(JudgeMaterial().Outcome==Outcome.Keep,"Default category permissions preserve materials rejected by sale rule");
+    rules.NonEquipmentDisposalCategories.Add(48);
+    Check(JudgeMaterial() is {Outcome:Outcome.Dispose,SaleRejected:true},"Explicit category permission allows below-floor material disposal");
+    var copyEvidence=CollectionCopyEvidence.Capture(materialItem,rules,proof,true,false,observed);
+    Check(copyEvidence.NonEquipmentDisposalAllowed&&copyEvidence.NonEquipmentDisposalPermission=="Category 48","Review evidence identifies category disposal permission");
+    proof.SaleStatistics[(600,false)]=value with{Average=1000};
+    Check(JudgeMaterial().Outcome==Outcome.Market,"Passing sale criteria wins over category disposal, independently of automation switches");
+    proof.SaleStatistics[(600,false)]=value with{Average=1000,DailySales=0.01};
+    Check(JudgeMaterial() is {Outcome:Outcome.Dispose,SaleRejected:true},"Known below-threshold demand can permit category disposal");
+    proof.SaleStatistics.Clear();Check(JudgeMaterial().Outcome==Outcome.Wait,"Category permission never turns unknown prices into disposable value");
+    proof.SaleStatistics[(600,false)]=value with{RecentSales=false,ValueObserved=observed.AddDays(-5)};
+    Check(JudgeMaterial().Outcome==Outcome.Wait,"Category permission never bypasses missing recent sale evidence");
+    proof.SaleStatistics[(600,false)]=value;
+    rules.Keep.Add(600);Check(JudgeMaterial().Outcome==Outcome.Keep,"Keep override wins over category disposal");rules.Keep.Clear();
+    rules.IgnoredCategories.Add(48);Check(JudgeMaterial().Outcome==Outcome.Ignore,"Global category exclusion wins over category disposal");rules.IgnoredCategories.Clear();
+    proof.Gearsets.Add(600);Check(JudgeMaterial().Outcome==Outcome.Keep,"Gearset protection wins even for material-shaped metadata");proof.Gearsets.Clear();
+    proof.ReferencesReady=false;Check(JudgeMaterial().Outcome==Outcome.Wait,"Missing protection evidence still holds material disposal");proof.ReferencesReady=true;
+    rules.QuantityReserves[600]=5;proof.ReserveStocks.Add(source);Check(JudgeMaterial().Outcome==Outcome.Keep,"Whole-stack material disposal cannot consume a reserve");rules.QuantityReserves.Clear();
+    Check(!rules.AllowsNonEquipmentDisposal(materialItem with{Category=49}),"Permission does not leak to other categories");
+    Check(!rules.AllowsNonEquipmentDisposal(materialItem with{Equipment=true}),"Non-equipment permission does not change equipment classification");
+    var persisted=System.Text.Json.JsonSerializer.Deserialize<RuleSettings>(System.Text.Json.JsonSerializer.Serialize(rules))!;
+    Check(persisted.NonEquipmentDisposalCategories.SetEquals([48]),"Category permission survives a settings restart");
+    Check(System.Text.Json.JsonSerializer.Deserialize<RuleSettings>("{}")!.NonEquipmentDisposalCategories.Count==0,"Existing configurations gain no disposal categories automatically");
+}
+Console.WriteLine($"{total} checks passed including category disposal permissions and storage authority.");

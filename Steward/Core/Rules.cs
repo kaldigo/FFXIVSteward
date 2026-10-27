@@ -46,6 +46,9 @@ public sealed class RuleSettings
     public HashSet<uint> CollectionKeep { get; set; } = [];
     public Dictionary<uint,uint> QuantityReserves { get; set; } = [];
     public HashSet<uint> NonEquipmentDisposal { get; set; } = [];
+    public HashSet<uint> NonEquipmentDisposalCategories { get; set; } = [];
+    public bool AllowsNonEquipmentDisposal(ItemFacts item)=>!item.Equipment&&
+        (NonEquipmentDisposal.Contains(item.Id)||NonEquipmentDisposalCategories.Contains(item.Category));
     public HashSet<uint> CommonGlamour { get; set; } = [];
     public List<SaleRule> Sales { get; set; } = [];
     public int MaximumPriceAgeMinutes { get; set; } = 30; // Native/imported listing evidence only.
@@ -158,7 +161,7 @@ public static class Rules
             }
         }
         }
-        if(!item.Equipment && !settings.NonEquipmentDisposal.Contains(item.Id))
+        if(!item.Equipment && !settings.AllowsNonEquipmentDisposal(item))
             return new(Outcome.Keep, "Non-equipment disposal requires explicit item permission",rule,SaleRejected:saleRejected);
         if(removable<stock.Quantity)return new(Outcome.Keep,"Stack contains a quantity reserve; whole-stack disposal blocked",rule);
         return new(Outcome.Dispose, collect ? "Exact copy already collected; surplus may use AutoRetainer disposal rules" : "Outside collection rules; use AutoRetainer disposal rules",rule,SaleRejected:saleRejected);

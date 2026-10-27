@@ -89,6 +89,8 @@ public sealed partial class Plugin : IDalamudPlugin
         universalis=new(Path.Combine(pi.GetPluginConfigDirectory(),"sale-statistics.json"));
         inventoryMemory=new(Path.Combine(pi.GetPluginConfigDirectory(),"inventory-observations.json"));
         view=new(data,config,inventoryMemory);imports=new(pi,config,view);
+        view.StoragePlanAllows=(source,retainer)=>pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.StoragePlanAllows").InvokeFunc(view.Character,
+            JsonSerializer.Serialize(new{source.Container,source.Slot,source.ItemId,source.Quantity,source.Hq,Retainer=retainer}));
         tracked=new(pi);
         dungeonSources=new(pi,data,config,Save);
         historyPath=Path.Combine(pi.GetPluginConfigDirectory(),"history.jsonl");
@@ -104,6 +106,9 @@ public sealed partial class Plugin : IDalamudPlugin
         pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.CollectionNeeded").RegisterFunc(CollectionNeeded);
         pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.CleanupAllowed").RegisterFunc(CleanupAllowed);
         pi.GetIpcProvider<ulong,ulong,bool>("Steward.InventoryPolicy.CleanupRetainerAllowed").RegisterFunc(CleanupRetainerAllowed);
+        pi.GetIpcProvider<ulong,uint,bool>("Steward.InventoryPolicy.NonEquipmentDisposalSelected").RegisterFunc((character,id)=>
+            player.IsLoaded&&character==player.ContentId&&attached==character&&config.Connected&&view.Facts(id) is {} item&&
+            !config.Rules.IsIgnored(item)&&config.Rules.AllowsNonEquipmentDisposal(item));
         commands.AddHandler("/steward",new CommandInfo(Command){HelpMessage="Open Steward; /steward cleanup starts full disposal batches; /steward stop cancels Steward work."});
         pi.UiBuilder.Draw+=Draw;pi.UiBuilder.OpenMainUi+=Open;pi.UiBuilder.OpenConfigUi+=Open;
         framework.Update+=Update;
@@ -166,7 +171,7 @@ public sealed partial class Plugin : IDalamudPlugin
             imports.Refresh();tracked.Refresh(view.Character,view.Retainers,inventoryMemory);nextImports=Environment.TickCount64+1000;
             priceCandidates=market.PriceCandidates().Concat(view.Items).Concat(tracked.Items.Where(r=>view.Retainers.Contains(r.Owner)).Select(r=>r.Stock))
                 .Where(s=>view.Facts(s.ItemId) is {Marketable:true} item&&!config.Rules.IsIgnored(item)&&
-                    (item.Equipment||config.Rules.Sales.Any(r=>r.Matches(item,s))||config.Rules.NonEquipmentDisposal.Contains(item.Id)))
+                    (item.Equipment||config.Rules.Sales.Any(r=>r.Matches(item,s))||config.Rules.AllowsNonEquipmentDisposal(item)))
                 .Select(s=>s.ItemId).Distinct().ToArray();
         }
         else imports.RefreshReferences(); // Rebuild readiness after every native refresh, even between slower market imports.
@@ -273,13 +278,17 @@ public sealed partial class Plugin : IDalamudPlugin
             var target=root.TryGetProperty("Retainer",out var retainerElement)?retainerElement.GetUInt64():0;
             if(action=="Entrust")
             {
-                var block=view.StorageBlock(id,target);
+                var block=view.StorageBlock(stock,target,nativeEntrust:true);
                 var storageAllow=block==null&&StorageCandidate(decision)&&config.ExecutionEnabled&&!executionFault&&!market.Queue.Running&&!ownsPostprocess;
                 if(storageAllow&&decision.Outcome==Outcome.StoreRetainer)ProtectCollection(id);
+                var reason=block??(!StorageCandidate(decision)?decision.Reason:!config.ExecutionEnabled?"Execution disabled or log-only":executionFault?"Inventory review required":market.Queue.Running||ownsPostprocess?"Companion already has control":"AutoRetainer selected this transfer; Steward protections passed");
+                var storageKey=$"entrust/{target}/{id}/{storageAllow}/{reason}";
+                if(!recentDecisions.TryGetValue(storageKey,out var lastEntrust)||Environment.TickCount64-lastEntrust>60000)
+                {recentDecisions[storageKey]=Environment.TickCount64;Record($"{(storageAllow?"Permitted":"Held")} Entrust for {id} to retainer {target}: {reason}. AutoRetainer owns destination, quantity and execution.");}
                 return storageAllow?"Allow":"Deny";
             }
             if(action is "Store" or "Retrieve" && !config.Storage.RetainerEnabled(target))return "Deny";
-            if(action=="Store"&&view.StorageBlock(id,target)!=null)return "Deny";
+            if(action=="Store"&&view.StorageBlock(stock,target)!=null)return "Deny";
             LogPolicyProposal(action,stock,decision);
             var allow=config.Features.Allows(action,decision.Outcome)&&ActionPolicy.Allows(action,decision.Outcome,config.ExecutionEnabled,config.Connected,executionFault,
                 market.Queue.Running||ownsPostprocess,ownsPostprocess);
@@ -306,9 +315,11 @@ public sealed partial class Plugin : IDalamudPlugin
                 {
                     var version=pi.GetIpcSubscriber<int>("AutoRetainer.InventoryPolicy.Version").InvokeFunc();
                     if(version!=6)throw new InvalidOperationException("Update both plugins: AutoRetainer integration version 6 is required");
+                    if(pi.GetIpcSubscriber<int>("AutoRetainer.InventoryPolicy.StorageVersion").InvokeFunc()<4)throw new InvalidOperationException("Update AutoRetainer: storage destinations must come from its entrust plans");
                     if(attached==player.ContentId)
                     {if(!pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Heartbeat").InvokeFunc(attached,Endpoint))attached=0;}
                     if(attached==0 && pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Connect").InvokeFunc(player.ContentId,Endpoint))attached=player.ContentId;
+                    if(attached!=0&&!pi.GetIpcSubscriber<ulong,ulong,bool>("AutoRetainer.InventoryPolicy.MigrateStorageRouting").InvokeFunc(attached,config.Storage.Enabled?config.Storage.NonmarketableRetainer:0))throw new InvalidOperationException("AutoRetainer storage-role migration is not ready");
                     if(pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.HasFault").InvokeFunc(player.ContentId))HoldExecution("AutoRetainer has an unresolved inventory transaction");
                     status=attached!=0?(config.LogOnly?"Log only: proposed actions recorded; all item actions blocked":config.Automatic?"Automatic decisions enabled":"Dry run: AutoRetainer item actions held"):"Waiting for AutoRetainer integration";
                 }
@@ -438,7 +449,7 @@ public sealed partial class Plugin : IDalamudPlugin
         if(config.LogOnly){Record("Log only is enabled. Turn it off in Developer tools before enabling automatic execution.");return;}
         try
         {
-            if(pi.GetIpcSubscriber<int>("AutoRetainer.InventoryPolicy.StorageVersion").InvokeFunc()<3)throw new InvalidOperationException("Update AutoRetainer before enabling managed actions: the shared disposal demo-mode guard is required");
+            if(pi.GetIpcSubscriber<int>("AutoRetainer.InventoryPolicy.StorageVersion").InvokeFunc()<4)throw new InvalidOperationException("Update AutoRetainer before enabling managed actions: the AutoRetainer entrust-plan storage integration is required");
             var ready=!config.LogOnly && player.IsLoaded && config.Connected && attached!=0 && attached==player.ContentId && !executionFault &&
                 !config.ExecutionReviewRequired && !market.Queue.Running && !ownsPostprocess &&
                 !pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.HasFault").InvokeFunc(player.ContentId);
@@ -472,6 +483,7 @@ public sealed partial class Plugin : IDalamudPlugin
             pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.CollectionNeeded").UnregisterFunc();
             pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.CleanupAllowed").UnregisterFunc();
             pi.GetIpcProvider<ulong,ulong,bool>("Steward.InventoryPolicy.CleanupRetainerAllowed").UnregisterFunc();
+            pi.GetIpcProvider<ulong,uint,bool>("Steward.InventoryPolicy.NonEquipmentDisposalSelected").UnregisterFunc();
             pi.GetIpcProvider<string,string>(Endpoint).UnregisterFunc();
             pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.OverflowNeeded").UnregisterFunc();
             pi.GetIpcProvider<ulong,string,object>("Steward.InventoryPolicy.Fault").UnregisterAction();

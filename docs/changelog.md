@@ -1,3 +1,7 @@
+## 0.1.0.52
+
+Remove duplicate storage assignments from Steward. Ordinary entrust follows AutoRetainer's selected plan; protected overflow and previews query the current AutoRetainer plan. Migrate the currency storage role once into AutoRetainer. Add opt-in non-equipment disposal categories on the Storage page, preserving sale priority, reserves, exclusions, price-data holds and native disposal controls. Review evidence records the item or category permission. Requires AutoRetainer 4.6.3.21.
+
 ## 0.1.0.51
 
 Keep housing items in their assigned storage categories regardless of marketability, using the same Housing grouping as the category selector. Nonmarketable furniture no longer goes to the currency retainer. Preserve all storage exclusions and protection checks. Existing stored items are not moved automatically.

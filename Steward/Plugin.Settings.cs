@@ -310,6 +310,10 @@ public sealed partial class Plugin
     {
         ImGui.TextWrapped("Armoire first, then glamour dresser. If the dresser has no usable space, protected items go to retainers and remain protected. Steward alerts you when collection cannot finish.");
         DrawStorageSettings();
+        Section("Disposal permissions");
+        DrawCategorySelection("Allow disposal of these non-equipment categories",config.Rules.NonEquipmentDisposalCategories,"None allowed",
+            "Selected categories may be disposed of after protection and sale checks. Items passing a sale rule stay eligible for sale. Items with no matching sale rule may also be disposed of. Missing price data, exclusions, keeps and quantity reserves remain holds. AutoRetainer's enabled methods and stack limits still apply.",nonEquipmentOnly:true);
+        ImGui.TextWrapped("Category permission does not enable disposal. Review proposed disposals in log-only mode before running them.");
         ImGui.BeginDisabled(!config.ExecutionEnabled||!config.CleanDresser||executionFault);
         if(ImGui.Button("Clean open dresser now"))market.CleanupDresser();
         ImGui.EndDisabled();

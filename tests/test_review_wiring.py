@@ -6,7 +6,7 @@ ROOT=Path(__file__).resolve().parents[1]
 class ReviewWiring(unittest.TestCase):
     def test_disposal_permission_and_live_copy_evidence_are_wired(self):
         rules=(ROOT/'Steward/Core/Rules.cs').read_text(encoding='utf-8')
-        self.assertIn('!item.Equipment && !settings.NonEquipmentDisposal.Contains(item.Id)',rules)
+        self.assertIn('!item.Equipment && !settings.AllowsNonEquipmentDisposal(item)',rules)
         self.assertGreater(rules.index('Non-equipment disposal requires explicit item permission'),rules.index('Matches sale rule:'))
         view=(ROOT/'Steward/Services/InventoryView.cs').read_text(encoding='utf-8')
         self.assertIn('Evidence.DresserCopyCounts=copies;Evidence.DresserKnown=true;',view)

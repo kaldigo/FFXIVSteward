@@ -111,12 +111,17 @@ public sealed unsafe class InventoryView
         var state=UIState.Instance();
         return row==null||state==null?null:state->IsItemActionUnlocked(row);
     }
-    public string? StorageBlock(uint id,ulong retainer)
+    public Func<Stock,ulong,bool>? StoragePlanAllows { get; set; }
+    public string? StorageBlock(Stock source,ulong retainer,bool nativeEntrust=false)
     {
+        var id=source.ItemId;
         var facts=Facts(id);
         if(facts==null||config.Rules.IsIgnored(facts))return "Unknown or globally excluded item";
         if(config.Rules.Keep.Contains(id)||config.Rules.QuantityReserves.GetValueOrDefault(id)>0)return "Keep-in-inventory override or quantity reserve";
-        return config.Storage.Block(facts,Evidence,retainer,UnlockStatus(id));
+        var block=config.Storage.Block(facts,Evidence,retainer,UnlockStatus(id));
+        if(block!=null||nativeEntrust)return block;
+        try{return StoragePlanAllows?.Invoke(source,retainer)==true?null:"Not selected by AutoRetainer's current entrust plan, storage role or quantity settings";}
+        catch{return "AutoRetainer storage plan unavailable";}
     }
 
     public void Refresh(ulong character)

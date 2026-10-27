@@ -19,10 +19,10 @@ public sealed partial class Plugin
         DrawCategorySelection("Included categories",rule.Categories,"All categories","Empty means every category can match this sale rule. Select categories to limit it to those item types.");
         DrawCategorySelection("Excluded categories for this rule",rule.ExcludedCategories,"None excluded","Checked categories cannot match this rule, even if included above. They can still match a later sale rule.");
     }
-    private void DrawCategorySelection(string label,HashSet<uint> selected,string emptyLabel,string description)
+    private void DrawCategorySelection(string label,HashSet<uint> selected,string emptyLabel,string description,bool nonEquipmentOnly=false)
     {
         var choices=CategoryDisplay.Build(view.Categories,view.CategoryDetails)
-            .Where(c=>c.Id!=62&&(c.Id!=39||selected.Contains(39))).ToArray();
+            .Where(c=>c.Id!=62&&(c.Id!=39||selected.Contains(39))&&(!nonEquipmentOnly||c.Group is "Items" or "Housing")).ToArray();
         var selectedNames=choices.Where(c=>c.Members.Any(selected.Contains))
             .Select(c=>c.Name+(c.Members.All(selected.Contains)?"":" (partial)")).ToArray();
         var summary=selected.Count==0?emptyLabel:selectedNames.Length==0?"Saved hidden category selection":$"{selectedNames.Length} selected";
