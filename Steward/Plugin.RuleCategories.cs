@@ -1,3 +1,4 @@
+using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Textures;
 using Steward.Core;
@@ -20,7 +21,11 @@ public sealed partial class Plugin
     }
     private void DrawCategorySelection(string label,HashSet<uint> selected,string emptyLabel,string description)
     {
-        var summary=selected.Count==0?emptyLabel:$"{selected.Count} selected";
+        var choices=CategoryDisplay.Build(view.Categories,view.CategoryDetails)
+            .Where(c=>c.Id!=62&&(c.Id!=39||selected.Contains(39))).ToArray();
+        var selectedNames=choices.Where(c=>c.Members.Any(selected.Contains))
+            .Select(c=>c.Name+(c.Members.All(selected.Contains)?"":" (partial)")).ToArray();
+        var summary=selected.Count==0?emptyLabel:selectedNames.Length==0?"Saved hidden category selection":$"{selectedNames.Length} selected";
         if(!ImGui.CollapsingHeader($"{label} — {summary}###{label}"))return;
         ImGui.PushID(label);
         if(ImGui.BeginChild("CategoryDetails",new(0,ImGui.GetTextLineHeightWithSpacing()*19),true))
@@ -29,12 +34,10 @@ public sealed partial class Plugin
             ImGui.SetNextItemWidth(-1);
             if(ImGui.InputTextWithHint("##Search","Find a category...",ref query,100))categorySearches[ImGui.GetID(label).ToString()]=query;
             ImGui.TextWrapped(description);
-            ImGui.TextDisabled("Check an icon to select it. Hover over an icon for its category name.");
-            if(selected.Count>0)ImGui.TextWrapped("Selected: "+string.Join(", ",selected.Take(8).Select(id=>view.Categories.GetValueOrDefault(id,"Unavailable")))+(selected.Count>8?" …":""));
-            if(ImGui.SmallButton("Select all")){selected.UnionWith(view.Categories.Keys.Where(id=>id!=39));SavePolicy();}
+            ImGui.TextDisabled("Click an icon to toggle it. Highlighted icons are selected; amber borders indicate a partial selection. Hover for the category name.");
+            if(selectedNames.Length>0)ImGui.TextWrapped("Selected: "+string.Join(", ",selectedNames.Take(8))+(selectedNames.Length>8?" …":""));
+            if(ImGui.SmallButton("Select all")){CategoryDisplay.Set(selected,choices.Where(c=>c.Id!=39),true);SavePolicy();}
             ImGui.SameLine();if(ImGui.SmallButton("Clear selection")){selected.Clear();SavePolicy();}
-            var choices=CategoryDisplay.Build(view.Categories,view.CategoryDetails)
-                .Where(c=>c.Id!=39||selected.Contains(39)).ToArray();
             var visible=choices.Where(c=>query.Length==0||c.Name.Contains(query,StringComparison.OrdinalIgnoreCase)||
                 c.Group.Contains(query,StringComparison.OrdinalIgnoreCase)||c.Members.Any(id=>view.Categories[id].Contains(query,StringComparison.OrdinalIgnoreCase)||id.ToString().Contains(query))).ToArray();
             if(visible.Length==0)ImGui.TextDisabled("No matching categories.");
@@ -48,32 +51,36 @@ public sealed partial class Plugin
                 if(ImGui.IsItemHovered())ImGui.SetTooltip("Applies to the whole group, including categories hidden by search. An empty overall selection uses the default shown above.");
                 var right=ImGui.GetCursorScreenPos().X+ImGui.GetContentRegionAvail().X;
                 var size=ImGui.GetFrameHeight();
-                var width=size*2+ImGui.GetStyle().ItemSpacing.X;
+                var padding=ImGui.GetStyle().FramePadding.Y;
+                var width=size+padding*2;
+                ImGui.PushStyleVar(ImGuiStyleVar.FramePadding,new Vector2(padding,padding));
                 var first=true;
                 foreach(var category in group)
                 {
                     var id=category.Id;var name=category.Name;
                     if(!first&&ImGui.GetItemRectMax().X+ImGui.GetStyle().ItemSpacing.X+width<=right)ImGui.SameLine();
-                    first=false;ImGui.PushID((int)id);ImGui.BeginGroup();
+                    first=false;ImGui.PushID((int)id);
                     var count=category.Members.Count(selected.Contains);var partial=count>0&&count<category.Members.Count;
                     var enabled=count==category.Members.Count;
-                    var changed=ImGui.Checkbox("##Selected",ref enabled);
-                    if(partial)
+                    if(enabled)
                     {
-                        var corner=ImGui.GetItemRectMin();
-                        ImGui.GetWindowDrawList().AddLine(new(corner.X+size*.25f,corner.Y+size*.5f),new(corner.X+size*.75f,corner.Y+size*.5f),ImGui.GetColorU32(ImGuiCol.CheckMark),2);
+                        ImGui.PushStyleColor(ImGuiCol.Button,new Vector4(.10f,.42f,.55f,.95f));
+                        ImGui.PushStyleColor(ImGuiCol.ButtonHovered,new Vector4(.16f,.56f,.70f,1));
+                        ImGui.PushStyleColor(ImGuiCol.ButtonActive,new Vector4(.08f,.35f,.48f,1));
                     }
-                    ImGui.SameLine();
                     var icon=category.Icon;
-                    if(icon!=0&&textures.GetFromGameIcon(new GameIconLookup(icon,hiRes:true)).TryGetWrap(out var wrap,out _))ImGui.Image(wrap.Handle,new(size,size));
-                    else ImGui.Dummy(new(size,size));
-                    if(ImGui.IsItemClicked()){enabled=!enabled;changed=true;}
-                    ImGui.EndGroup();
+                    var clicked=icon!=0&&textures.GetFromGameIcon(new GameIconLookup(icon,hiRes:true)).TryGetWrap(out var wrap,out _)
+                        ?ImGui.ImageButton(wrap.Handle,new(size,size))
+                        :ImGui.Button("?##Category",new(width,width));
+                    if(enabled)ImGui.PopStyleColor(3);
+                    if(enabled||partial)
+                        ImGui.GetWindowDrawList().AddRect(ImGui.GetItemRectMin(),ImGui.GetItemRectMax(),
+                            ImGui.GetColorU32(partial?new Vector4(1,.70f,.20f,1):new Vector4(.35f,.85f,1,1)),3,ImDrawFlags.None,2);
                     if(ImGui.IsItemHovered())ImGui.SetTooltip(name+(partial?" — partially selected; click to select both":enabled?" — selected":" — not selected")+"\n"+string.Join(", ",category.Members.Select(member=>view.Categories[member])));
-                    if(changed){CategoryDisplay.Set(selected,[category],enabled);SavePolicy();}
+                    if(clicked){CategoryDisplay.Set(selected,[category],!enabled);SavePolicy();}
                     ImGui.PopID();
                 }
-                ImGui.PopID();
+                ImGui.PopStyleVar();ImGui.PopID();
             }
             foreach(var id in selected.Where(id=>!view.Categories.ContainsKey(id)).ToArray())
             {var enabled=true;if(ImGui.Checkbox($"Unavailable category {id}",ref enabled)){selected.Remove(id);SavePolicy();}}

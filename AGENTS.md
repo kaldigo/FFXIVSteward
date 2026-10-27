@@ -35,3 +35,5 @@ Listing previews run automatically on retainer selling-list open, independently 
 Feature switches gate native work, AutoRetainer permissions/routes and review proposals, not underlying protection classification. Disabled collection never authorizes disposal. Collection and overflow must not use sale-retainer exclusions. Repricing/withdrawals remain independent of new listings; rotation requires new listings. Dresser cleanup remains independent of disposal, with armoire migration requiring armoire storage enabled.
 
 Native glamour-plate configurations may use an explicitly observed per-character persistent cache as reference readiness, without asserting live native plate readiness. Refresh from authoritative native observations including empty sets; missing/corrupt caches are unknown. Record saved/live provenance and avoid observation-time log churn. This does not relax collection-ownership or source-inventory checks.
+
+Category cells are clickable icon buttons with selected highlighting, not separate checkboxes. Preserve group selection controls, wrapped rows and partial legacy selections (amber outline); use combined category names in selected summaries.
