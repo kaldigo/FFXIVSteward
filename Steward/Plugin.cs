@@ -25,6 +25,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private readonly InventoryView view;
     private readonly ExternalImports imports;
     private readonly MarketQueue market;
+    private readonly DresserTrace dresserTrace;
     private readonly TrackedInventories tracked;
     private readonly InventoryMemory inventoryMemory;
     private readonly DungeonSources dungeonSources;
@@ -52,7 +53,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private long nextPostprocessRelease;
     private readonly Dictionary<string,long> recentDecisions=[];
     public Plugin(IDalamudPluginInterface pi,ICommandManager commands,IFramework framework,IPlayerState player,
-        IObjectTable objects,IDataManager data,IGameGui gui,IMarketBoard board,IPluginLog log,IChatGui chat,INotificationManager notifications,ITextureProvider textures)
+        IObjectTable objects,IDataManager data,IGameGui gui,IMarketBoard board,IPluginLog log,IChatGui chat,INotificationManager notifications,ITextureProvider textures,IAddonLifecycle lifecycle)
     {
         this.textures=textures;
         this.pi=pi;this.commands=commands;this.framework=framework;this.player=player;this.objects=objects;this.log=log;this.chat=chat;this.notifications=notifications;
@@ -93,6 +94,7 @@ public sealed partial class Plugin : IDalamudPlugin
         historyPath=Path.Combine(pi.GetPluginConfigDirectory(),"history.jsonl");
         reviewJournal=new(historyPath);
         market=new(pi,board,view,config,new(gui),JudgeLive,Record,RefreshProtection,()=>imports.MarketPreferencesReady,HoldExecution,BeginOperation,CompleteOperation,ProtectCollection,Alert,Judge,Save,JudgeMarket);
+        dresserTrace=new(lifecycle,gui,Record,id=>$"item={id}, player quantity={view.Items.Where(s=>s.ItemId==id).Sum(s=>(long)s.Quantity)}, live dresser={view.Evidence.DresserKnown}, dresser owned={view.Evidence.Dresser.Contains(id)}, prisms={view.Items.Where(s=>s.ItemId==21800).Sum(s=>(long)s.Quantity)}");
         pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.StrategyRetainer").RegisterFunc(r=>config.ExecutionEnabled&&!executionFault&&config.Connected&&attached==player.ContentId&&player.IsLoaded&&config.Features.AnyMarket&&config.Silver.Owns(r));
         pi.GetIpcProvider<string,string>(Endpoint).RegisterFunc(Evaluate);
         pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.OverflowNeeded").RegisterFunc(OverflowNeeded);
@@ -105,7 +107,22 @@ public sealed partial class Plugin : IDalamudPlugin
         framework.Update+=Update;
     }
     private void Open()=>open=true;
-    private void Command(string _,string args){if(args.Trim()=="stop")Stop();else Open();}
+    private void Command(string _,string args)
+    {
+        if(args.Trim()=="trace dresser")
+        {
+            if(!CanTraceDresser()){chat.Print("[Steward] Stop Steward and AutoRetainer automation before starting a manual dresser trace.");return;}
+            dresserTrace.Start();chat.Print("[Steward] Dresser trace started for two minutes. Manually store one item; leave automation off and the stopped-run hold in place.");
+        }
+        else if(args.Trim()=="trace stop")dresserTrace.Stop();
+        else if(args.Trim()=="stop"){dresserTrace.Stop();Stop();}
+        else Open();
+    }
+    private bool CanTraceDresser()
+    {
+        if(!player.IsLoaded||config.ExecutionEnabled||market.Queue.Running||ownsPostprocess)return false;
+        try{return !pi.GetIpcSubscriber<bool>("AutoRetainer.PluginState.IsBusy").InvokeFunc();}catch{return false;}
+    }
     private void Save()
     {
         ExecutionMode.Persist(()=>AtomicState.Write(statePath,config),()=>{config.Automatic=false;executionFault=config.ExecutionReviewRequired=true;});
@@ -276,6 +293,7 @@ public sealed partial class Plugin : IDalamudPlugin
         try
         {
             PumpReviewLog();
+            if(dresserTrace.Active) dresserTrace.Tick(CanTraceDresser());
             if(!player.IsLoaded){StopQueue();return;}
             if(attached!=0 && attached!=player.ContentId){Stop();attached=0;}
             if(Environment.TickCount64>=nextRefresh)
@@ -422,7 +440,7 @@ public sealed partial class Plugin : IDalamudPlugin
     {
         if(disposed)return;disposed=true;
         framework.Update-=Update;
-        try{StopQueue();market.Dispose();}
+        try{dresserTrace.Dispose();StopQueue();market.Dispose();}
         finally
         {
             universalis.Dispose();inventoryMemory.Dispose();reviewJournal.Dispose();

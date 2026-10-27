@@ -2,6 +2,21 @@ import unittest
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]/'Steward'
 class FeatureWiring(unittest.TestCase):
+    def test_manual_dresser_trace_is_passive_and_guarded(self):
+        trace=(ROOT/'Services/DresserTrace.cs').read_text()
+        for forbidden in ['FireCallback(', 'ReceiveEvent(', 'ui.Click(', 'ui.Close(', '->Open(', 'StoreNewOutfit(', 'StoreExistingOutfit(']:
+            self.assertNotIn(forbidden,trace)
+        self.assertIn('120000',trace)
+        self.assertIn('count++>=200',trace)
+        self.assertIn('Math.Min(sizeof(AtkEventData),32)',trace)
+        self.assertIn('UnregisterListener',trace)
+        plugin=(ROOT/'Plugin.cs').read_text()
+        gate=plugin.split('private bool CanTraceDresser()')[1].split('private void Save()')[0]
+        self.assertIn('config.ExecutionEnabled||market.Queue.Running||ownsPostprocess',gate)
+        self.assertIn('AutoRetainer.PluginState.IsBusy',gate)
+        self.assertIn('if(dresserTrace.Active) dresserTrace.Tick(CanTraceDresser())',plugin)
+        self.assertIn('dresserTrace.Dispose();StopQueue()',plugin)
+
     def test_withdrawal_capacity_counts_survive_live_refresh(self):
         queue=(ROOT/'Services/MarketQueue.cs').read_text()
         self.assertEqual(queue.count('StoragePolicy.CountWaitingForDresser(view.Items,previewJudge)'),2)
