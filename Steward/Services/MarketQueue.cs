@@ -381,6 +381,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
         var mm=MirageManager.Instance();if(mm==null||!mm->PrismBoxLoaded)return;
         if(config.ExecutionReviewRequired || !config.Connected || !AcquireManualCoordination())return;
         Queue.Begin();
+        var cleanupCharacter=view.Character;
         for(var index=0;index<mm->PrismBoxItemIds.Length;index++)
         {
             var raw=mm->PrismBoxItemIds[index];if(raw==0)continue;
@@ -401,35 +402,44 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 return config.Features.CanRestore(decision.Outcome)?decision:new(Outcome.Keep,"Armoire storage is disabled");
             }
             if(!StoragePolicy.Restore(WithoutThisCopy(false).Outcome,config.CleanDresser,facts.ArmoireEligible && !view.Evidence.Armoire.Contains(id)))return;
-            var sent=false;long before=0;
+            var sent=false;long before=0;var beforeCopies=0;
             Queue.Add(new("Restore dresser item "+id,()=>
             {
                 var live=MirageManager.Instance();
                 if(!sent && !config.CleanDresser)return StepResult.Completed;
-                if(!config.ExecutionEnabled||live==null||!live->PrismBoxLoaded||ui.Get("MiragePrismPrismBox")==null)return StepResult.Failed;
+                if(!config.ExecutionEnabled||view.Character!=cleanupCharacter||manualControl!=cleanupCharacter||
+                    !pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsControl").InvokeFunc(cleanupCharacter))
+                    throw new InvalidOperationException("Dresser restoration lost execution permission or its owned control lease");
+                if(live==null||!live->PrismBoxLoaded||ui.Get("MiragePrismPrismBox")==null)return StepResult.Waiting;
                 if(!sent)
                 {
-                    if(live->PrismBoxItemIds[slot]!=raw)return StepResult.Failed;
+                    if(ui.Visible("SelectYesno")||ui.Visible("ContextMenu"))return StepResult.Waiting;
                     if(!StoragePolicy.Restore(WithoutThisCopy().Outcome,config.CleanDresser,facts.ArmoireEligible && !view.Evidence.Armoire.Contains(id)))return StepResult.Completed;
+                    slot=DresserRestoration.Find(live->PrismBoxItemIds,raw,slot);
+                    if(slot<0)throw new InvalidOperationException($"Dresser source is {(slot==-2?"ambiguous after positions changed":"no longer present")}: item={id}, raw={raw}");
                     if(InventoryView.FreeBagSlots()<1){notify("Dresser cleanup paused: make one inventory slot available.");return StepResult.Completed;}
+                    if(view.IsUnique(id)&&view.Items.Any(s=>s.ItemId==id))
+                    {notify($"Dresser cleanup held for {facts.Name}: a unique copy is already carried.");return StepResult.Completed;}
                     if(facts.ArmoireEligible && !view.Evidence.Armoire.Contains(id))protectCollection(id);
-                    if(!InventoryView.PlayerLoaded())return StepResult.Failed;
+                    if(!InventoryView.PlayerLoaded())return StepResult.Waiting;
                     before=view.Items.Where(s=>s.ItemId==id).Sum(s=>(long)s.Quantity);
+                    beforeCopies=view.DresserCopies(id);
                     if(outfitPart>=0)
                     {
                         if(!live->IsSetSlotUnlocked((uint)slot,outfitPart))return StepResult.Completed;
                         var bits=stackalloc byte[2];bits[0]=bits[1]=0;
                         bits[outfitPart/8]=(byte)(1<<(outfitPart%8));
-                        if(!live->RestorePrismBoxSetItem((uint)slot,bits))return StepResult.Failed;
+                        if(!live->RestorePrismBoxSetItem((uint)slot,bits))throw new InvalidOperationException($"Game rejected outfit restoration: item={id}, slot={slot}, part={outfitPart}, copies={beforeCopies}, carried={before}");
                     }
-                    else if(!live->RestorePrismBoxItem((uint)slot))return StepResult.Failed;
+                    else if(!live->RestorePrismBoxItem((uint)slot))throw new InvalidOperationException($"Game rejected dresser restoration: item={id}, slot={slot}, raw={raw}, copies={beforeCopies}, carried={before}, freeSlots={InventoryView.FreeBagSlots()}");
                     sent=true;return StepResult.Waiting;
                 }
-                if(outfitPart>=0 ? live->PrismBoxItemIds[slot]==raw&&live->IsSetSlotUnlocked((uint)slot,outfitPart) : live->PrismBoxItemIds[slot]==raw)return StepResult.Waiting;
-                if(!InventoryView.PlayerLoaded())return StepResult.Failed;
+                if(!InventoryView.PlayerLoaded())return StepResult.Waiting;
                 var after=view.Items.Where(s=>s.ItemId==id).Sum(s=>(long)s.Quantity);
-                if(after==before)return StepResult.Waiting;
-                if(after!=before+1)return StepResult.Failed;
+                var copies=view.DresserCopies(id);
+                var acknowledgement=DresserRestoration.Acknowledge(beforeCopies,copies,before,after);
+                if(acknowledgement==StepResult.Failed)throw new InvalidOperationException($"Dresser restoration acknowledgement mismatch: item={id}, dresser={beforeCopies}->{copies}, carried={before}->{after}");
+                if(acknowledgement!=StepResult.Completed)return acknowledgement;
                 history("Confirmed dresser restoration of "+id);return StepResult.Completed;
             },TimeoutMs:10000));
         }

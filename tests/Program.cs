@@ -291,3 +291,18 @@ if(args.Length==3)
     Check(!ListingPlanner.Next(input,new PricingSettings(),1,30,now).Eligible,"Empty average still enforces unit floor");
 }
 Console.WriteLine($"{total} checks passed including confirmed-empty market pricing.");
+
+{
+    Check(DresserRestoration.Find([31556u,3093u,777u],3093,1)==1,"Restoration retains a valid live source");
+    Check(DresserRestoration.Find([3093u,777u,0u],3093,1)==0,"Next restoration resolves the item after dresser compaction");
+    Check(DresserRestoration.Find([3093u,3093u,777u],3093,2)==-2,"Moved duplicate sources are not guessed");
+    Check(DresserRestoration.Find([777u],3093,1)==-1,"Missing source is not replaced with another item");
+    Check(DresserRestoration.Find([1003093u],3093,0)==-1,"Raw source identity is preserved");
+    Check(DresserRestoration.Acknowledge(2,1,0,1)==StepResult.Completed,"Restoration confirms source loss and destination gain even if another copy moves into the old slot");
+    Check(DresserRestoration.Acknowledge(2,1,0,0)==StepResult.Waiting,"Wait for delayed player inventory update");
+    Check(DresserRestoration.Acknowledge(2,2,0,1)==StepResult.Waiting,"Wait for delayed dresser update");
+    Check(DresserRestoration.Acknowledge(2,0,0,1)==StepResult.Failed,"Unexpected dresser loss stops cleanup");
+    Check(DresserRestoration.Acknowledge(2,1,0,2)==StepResult.Failed,"Unexpected player gain stops cleanup");
+    Check(DresserRestoration.Acknowledge(0,0,0,1)==StepResult.Failed,"Unobserved source cannot acknowledge restoration");
+}
+Console.WriteLine($"{total} checks passed including dresser restoration refresh and acknowledgement.");

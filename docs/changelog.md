@@ -1,3 +1,7 @@
+## 0.1.0.48
+
+Resolve queued dresser restoration sources against current positions after each removal. Verify exact dresser-copy loss and player-copy gain rather than assuming positions remain stable, wait for transient loading, hold already-carried unique items, and report precise preflight/native/acknowledgement failures. Preserve per-action last-copy protection and verify the owned control lease. The reported Eternal Shade stop has insufficient diagnostics to prove its cause; in-game acceptance remains pending.
+
 ## 0.1.0.47
 
 - Add explicit Run full cleanup / `/steward cleanup`: AutoRetainer visits included retainers, Steward withdraws approved disposal candidates, and AutoRetainer runs enabled GC, desynthesis and sale actions before returning for another batch. No venture timing requirement, market listing or glamour removal is introduced by this pass.

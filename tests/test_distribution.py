@@ -116,7 +116,12 @@ class Distribution(unittest.TestCase):
   self.assertIn('owned.HasValue,owned==true',source)
   self.assertIn('!dresserKnown',(ROOT/'Steward/Core/DresserConfirmation.cs').read_text())
   self.assertIn('ui.Visible("RetainerSell")',source)
-  self.assertIn('after!=before+1',source)
+  self.assertIn('DresserRestoration.Acknowledge(beforeCopies,copies,before,after)',source)
+  restore=source.split('private void CleanupDresserCore()')[1].split('public void DepositOpenDresser()')[0]
+  self.assertIn('StoragePolicy.WithoutDresserCopy',restore)
+  self.assertLess(restore.index('WithoutThisCopy().Outcome'),restore.index('live->RestorePrismBoxItem'))
+  self.assertLess(restore.index('DresserRestoration.Find'),restore.index('live->RestorePrismBoxItem'))
+  self.assertIn('AutoRetainer.InventoryPolicy.OwnsControl',restore)
   source=((ROOT/'Steward/Plugin.cs').read_text()+(ROOT/'Steward/Plugin.Settings.cs').read_text())
   self.assertIn('config.PendingCharacter!=player.ContentId',source)
 if __name__=='__main__':unittest.main()
