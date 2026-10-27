@@ -135,13 +135,13 @@ public sealed partial class Plugin
     private void DrawStorageSettings()
     {
         Setting("Store protected overflow in retainers",config.Features.OverflowStorage,v=>config.Features.OverflowStorage=v,"Disabling storage leaves overflow protected in inventory.");
-        Setting("Use assigned retainer storage categories",config.Storage.Enabled,v=>config.Storage.Enabled=v,"Gear uses its assigned category regardless of marketability. Currencies and nonmarketable non-gear items use the currency retainer. Gearsets and excluded items are never deposited.");
+        Setting("Use assigned retainer storage categories",config.Storage.Enabled,v=>config.Storage.Enabled=v,"Gear and housing use their assigned categories regardless of marketability. Currencies and other nonmarketable items use the currency retainer. Gearsets and excluded items are never deposited.");
         foreach(var (id,name) in view.RetainerNames.OrderBy(p=>p.Value))
         {
             var enabled=config.Storage.RetainerEnabled(id);
             if(ImGui.Checkbox("Manage stored items: "+name,ref enabled)){if(enabled)config.Storage.ExcludedRetainers.Remove(id);else config.Storage.ExcludedRetainers.Add(id);SavePolicy();}
         }
-        if(ImGui.BeginCombo("Currencies and nonmarketable non-gear",view.RetainerNames.GetValueOrDefault(config.Storage.NonmarketableRetainer,"Not assigned")))
+        if(ImGui.BeginCombo("Currencies and other nonmarketable items",view.RetainerNames.GetValueOrDefault(config.Storage.NonmarketableRetainer,"Not assigned")))
         {
             foreach(var (id,name) in view.RetainerNames.Where(p=>config.Storage.RetainerEnabled(p.Key)))
                 if(ImGui.Selectable(name,id==config.Storage.NonmarketableRetainer)){config.Storage.NonmarketableRetainer=id;SavePolicy();}

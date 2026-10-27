@@ -208,6 +208,28 @@ Check(released==4&&!queue.Running&&queue.Status.Contains("cleanup failure"),"One
     storage.Categories[2]=[1,48];
     Check(storage.Block(material with{Equipment=true,Category=1,Marketable=false},proof,2,4)!=null,"Legacy currency category overlap cannot admit gear");
     Check(storage.Block(material,proof,2,4)!=null,"Currency retainer does not take marketable non-gear categories");
+    uint[] housingCategories=[57,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,82,95];
+    storage.Categories[12]=[..housingCategories];
+    foreach(var category in housingCategories)
+    foreach(var marketable in new[]{false,true})
+    {
+        var housing=material with{Category=category,Marketable=marketable};
+        Check(storage.Block(housing,proof,12,4)==null,"Housing stays together regardless of marketability");
+        storage.Categories[2].Add(category);
+        Check(storage.Block(housing,proof,2,4)!=null,"Currency retainer cannot take housing even with overlapping categories");
+        Check(storage.Block(housing,proof,1,4)!=null,"Housing cannot leak to unrelated storage");
+        storage.Categories[12].Remove(category);
+        Check(storage.Block(housing,proof,12,4)!=null,"Unassigned housing is held rather than sent to another destination");
+        storage.Categories[12].Add(category);
+        storage.ExcludedCategories.Add(category);
+        Check(storage.Block(housing,proof,12,4)!=null,"Housing category exclusion still wins");
+        storage.ExcludedCategories.Remove(category);
+        storage.ExcludedItems.Add(housing.Id);
+        Check(storage.Block(housing,proof,12,4)!=null,"Housing item exclusion still wins");
+        storage.ExcludedItems.Remove(housing.Id);
+        Check(storage.Block(housing,proof,12,null)!=null,"Unavailable unlock evidence still holds housing");
+    }
+    Check(storage.Block(material with{Marketable=false},proof,2,4)==null,"Other nonmarketable items still use currency retainer after housing changes");
     var writes=new List<string>();var journal=new ReviewJournal((_,lines)=>writes.AddRange(lines));
     journal.Snapshot(Path.Combine(Path.GetTempPath(),"steward-review-mode","log.jsonl"),[new ReviewEntry(1,"test",100,1,false,"WouldDispose","Disabled")],"DisposalReview");
     Check(writes.Count==1&&writes[0].Contains("DisposalReview"),"Disposal-only review has truthful mode label");

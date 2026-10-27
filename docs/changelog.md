@@ -1,3 +1,7 @@
+## 0.1.0.51
+
+Keep housing items in their assigned storage categories regardless of marketability, using the same Housing grouping as the category selector. Nonmarketable furniture no longer goes to the currency retainer. Preserve all storage exclusions and protection checks. Existing stored items are not moved automatically.
+
 ## 0.1.0.50
 
 Route all equipment by its assigned storage category regardless of marketability. Limit the currency retainer to currencies and nonmarketable non-equipment, preserving gearset, item/category, retainer and unlock exclusions. Clarify the storage labels and help text. Existing category assignments apply without editing live AutoRetainer settings; items already stored are not moved automatically.

@@ -20,7 +20,8 @@ public static class CategoryDisplay
         [30]=(30,"Botanist's tools"),[31]=(30,"Botanist's tools"),
         [32]=(32,"Fisher's tools"),[99]=(32,"Fisher's tools")
     };
-    public static string Group(uint id,byte major)=>id is 57 or >=64 and <=80 or 82 or 95?"Housing":
+    public static bool IsHousing(uint id)=>id is 57 or >=64 and <=80 or 82 or 95;
+    public static string Group(uint id,byte major)=>IsHousing(id)?"Housing":
         id==11||major is 3 or 4?"Armor":major is 1 or 2?"Main Arm/Off Arm":"Items";
     public static IReadOnlyList<CategoryChoice> Build(IReadOnlyDictionary<uint,string> names,IReadOnlyDictionary<uint,(uint Icon,byte Major,byte Minor)> details)
         =>names.OrderBy(p=>details.GetValueOrDefault(p.Key).Major).ThenBy(p=>details.GetValueOrDefault(p.Key).Minor)
