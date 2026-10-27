@@ -13,6 +13,12 @@ class CategoryWiring(unittest.TestCase):
         self.assertIn('Excluded categories for this rule',ui)
         self.assertIn('rule.Group=ItemGroup.Any',ui)
 
+    def test_native_refresh_rebuilds_references_between_full_imports(self):
+        plugin=(ROOT/'Steward/Plugin.cs').read_text(encoding='utf-8')
+        refresh=plugin.split('private void Refresh()')[1].split('private Decision Judge')[0]
+        self.assertIn('else imports.RefreshReferences();',refresh)
+        self.assertGreater(refresh.index('UpdateCollectionHolds();'),refresh.index('else imports.RefreshReferences();'))
+
     def test_global_exclusions_gate_prices_and_are_logged(self):
         plugin=((ROOT/'Steward/Plugin.cs').read_text(encoding='utf-8')+(ROOT/'Steward/Plugin.Settings.cs').read_text(encoding='utf-8'))
         self.assertIn('!config.Rules.IsIgnored(item)',plugin)

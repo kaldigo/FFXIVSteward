@@ -7,12 +7,12 @@ namespace Steward;
 public sealed partial class Plugin
 {
     private int settingsPage;
-    private int selectedSaleRule;
+    private readonly Dictionary<SaleRule,string> ruleUiIds=[];
     private string navigationSearch="";
-    private string itemQuery="";
     private uint selectedItem;
-    private string lastItemQuery="";
-    private IReadOnlyList<(uint Id,string Name)> itemResults=[];
+    private SaleRule? expandSaleRule;
+    private readonly Dictionary<uint,string> itemQueries=[];
+    private readonly Dictionary<uint,IReadOnlyList<(uint Id,string Name)>> itemSearchResults=[];
     private static readonly string[] Pages=["Overview","Sale rules","Glamour filters","Storage","Item overrides","Integrations","Developer tools"];
     private static readonly string[] PageKeywords=["automation pause status inventory","market prices stacks quality undercut sales","collection outfits plates rarity dungeon raid favourites","dresser armoire overflow cleanup space","exclude keep reserve quantities categories disposal","AutoRetainer Market Buddy Universalis connection","logs diagnostics log-only testing"];
     private void SavePolicy()
@@ -83,7 +83,7 @@ public sealed partial class Plugin
         DrawRecoveryControls();
         Section("Readiness");
         ImGui.TextUnformatted(attached==player.ContentId&&attached!=0?"AutoRetainer: connected":"AutoRetainer: waiting for connection");
-        ImGui.TextUnformatted(view.Evidence.ReferencesReady?"Selected glamour references: ready":"Selected glamour references: waiting for data");
+        ImGui.TextUnformatted(view.Evidence.ReferencesReady?"Selected glamour references: ready":!view.NativeReferencesKnown&&config.Rules.Glamour.NativePlates?"Waiting for in-game glamour plate data":"Waiting for selected glamour references");
         if(!view.NativeReferencesKnown&&config.Rules.Glamour.NativePlates)ImGui.TextWrapped("Open the in-game glamour plate editor to load your saved plates.");
         if(!view.Evidence.GlamaholicKnown&&config.Rules.Glamour.Glamaholic)ImGui.TextWrapped("Glamaholic is selected but its saved outfits are unavailable. Check that the plugin is installed and configured.");
         ImGui.TextUnformatted(view.Evidence.DresserKnown?"Glamour dresser: ready":"Glamour dresser: open it to verify current contents");
@@ -115,7 +115,7 @@ public sealed partial class Plugin
     }
     private void DrawGlamourPage()
     {
-        ImGui.TextWrapped("Keep one exact collection copy when any enabled filter matches. Disabling one filter does not override another. Extra copies are eligible for your sale and disposal rules only after live collection ownership is confirmed.");
+        ImGui.TextWrapped("These filters decide which items need one copy in the armoire or dresser. A match from ANY enabled filter protects that copy. Extra copies can be sold or disposed of only after live collection ownership is confirmed.");
         var f=config.Rules.Glamour;
         Section("Saved outfits");
         Setting("In-game glamour plates",f.NativePlates,v=>f.NativePlates=v);
@@ -133,9 +133,9 @@ public sealed partial class Plugin
         Setting("Other high-end duties",f.HighEndDuties,v=>f.HighEndDuties=v,"Includes Coil and other duties classified as harder to refarm.");
         Setting("Normal raids",f.NormalRaids,v=>f.NormalRaids=v);
         Setting("Normal dungeons",f.NormalDungeons,v=>f.NormalDungeons=v);
-        Section("Automatic filter scope");
-        DrawCategorySelection("Collect these equipment categories",f.Categories,"All equipment categories");
-        DrawCategorySelection("Skip these categories for automatic filters",f.ExcludedCategories,"No categories skipped");
+        Section("Which gear types should automatic filters collect?");
+        DrawCategorySelection("Apply automatic filters to",f.Categories,"All equipment categories","Empty means all gear types. Selecting categories limits the automatic filters above to those gear types; a category alone does not protect an item.");
+        DrawCategorySelection("Skip automatic filters for",f.ExcludedCategories,"No categories skipped","Checked gear types will not be protected by the automatic filters above. Saved outfits, manual collection items, pending holds and unknown-source safeguards still apply.");
         ImGui.TextWrapped("Category scope applies to automatic filters, not saved outfits, manual collection items or pending collection holds.");
         Section("Always preserved");
         ImGui.TextWrapped("Equipped items, gear sets, explicit keep overrides, quantity reserves and pending collection holds retain their protection. Unknown acquisition is held rather than assumed disposable. Armoire-eligible items use the armoire and do not consume dresser space. Dyes do not require extra copies.");
@@ -147,37 +147,30 @@ public sealed partial class Plugin
         if(ImGui.BeginTabItem("Rules"))
         {
         ImGui.TextWrapped("Rules run from top to bottom. The first enabled rule matching an item supplies its price, activity and stack thresholds. Collection protection and global exclusions take priority.");
-        if(ImGui.Button("Add sale rule")){config.Rules.Sales.Add(new());selectedSaleRule=config.Rules.Sales.Count-1;SavePolicy();}
-        if(config.Rules.Sales.Count>0)
+        if(ImGui.Button("Add sale rule")){expandSaleRule=new();config.Rules.Sales.Add(expandSaleRule);SavePolicy();}
+        if(config.Rules.Sales.Count==0)ImGui.TextWrapped("Add your first rule, then choose item categories and price thresholds.");
+        foreach(var rule in config.Rules.Sales.ToArray())
         {
-            selectedSaleRule=Math.Clamp(selectedSaleRule,0,config.Rules.Sales.Count-1);
-            if(ImGui.BeginCombo("Edit rule",$"{selectedSaleRule+1}. {config.Rules.Sales[selectedSaleRule].Name}"))
-            {for(var i=0;i<config.Rules.Sales.Count;i++)if(ImGui.Selectable($"{i+1}. {config.Rules.Sales[i].Name}##{i}",selectedSaleRule==i))selectedSaleRule=i;ImGui.EndCombo();}
-            var rule=config.Rules.Sales[selectedSaleRule];
-            var name=rule.Name;if(ImGui.InputText("Name",ref name,100)){rule.Name=name;SavePolicy();}
-            Setting("Rule enabled",rule.Enabled,v=>rule.Enabled=v);
-            ImGui.BeginDisabled(selectedSaleRule==0);if(ImGui.Button("Move up")){var i=selectedSaleRule;(config.Rules.Sales[i-1],config.Rules.Sales[i])=(rule,config.Rules.Sales[i-1]);selectedSaleRule--;SavePolicy();}ImGui.EndDisabled();
-            ImGui.SameLine();ImGui.BeginDisabled(selectedSaleRule==config.Rules.Sales.Count-1);if(ImGui.Button("Move down")){var i=selectedSaleRule;(config.Rules.Sales[i+1],config.Rules.Sales[i])=(rule,config.Rules.Sales[i+1]);selectedSaleRule++;SavePolicy();}ImGui.EndDisabled();
-            ImGui.SameLine();if(ImGui.Button("Delete rule")){config.Rules.Sales.RemoveAt(selectedSaleRule);SavePolicy();ImGui.EndTabItem();ImGui.EndTabBar();return;}
-            Section("Items matched by this rule");DrawSaleRuleCategories(rule);
-            var quality=rule.Hq==null?0:rule.Hq==false?1:2;if(ImGui.Combo("Quality",ref quality,"Any quality\0NQ only\0HQ only\0")){rule.Hq=quality==0?null:quality==2;SavePolicy();}
-            if(ImGui.CollapsingHeader("Restrict to specific items"))
-            {
-                ImGui.TextWrapped("An empty list matches any item in this rule's selected group and categories.");
-                DrawItemPicker(id=>{rule.ItemIds.Add(id);SavePolicy();});DrawNamedItems(rule.ItemIds,id=>{rule.ItemIds.Remove(id);SavePolicy();});
-            }
-            Section("Value and activity");
-            var unit=(int)Math.Min(rule.MinimumUnit,999999999);var total=(int)Math.Min(rule.MinimumTotal,999999999);var stack=rule.MaximumStack;
-            if(ImGui.InputInt("Minimum gil per item",ref unit)){rule.MinimumUnit=(uint)Math.Clamp(unit,1,999999999);SavePolicy();}
-            if(ImGui.InputInt("Minimum gil per listing",ref total)){rule.MinimumTotal=(uint)Math.Clamp(total,1,999999999);SavePolicy();}
-            if(ImGui.InputInt("Maximum items per stack",ref stack)){rule.MaximumStack=Math.Clamp(stack,1,9999);SavePolicy();}
-            Setting("Require minimum sales activity",rule.MinimumDailySales.HasValue,v=>rule.MinimumDailySales=v ? 0.1 : null);
-            if(rule.MinimumDailySales.HasValue)
-            {var velocity=(float)rule.MinimumDailySales.Value;if(ImGui.InputFloat("Minimum units sold per day",ref velocity,.01f,.1f,"%.3f")){rule.MinimumDailySales=float.IsFinite(velocity)?Math.Max(0,velocity):0;SavePolicy();}}
-            Setting("Allow older known values for slow sellers",rule.AllowOlderSaleValue,v=>rule.AllowOlderSaleValue=v);
-            ImGui.TextWrapped("Missing activity data holds an item when a minimum is enabled. Older prices may support a sale proposal, but cannot authorize disposal. Price floors also apply to the final listing price.");
+            if(!ruleUiIds.TryGetValue(rule,out var key))ruleUiIds[rule]=key=Guid.NewGuid().ToString();
+            ImGui.PushID(key);
+            var index=config.Rules.Sales.IndexOf(rule);
+            ImGui.Spacing();ImGui.Separator();ImGui.Spacing();
+            if(ReferenceEquals(expandSaleRule,rule)){ImGui.SetNextItemOpen(true);expandSaleRule=null;}
+            var expanded=ImGui.CollapsingHeader($"{index+1}. {rule.Name}###RuleDetails");
+            Setting("Enabled",rule.Enabled,v=>rule.Enabled=v);
+            ImGui.SameLine();ImGui.BeginDisabled(index==0);
+            if(ImGui.SmallButton("Move up")){(config.Rules.Sales[index-1],config.Rules.Sales[index])=(rule,config.Rules.Sales[index-1]);SavePolicy();}
+            ImGui.EndDisabled();ImGui.SameLine();ImGui.BeginDisabled(index==config.Rules.Sales.Count-1);
+            if(ImGui.SmallButton("Move down")){(config.Rules.Sales[index+1],config.Rules.Sales[index])=(rule,config.Rules.Sales[index+1]);SavePolicy();}
+            ImGui.EndDisabled();ImGui.SameLine();
+            var deleted=ImGui.SmallButton("Delete");
+            if(deleted){config.Rules.Sales.Remove(rule);ruleUiIds.Remove(rule);SavePolicy();}
+            ImGui.TextWrapped($"At least {rule.MinimumUnit:N0} gil each / {rule.MinimumTotal:N0} gil per listing · Up to {rule.MaximumStack} per stack");
+            var scope=rule.Group==ItemGroup.Gear?"Equipment only · ":rule.Group==ItemGroup.Other?"Non-equipment only · ":"";
+            ImGui.TextWrapped(scope+(rule.Categories.Count==0?"All categories":string.Join(", ",rule.Categories.Take(4).Select(id=>view.Categories.GetValueOrDefault(id,"Unavailable")))+(rule.Categories.Count>4?" …":""))+$" · {rule.ExcludedCategories.Count} excluded");
+            if(expanded&&!deleted){ImGui.Indent();DrawSaleRuleEditor(rule);ImGui.Unindent();}
+            ImGui.PopID();
         }
-        else ImGui.TextWrapped("No sale rules yet. Add a rule for gear, materials or another group.");
         ImGui.EndTabItem();
         }
         if(ImGui.BeginTabItem("Pricing"))
@@ -213,6 +206,27 @@ public sealed partial class Plugin
         if(ImGui.BeginTabItem("Listing preview")){DrawSalePreview();ImGui.EndTabItem();}
         ImGui.EndTabBar();
     }
+    private void DrawSaleRuleEditor(SaleRule rule)
+    {
+            var name=rule.Name;if(ImGui.InputText("Name",ref name,100)){rule.Name=name;SavePolicy();}
+            Section("Items matched by this rule");DrawSaleRuleCategories(rule);
+            var quality=rule.Hq==null?0:rule.Hq==false?1:2;if(ImGui.Combo("Quality",ref quality,"Any quality\0NQ only\0HQ only\0")){rule.Hq=quality==0?null:quality==2;SavePolicy();}
+            if(ImGui.CollapsingHeader("Restrict to specific items"))
+            {
+                ImGui.TextWrapped("Optional: limit this rule to named items. Category and quality restrictions still apply.");
+                DrawItemPicker(id=>{rule.ItemIds.Add(id);SavePolicy();});DrawNamedItems(rule.ItemIds,id=>{rule.ItemIds.Remove(id);SavePolicy();});
+            }
+            Section("Value and activity");
+            var unit=(int)Math.Min(rule.MinimumUnit,999999999);var total=(int)Math.Min(rule.MinimumTotal,999999999);var stack=rule.MaximumStack;
+            if(ImGui.InputInt("Minimum gil per item",ref unit)){rule.MinimumUnit=(uint)Math.Clamp(unit,1,999999999);SavePolicy();}
+            if(ImGui.InputInt("Minimum gil per listing",ref total)){rule.MinimumTotal=(uint)Math.Clamp(total,1,999999999);SavePolicy();}
+            if(ImGui.InputInt("Maximum items per stack",ref stack)){rule.MaximumStack=Math.Clamp(stack,1,9999);SavePolicy();}
+            Setting("Require minimum sales activity",rule.MinimumDailySales.HasValue,v=>rule.MinimumDailySales=v ? 0.1 : null);
+            if(rule.MinimumDailySales.HasValue)
+            {var velocity=(float)rule.MinimumDailySales.Value;if(ImGui.InputFloat("Minimum units sold per day",ref velocity,.01f,.1f,"%.3f")){rule.MinimumDailySales=float.IsFinite(velocity)?Math.Max(0,velocity):0;SavePolicy();}}
+            Setting("Allow older known values for slow sellers",rule.AllowOlderSaleValue,v=>rule.AllowOlderSaleValue=v);
+            ImGui.TextWrapped("Missing activity data holds an item when a minimum is enabled. Older prices may support a sale proposal, but cannot authorize disposal. Price floors also apply to the final listing price.");
+    }
     private void DrawStoragePage()
     {
         ImGui.TextWrapped("Armoire first, then glamour dresser. If the dresser has no usable space, protected items go to retainers and remain protected. Steward alerts you when collection cannot finish.");
@@ -225,12 +239,15 @@ public sealed partial class Plugin
     }
     private void DrawItemPicker(Action<uint> choose)
     {
-        if(ImGui.InputTextWithHint("##ItemSearch","Find an item by name or ID...",ref itemQuery,120)||lastItemQuery!=itemQuery)
-        {lastItemQuery=itemQuery;itemResults=view.SearchItems(itemQuery);}
-        if(itemQuery.Length<2){ImGui.TextDisabled("Type at least two characters.");return;}
-        if(itemResults.Count==0)ImGui.TextDisabled("No matching items.");
+        var key=ImGui.GetID("ItemSearchState");
+        var query=itemQueries.GetValueOrDefault(key,"");
+        if(ImGui.InputTextWithHint("##ItemSearch","Find an item by name or ID...",ref query,120))
+        {itemQueries[key]=query;itemSearchResults[key]=view.SearchItems(query);}
+        if(query.Length<2){ImGui.TextDisabled("Type at least two characters.");return;}
+        var results=itemSearchResults.GetValueOrDefault(key,[]);
+        if(results.Count==0)ImGui.TextDisabled("No matching items.");
         if(ImGui.BeginChild("ItemMatches",new(0,130),true))
-            foreach(var (id,name) in itemResults)if(ImGui.Selectable($"{name}##{id}")){choose(id);itemQuery="";lastItemQuery="";itemResults=[];break;}
+            foreach(var (id,name) in results)if(ImGui.Selectable($"{name}##{id}")){choose(id);itemQueries.Remove(key);itemSearchResults.Remove(key);break;}
         ImGui.EndChild();
     }
     private void DrawNamedItems(IEnumerable<uint> ids,Action<uint> remove)
@@ -243,7 +260,7 @@ public sealed partial class Plugin
     private void DrawOverridesPage()
     {
         ImGui.TextWrapped("Exclude items completely, keep physical copies, or add items to your collection. These settings apply across sale and storage rules.");
-        DrawCategorySelection("Exclude categories from all handling",config.Rules.IgnoredCategories,"No categories excluded");
+        DrawCategorySelection("Exclude categories from all handling",config.Rules.IgnoredCategories,"No categories excluded","Checked types are completely ignored by Steward: no listing, disposal, collection or cleanup. Empty means no category exclusions.");
         Section("Find an item");DrawItemPicker(id=>selectedItem=id);
         if(selectedItem!=0&&view.Facts(selectedItem) is {} item)
         {

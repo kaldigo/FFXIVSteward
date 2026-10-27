@@ -30,9 +30,8 @@ public sealed class ExternalImports
         if(after.LastWriteTimeUtc!=info.LastWriteTimeUtc||after.Length!=info.Length)throw new IOException("Import changed while being read");
         parsed[path]=(info.LastWriteTimeUtc,info.Length,value!);return value;
     }
-    public void Refresh()
+    public List<string> RefreshReferences()
     {
-        MarketPreferencesReady=!config.ImportMarketBuddy;
         var filters=config.Rules.Glamour;
         var errors=new List<string>();var references=filters.NativePlates?new HashSet<uint>(view.NativeReferences):[];
         view.Evidence.CuratedGlamour=filters.EorzeaCollection?bundled:[];
@@ -46,6 +45,12 @@ public sealed class ExternalImports
         }
         catch(Exception ex){glamReady=!filters.Glamaholic;if(filters.Glamaholic)errors.Add("Glamaholic: "+ex.Message);}
         view.Evidence.References=references;view.Evidence.ReferencesReady=GlamourProtection.ReferencesReady(filters,view.NativeReferencesKnown,glamReady);
+        return errors;
+    }
+    public void Refresh()
+    {
+        MarketPreferencesReady=!config.ImportMarketBuddy;
+        var errors=RefreshReferences();
         if(config.ImportMarketBuddy)
         {
             try{var path=Path.Combine(directory,"Marketbuddy.json");if(File.Exists(path)){config.Pricing=ReadCached(path,Imports.MarketBuddy);MarketPreferencesReady=true;}else errors.Add("Market Buddy settings not found; market execution held");}

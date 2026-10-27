@@ -10,7 +10,8 @@ public sealed partial class Plugin
     {
         Section("Current retainer preview");
         ImGui.TextWrapped("Open a retainer's selling list to preview free slots, stack splits and prices. This preview does not change any items.");
-        if(ImGui.Button("Refresh proposed listings")){RefreshProtection();marketPreview=market.PreviewMarket();}
+        if(ImGui.Button("Refresh proposed listings")){RefreshProtection();marketPreview=market.PreviewMarket();if(config.LogOnly){reviewJournal.Reset();nextReview=0;}}
+        if(config.LogOnly)ImGui.TextDisabled("Refreshing also requests a new review log snapshot.");
         if(marketPreview==null)return;
         ImGui.TextWrapped(marketPreview.Status);
         if(marketPreview.Plan is not {} plan)return;

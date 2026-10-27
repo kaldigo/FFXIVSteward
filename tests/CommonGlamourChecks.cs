@@ -26,7 +26,7 @@ static class CommonGlamourChecks
             var expected=File.ReadAllBytes(Path.Combine(root.FullName,"Steward/data/common-glamour.json"));
             check(actual.SequenceEqual(expected),"Compiled plugin embeds the exact reviewed common glamour list");
         }
-        using var bundle=JsonDocument.Parse(assembly.GetManifestResourceStream("CommonGlamourBundle")??throw new Exception("Bundled list missing from tests"));
+        using var bundle=JsonDocument.Parse(assembly.GetManifestResourceStream("Steward.data.common-glamour.json")??throw new Exception("Bundled list missing from tests"));
         using var evidence=JsonDocument.Parse(assembly.GetManifestResourceStream("CommonGlamourEvidence")??throw new Exception("Curation evidence missing from tests"));
         var candidates=evidence.RootElement.GetProperty("catalogue").GetProperty("rows").EnumerateArray()
             .ToDictionary(c=>c.GetProperty("facts").GetProperty("id").GetUInt32(),c=>c.GetProperty("facts"));

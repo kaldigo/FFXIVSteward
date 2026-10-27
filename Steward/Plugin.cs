@@ -136,7 +136,6 @@ public sealed partial class Plugin : IDalamudPlugin
         view.World=world;
         view.Refresh(character);
         protectionSnapshot.Clear();
-        UpdateCollectionHolds();
         if(Environment.TickCount64>=nextImports)
         {
             imports.Refresh();tracked.Refresh(view.Character,view.Retainers,inventoryMemory);nextImports=Environment.TickCount64+1000;
@@ -145,6 +144,8 @@ public sealed partial class Plugin : IDalamudPlugin
                     (item.Equipment||config.Rules.Sales.Any(r=>r.Matches(item,s))||config.Rules.NonEquipmentDisposal.Contains(item.Id)))
                 .Select(s=>s.ItemId).Distinct().ToArray();
         }
+        else imports.RefreshReferences(); // Rebuild readiness after every native refresh, even between slower market imports.
+        UpdateCollectionHolds();
         universalis.Tick(view.World,priceCandidates,PriceOwners,config.Rules.SummaryRefreshHours,view.Evidence,config.UseUniversalis,DateTimeOffset.UtcNow,config.Rules.SummaryHistoryDays);
     }
     private Decision Judge(Stock stock)
