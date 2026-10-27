@@ -78,7 +78,12 @@ class Distribution(unittest.TestCase):
   self.assertIn('AutoRetainer.InventoryPolicy.Hold',source)
  def test_pending_owned_dresser_prompt_is_cancelled(self):
   source=(ROOT/'Steward/Services/MarketQueue.cs').read_text()
-  self.assertIn('ui.CancelOwnedConfirmation(addon->Id)',source)
+  self.assertIn('ui.CancelOwnedConfirmation(confirmationOwner)',source)
+  self.assertIn('sourceAddon->Id!=confirmationOwner',source)
+  self.assertIn('ConfirmationOwnership.Matches(confirmationOwner,confirm->ParentId,confirm->HostId)',source)
+  cleanup=source.split('if(phase!=1)return;')[-1].split('TimeoutMs:12000')[0]
+  self.assertNotIn('ui.Get(',cleanup)
+  self.assertIn('Dresser deposit rejected:',source)
   source=(ROOT/'Steward/Services/NativeUi.cs').read_text()
   self.assertIn('ClickButton(&addon->AtkUnitBase,addon->NoButton)',source)
  def test_failed_save_cannot_enable_or_clear_review_in_memory(self):

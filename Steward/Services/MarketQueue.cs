@@ -431,18 +431,26 @@ public sealed unsafe partial class MarketQueue : IDisposable
         Queue.Begin();
         foreach(var source in view.Items.ToArray().Where(s=>judge(s).Outcome==Outcome.CollectDresser).GroupBy(s=>s.ItemId).Select(g=>g.First()).OrderBy(s=>view.Facts(s.ItemId) is {} f?StoragePolicy.Priority(f,config.Rules,view.Evidence):int.MaxValue).ThenBy(s=>s.ItemId))
         {
-            var phase=0;var opened=DateTimeOffset.MinValue;
+            var phase=0;ushort confirmationOwner=0;
+            StepResult RejectDresser(string reason)
+            {
+                var currentAgent=AgentMiragePrismPrismBox.Instance();
+                var selected=currentAgent==null||currentAgent->Data==null?"unavailable":$"{currentAgent->Data->CrystallizeSelectedItem.ItemId}/{currentAgent->Data->CrystallizeSelectedItem.Inventory}/{currentAgent->Data->CrystallizeSelectedItem.Slot}";
+                history($"Dresser deposit rejected: item={source.ItemId}, source={source.Container}/{source.Slot}, phase={phase}, selected={selected}, reason={reason}; {ui.Describe("MiragePrismPrismBox")}; {ui.Describe("MiragePrismPrismBoxCrystallize")}; {ui.Describe("SelectYesno")}; {ui.Describe("MiragePrismPrismSetConvert")}");
+                throw new InvalidOperationException($"Store dresser item {source.ItemId}: {reason}");
+            }
             Queue.Add(new("Store dresser item "+source.ItemId,()=>
             {
-                if(!config.ExecutionEnabled||view.Character==0||ui.Get("MiragePrismPrismBoxCrystallize")==null)return StepResult.Failed;
+                if(!config.ExecutionEnabled||view.Character==0)return RejectDresser("execution is no longer enabled for this character");
+                if(ui.Get("MiragePrismPrismBoxCrystallize")==null)return RejectDresser("the dresser item-selection window is no longer ready or visible");
                 var live=InventoryView.ReadSlot(source.Container,source.Slot);
-                if(phase<2 && live!=source)return StepResult.Failed;
+                if(phase<2 && live!=source)return RejectDresser("the source inventory slot changed before confirmation");
                 if(phase<2 && (!config.Features.DresserCollection||judge(source).Outcome!=Outcome.CollectDresser))return StepResult.Completed;
                 var agent=AgentMiragePrismPrismBox.Instance();
-                if(agent==null||agent->Data==null)return StepResult.Failed;
+                if(agent==null||agent->Data==null)return RejectDresser("the dresser selection data is unavailable");
                 if(phase==0)
                 {
-                    if(ui.Get("SelectYesno")!=null)return StepResult.Failed;
+                    if(ui.Visible("SelectYesno"))return RejectDresser("another confirmation is already open");
                     var selected=-1;
                     for(var i=0;i<agent->Data->CrystallizeItemCount;i++)
                     {
@@ -453,22 +461,24 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     var im=InventoryManager.Instance();var inv=im->GetInventoryContainer((InventoryType)source.Container);
                     var item=inv->GetInventorySlot(source.Slot);
                     if(item->GetConditionPercentage()!=100||im->GetInventoryItemCount(21800)<1){notify("Dresser deposit needs fully repaired gear and a glamour prism. Item "+source.ItemId+" remains protected.");return StepResult.Completed;}
-                    if(!ui.Callback("MiragePrismPrismBoxCrystallize",0,selected))return StepResult.Failed;
-                    opened=DateTimeOffset.UtcNow;phase=1;return StepResult.Waiting;
+                    confirmationOwner=ui.Get("MiragePrismPrismBoxCrystallize")->Id;
+                    history($"Dresser deposit selection requested: item={source.ItemId}, source={source.Container}/{source.Slot}, row={selected}; {ui.Describe("MiragePrismPrismBox")}; {ui.Describe("MiragePrismPrismBoxCrystallize")}");
+                    if(!ui.Callback("MiragePrismPrismBoxCrystallize",0,selected))return RejectDresser("the game rejected the dresser selection callback");
+                    phase=1;return StepResult.Waiting;
                 }
                 if(phase==1)
                 {
                     // Never acknowledge an unrelated confirmation. The agent must still identify our exact source.
                     var selected=agent->Data->CrystallizeSelectedItem;
-                    if(selected.ItemId%1000000!=source.ItemId||(uint)selected.Inventory!=source.Container||selected.Slot!=source.Slot)return StepResult.Failed;
-                    if(ui.Get("MiragePrismPrismSetConvert")!=null)return StepResult.Failed; // Hold for review; never progress through an unsupported dialog.
+                    if(selected.ItemId%1000000!=source.ItemId||(uint)selected.Inventory!=source.Container||selected.Slot!=source.Slot)return RejectDresser("the selected dresser item does not match the requested source");
+                    if(ui.Visible("MiragePrismPrismSetConvert"))return RejectDresser("an unsupported outfit conversion window opened"); // Hold for review; never progress through an unsupported dialog.
                     var confirm=(FFXIVClientStructs.FFXIV.Client.UI.AddonSelectYesno*)ui.Get("SelectYesno");
                     if(confirm==null)return StepResult.Waiting;
                     var sourceAddon=ui.Get("MiragePrismPrismBoxCrystallize");
-                    if(sourceAddon==null || !ConfirmationOwnership.Matches(sourceAddon->Id,confirm->ParentId,confirm->HostId))return StepResult.Failed;
+                    if(sourceAddon==null || sourceAddon->Id!=confirmationOwner || !ConfirmationOwnership.Matches(confirmationOwner,confirm->ParentId,confirm->HostId))return RejectDresser("the confirmation is not owned by the expected dresser window");
                     var name=view.Facts(source.ItemId)?.Name;
-                    if(name==null||confirm->PromptText==null||!confirm->PromptText->NodeText.ToString().Contains(name,StringComparison.Ordinal))return StepResult.Failed;
-                    if(!ui.Callback("SelectYesno",0))return StepResult.Failed;phase=2;return StepResult.Waiting;
+                    if(name==null||confirm->PromptText==null||!confirm->PromptText->NodeText.ToString().Contains(name,StringComparison.Ordinal))return RejectDresser("the confirmation text does not identify the requested item");
+                    if(!ui.Callback("SelectYesno",0))return RejectDresser("the game rejected the owned dresser confirmation");phase=2;return StepResult.Waiting;
                 }
                 if(live==source||ui.Visible("SelectYesno"))return StepResult.Waiting;
                 if(!InventoryView.Loaded(source.Container)||!view.Evidence.DresserKnown)return StepResult.Failed;
@@ -478,8 +488,9 @@ public sealed unsafe partial class MarketQueue : IDisposable
             },()=>
             {
                 if(phase!=1)return;
-                var addon=ui.Get("MiragePrismPrismBoxCrystallize");
-                if(addon==null || !ui.CancelOwnedConfirmation(addon->Id))
+                // The source window may have closed. Absence of a confirmation is already safe;
+                // if one remains, cancellation must still match the captured owner.
+                if(!ui.CancelOwnedConfirmation(confirmationOwner))
                     throw new InvalidOperationException("Pending dresser confirmation could not be safely cancelled");
             },TimeoutMs:12000));
         }

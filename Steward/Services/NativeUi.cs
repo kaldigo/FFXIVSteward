@@ -5,6 +5,13 @@ namespace Steward.Services;
 
 public sealed unsafe class NativeUi(IGameGui gui)
 {
+    public string Describe(string name)
+    {
+        var reference=gui.GetAddonByName(name);
+        if(reference.IsNull)return name+": absent";
+        var addon=(AtkUnitBase*)reference.Address;
+        return $"{name}: id={addon->Id}, parent={addon->ParentId}, host={addon->HostId}, visible={addon->IsVisible}, ready={addon->IsReady}";
+    }
     public bool Visible(string name){var addon=gui.GetAddonByName(name);return !addon.IsNull&&addon.IsVisible;}
     public AtkUnitBase* Get(string name)
     {var a=gui.GetAddonByName(name);if(a.IsNull||!a.IsVisible)return null;var native=(AtkUnitBase*)a.Address;return native->IsReady?native:null;}
