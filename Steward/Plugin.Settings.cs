@@ -118,6 +118,8 @@ public sealed partial class Plugin
         }
         Section("Run now");
         ImGui.BeginDisabled(!config.ExecutionEnabled||executionFault);
+        DrawCleanupControls();
+        ImGui.BeginDisabled(cleanupActive);
         ImGui.BeginDisabled(!config.Features.AnyMarket);
         if(ImGui.Button("List / reprice current retainer"))market.Start();
         ImGui.EndDisabled();
@@ -125,6 +127,7 @@ public sealed partial class Plugin
         if(ImGui.Button("Collect glamour items"))Run("Dresser");
         ImGui.EndDisabled();ImGui.SameLine();ImGui.BeginDisabled(!config.Features.ArmoireStorage);
         if(ImGui.Button("Store armoire items"))Run("Armoire");
+        ImGui.EndDisabled();
         ImGui.EndDisabled();
         ImGui.EndDisabled();
         Section("Current inventory");

@@ -3,11 +3,11 @@ namespace Steward.Core;
 public static class StoragePolicy
 {
     public static Stock[] PlanWithdrawals(IEnumerable<Stock> inventory,Func<Stock,Decision> judge,
-        Func<Outcome,bool> enabled,Func<Stock,bool> disposalSelected,bool collectionOnly) =>
+        Func<Outcome,bool> enabled,Func<Stock,bool> disposalSelected,bool collectionOnly,bool disposalOnly=false) =>
         inventory.ToArray().Where(stock=>
         {
             var decision=judge(stock);
-            return enabled(decision.Outcome)&&(decision.Outcome is Outcome.CollectArmoire or Outcome.CollectDresser ||
+            return enabled(decision.Outcome)&&(!disposalOnly&&decision.Outcome is Outcome.CollectArmoire or Outcome.CollectDresser ||
                 !collectionOnly&&decision.Outcome==Outcome.Dispose&&disposalSelected(stock));
         }).ToArray();
 

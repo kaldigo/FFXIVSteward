@@ -1,3 +1,10 @@
+## 0.1.0.47
+
+- Add explicit Run full cleanup / `/steward cleanup`: AutoRetainer visits included retainers, Steward withdraws approved disposal candidates, and AutoRetainer runs enabled GC, desynthesis and sale actions before returning for another batch. No venture timing requirement, market listing or glamour removal is introduced by this pass.
+- Keep GC-first priority and per-item live checks. Count only confirmed withdrawals and disposal acknowledgements. Stop on no progress, outstanding GC candidates, method failures, capacity, lost permission, cancellation, or the bounded batch limit. Unique duplicates wait for a later batch.
+- Require the companion cleanup capability and AutoRetainer's return-travel configuration for GC batches. Start is explicit, blocked in log-only/demo mode, and never resumed on plugin load. Retainer exclusions include the manual/gil-only retainer. Stop full cleanup also disables Steward automation.
+- Core, integration and build checks cover the new cycle; the full live retainer-to-disposal-to-return loop still needs in-game acceptance.
+
 ## 0.1.0.46
 
 - Enabling automation now waits for an actual AutoRetainer retainer handoff. It no longer starts a dresser, armoire, cleanup or overflow run from the idle timer. Explicit Run now actions still work, and authorized collection can finish its withdrawal/storage stages. Run permission is not saved and is cleared when stopped, completed, or automation is re-enabled.

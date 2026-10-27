@@ -83,6 +83,7 @@ public sealed unsafe class InventoryView
         searchableItems??=data.GetExcelSheet<Sheets.Item>().Where(r=>r.RowId>0&&!string.IsNullOrWhiteSpace(r.Name.ToString())).Select(r=>(r.RowId,r.Name.ToString())).ToArray();
         return searchableItems.Where(i=>i.Name.Contains(query,StringComparison.OrdinalIgnoreCase)||i.Id.ToString()==query).Take(30).ToArray();
     }
+    public bool IsUnique(uint id)=>data.GetExcelSheet<Sheets.Item>().TryGetRow(id%1000000,out var row)&&row.IsUnique;
     public ItemFacts? Facts(uint id)
     {
         id%=1000000;

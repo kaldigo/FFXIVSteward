@@ -3,6 +3,14 @@ using Steward.Core;
 var total=0;
 void Check(bool condition,string name) { total++; if(!condition) throw new Exception(name); }
 {
+    Stock[] sources=[new(1,false,1,10000,0),new(2,false,1,10000,1),new(3,false,1,10000,2),new(4,false,1,10000,3)];
+    Decision JudgeCleanup(Stock s)=>new(s.ItemId switch{1=>Outcome.CollectDresser,2=>Outcome.Dispose,3=>Outcome.Ignore,_=>Outcome.Dispose},"test");
+    var selected=StoragePolicy.PlanWithdrawals(sources,JudgeCleanup,_=>true,s=>s.ItemId==2,false,true);
+    Check(selected.SequenceEqual([sources[1]]),"Full cleanup withdraws only approved, method-selected disposal items, never protected collection or ignored gear");
+    Check(StoragePolicy.PlanWithdrawals(sources,JudgeCleanup,_=>false,_=>true,false,true).Length==0,"Disabled disposal cannot supply a batch");
+    Check(StoragePolicy.PlanWithdrawals(sources,JudgeCleanup,_=>true,_=>false,false,true).Length==0,"Demo mode or no selected method cannot withdraw a disposal batch");
+}
+{
     var run=new StorageRun();
     Check(!run.Allows(12,true),"Enabling automation at startup does not start storage");
     run.Begin(12,false);

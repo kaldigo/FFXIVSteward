@@ -307,7 +307,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
     public void Dispose(){try{Stop();}finally{market.OfferingsReceived-=Received;}}
     public void ReturnToRetainerMenu()
     {ui.Close("ItemSearchResult");ui.Close("RetainerSell");ui.Close("RetainerSellList");var agent=AgentRetainer.Instance();if(agent!=null)agent->Hide();}
-    public void WithdrawForOtherActions(ulong character,bool overflowOnly=false,bool collectionOnly=false)
+    public void WithdrawForOtherActions(ulong character,bool overflowOnly=false,bool collectionOnly=false,bool disposalOnly=false)
     {
         Queue.Begin();
         var manager=RetainerManager.Instance();
@@ -315,7 +315,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
         if(retainer==0 || !view.Retainers.Contains(retainer))throw new InvalidOperationException("Withdrawal retainer identity is unavailable");
         if(!config.Storage.RetainerEnabled(retainer))return;
         refreshProtection();
-        EnqueueOverflow(character,retainer);
+        if(!disposalOnly)EnqueueOverflow(character,retainer);
         if(overflowOnly)return;
         var dresserWithdrawals=0;
         var initialWaiting=StoragePolicy.CountWaitingForDresser(view.Items,previewJudge);
@@ -325,7 +325,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
             try{return pi.GetIpcSubscriber<uint,uint,bool>("AutoRetainer.InventoryPolicy.DisposalSelected").InvokeFunc(stock.ItemId,stock.Quantity);}
             catch{return false;}
         }
-        var candidates=StoragePolicy.PlanWithdrawals(stored,previewJudge,config.Features.Enabled,DisposalSelected,collectionOnly);
+        var candidates=StoragePolicy.PlanWithdrawals(stored,previewJudge,config.Features.Enabled,DisposalSelected,collectionOnly,disposalOnly);
         history($"Retainer withdrawal planning: retainer={retainer}, live stacks={stored.Count}, candidates={candidates.Length}, collection only={collectionOnly}, free bag slots={InventoryView.FreeBagSlots()}, waiting dresser items={initialWaiting}");
         foreach(var stock in candidates.OrderBy(s=>view.Facts(s.ItemId) is {} f?StoragePolicy.Priority(f,config.Rules,view.Evidence):int.MaxValue).ThenBy(s=>s.ItemId))
         {
@@ -342,6 +342,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     before=view.Items.Where(s=>s.ItemId==stock.ItemId&&s.Hq==stock.Hq).Sum(s=>(long)s.Quantity);
                     if(InventoryView.ReadSlot(stock.Container,stock.Slot)!=stock)return StepResult.Failed;
                     var decision=judge(stock);if(!config.Features.Enabled(decision.Outcome))return StepResult.Completed;
+                    if(disposalOnly&&decision.Outcome!=Outcome.Dispose)return StepResult.Completed;
                     if(decision.Outcome is not (Outcome.CollectArmoire or Outcome.CollectDresser or Outcome.Dispose))return StepResult.Completed;
                     if(decision.Outcome==Outcome.Dispose)
                     {
@@ -354,6 +355,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     var waiting=Math.Max(initialWaiting,StoragePolicy.CountWaitingForDresser(view.Items,previewJudge)-dresserWithdrawals);
                     if(!StoragePolicy.CanWithdraw(decision.Outcome,view.Evidence.DresserFreeSlots,config.Rules.DresserEmptySlots,waiting,dresserWithdrawals))return StepResult.Completed;
                     if(InventoryView.FreeBagSlots()<2)return StepResult.Completed;
+                    if(view.IsUnique(stock.ItemId)&&view.Items.Any(s=>s.ItemId==stock.ItemId))return StepResult.Completed;
                     if(decision.Outcome is Outcome.CollectDresser or Outcome.CollectArmoire)protectCollection(stock.ItemId);
                     var payload=System.Text.Json.JsonSerializer.Serialize(new{stock.Container,stock.Slot,stock.ItemId,stock.Quantity,stock.Hq,Retainer=retainer});
                     if(!pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Retrieve").InvokeFunc(character,payload))return StepResult.Failed;
@@ -365,6 +367,8 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 if(after<before+stock.Quantity)return StepResult.Waiting;
                 if(after!=before+stock.Quantity || !StockTransition.Removed(stock,InventoryView.ReadSlot(stock.Container,stock.Slot),stock.Quantity,true))return StepResult.Failed;
                 if(judge(stock).Outcome==Outcome.CollectDresser)dresserWithdrawals++;
+                if(disposalOnly&&!pi.GetIpcSubscriber<ulong,ulong,uint,bool>("AutoRetainer.InventoryPolicy.CleanupWithdrawalConfirmed").InvokeFunc(character,retainer,stock.Quantity))
+                    return StepResult.Failed;
                 history($"Confirmed withdrawal of {stock.ItemId} x{stock.Quantity}; retainer={retainer}, source={stock.Container}/{stock.Slot}, player count={before}->{after}");return StepResult.Completed;
             },TimeoutMs:10000));
         }

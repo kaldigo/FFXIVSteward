@@ -102,7 +102,9 @@ public sealed partial class Plugin : IDalamudPlugin
         pi.GetIpcSubscriber<string,object>("AutoRetainer.OnRetainerAdditionalTask").Subscribe(RequestPostprocess);
         pi.GetIpcSubscriber<string,string,object>("AutoRetainer.OnRetainerReadyForPostprocess").Subscribe(Postprocess);
         pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.CollectionNeeded").RegisterFunc(CollectionNeeded);
-        commands.AddHandler("/steward",new CommandInfo(Command){HelpMessage="Open inventory decisions; /steward stop cancels Steward work."});
+        pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.CleanupAllowed").RegisterFunc(CleanupAllowed);
+        pi.GetIpcProvider<ulong,ulong,bool>("Steward.InventoryPolicy.CleanupRetainerAllowed").RegisterFunc(CleanupRetainerAllowed);
+        commands.AddHandler("/steward",new CommandInfo(Command){HelpMessage="Open Steward; /steward cleanup starts full disposal batches; /steward stop cancels Steward work."});
         pi.UiBuilder.Draw+=Draw;pi.UiBuilder.OpenMainUi+=Open;pi.UiBuilder.OpenConfigUi+=Open;
         framework.Update+=Update;
     }
@@ -116,6 +118,7 @@ public sealed partial class Plugin : IDalamudPlugin
         }
         else if(args.Trim()=="trace stop")dresserTrace.Stop();
         else if(args.Trim()=="stop"){dresserTrace.Stop();Stop();}
+        else if(args.Trim()=="cleanup")StartCleanup();
         else Open();
     }
     private bool CanTraceDresser()
@@ -315,18 +318,19 @@ public sealed partial class Plugin : IDalamudPlugin
             UpdateAutomaticMarketPreview();
             ReviewTick();
             market.Advance(Environment.TickCount64);
+            UpdateCleanup();
             if(market.Queue.Status.StartsWith("Stopped:",StringComparison.Ordinal) && !executionFault)
                 HoldExecution(market.Queue.Status);
             if(openingInventory)
             {
                 if(Environment.TickCount64>marketOpenDeadline){HoldExecution("Retainer inventory timed out");StopQueue();}
                 else if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Menu").InvokeFunc(player.ContentId,"Inventory"))
-                {openingInventory=false;Refresh();market.WithdrawForOtherActions(player.ContentId,overflowPass,collectionPass);withdrawing=true;}
+                {openingInventory=false;Refresh();market.WithdrawForOtherActions(player.ContentId,overflowPass,collectionPass,cleanupActive);withdrawing=true;}
             }
             if(withdrawing&&!market.Queue.Running)
             {
                 withdrawing=false;market.ReturnToRetainerMenu();
-                if(market.Queue.Status.StartsWith("Stopped")||overflowPass||collectionPass||!config.Features.AnyMarket){FinishPostprocess();}
+                if(market.Queue.Status.StartsWith("Stopped")||overflowPass||collectionPass||cleanupActive||!config.Features.AnyMarket){FinishPostprocess();}
                 else{openingMarket=true;marketOpenDeadline=Environment.TickCount64+15000;}
             }
             if(openingMarket)
@@ -351,7 +355,7 @@ public sealed partial class Plugin : IDalamudPlugin
                 if(!busy)
                 {
                     dungeonSources.Tick();
-                    if(storageRun.Allows(player.ContentId,config.ExecutionEnabled)&&!executionFault)
+                    if(!cleanupActive&&storageRun.Allows(player.ContentId,config.ExecutionEnabled)&&!executionFault)
                     {
                         var storageStarted=AutomaticStorageWork();
                         if(!storageStarted)
@@ -396,7 +400,7 @@ public sealed partial class Plugin : IDalamudPlugin
         {FinishPostprocess();return;}
         try{Refresh();
             if(!config.Features.AnyInventoryWork&&!config.Features.AnyMarket){FinishPostprocess();return;}
-            BeginStorageRun(pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsHandoff").InvokeFunc(player.ContentId));
+            if(!cleanupActive)BeginStorageRun(pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsHandoff").InvokeFunc(player.ContentId));
             openingInventory=config.Features.AnyInventoryWork;openingMarket=!openingInventory&&config.Features.AnyMarket;marketOpenDeadline=Environment.TickCount64+15000;}
         catch(Exception ex){log.Error(ex,"Retainer postprocess planning failed");HoldExecution("Retainer postprocess planning failed: "+ex.Message);StopQueue();}
     }
@@ -420,6 +424,7 @@ public sealed partial class Plugin : IDalamudPlugin
     }
     private void StopQueue()
     {
+        CancelCleanup();
         storageRun.End();
         if(market.Queue.Running && !executionFault)HoldExecution("An active operation was cancelled; its last game action may still complete");
         openingInventory=withdrawing=openingMarket=false;overflowPass=collectionPass=false;cleanupVisited=false;
@@ -449,6 +454,7 @@ public sealed partial class Plugin : IDalamudPlugin
         if(executionFault){Record("Check inventory and clear the stopped run first");return;}
         if(!config.ExecutionEnabled){Record("Dry run: would request AutoRetainer "+operation);return;}
         if(market.Queue.Running){Record("Wait for the current operation to finish");return;}
+        if(cleanupActive){Record("Stop full cleanup before starting another operation");return;}
         try{var result=pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,operation);
             if(result)BeginStorageRun(true);
             Record(result?"Requested AutoRetainer "+operation:"AutoRetainer could not start "+operation+"; check its settings, dependencies and current task");}
@@ -464,6 +470,8 @@ public sealed partial class Plugin : IDalamudPlugin
             universalis.Dispose();inventoryMemory.Dispose();reviewJournal.Dispose();
             pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.StrategyRetainer").UnregisterFunc();
             pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.CollectionNeeded").UnregisterFunc();
+            pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.CleanupAllowed").UnregisterFunc();
+            pi.GetIpcProvider<ulong,ulong,bool>("Steward.InventoryPolicy.CleanupRetainerAllowed").UnregisterFunc();
             pi.GetIpcProvider<string,string>(Endpoint).UnregisterFunc();
             pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.OverflowNeeded").UnregisterFunc();
             pi.GetIpcProvider<ulong,string,object>("Steward.InventoryPolicy.Fault").UnregisterAction();

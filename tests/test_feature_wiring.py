@@ -32,7 +32,7 @@ class FeatureWiring(unittest.TestCase):
         self.assertNotIn('view.Items.Where(s=>judge(s)',queue)
     def test_planning_does_not_replace_submission_checks(self):
         queue=(ROOT/'Services/MarketQueue.cs').read_text()
-        self.assertIn('StoragePolicy.PlanWithdrawals(stored,previewJudge,config.Features.Enabled,DisposalSelected,collectionOnly)',queue)
+        self.assertIn('StoragePolicy.PlanWithdrawals(stored,previewJudge,config.Features.Enabled,DisposalSelected,collectionOnly,disposalOnly)',queue)
         self.assertIn('var decision=judge(stock);if(!config.Features.Enabled(decision.Outcome))',queue)
         self.assertIn('if(InventoryView.ReadSlot(stock.Container,stock.Slot)!=stock)',queue)
         self.assertIn('if(!selected){history(',queue)
