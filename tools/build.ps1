@@ -17,6 +17,8 @@ try {
     }
     dotnet run --project tests/Steward.Tests.csproj -c Release
     if ($LASTEXITCODE) { throw 'Rule tests failed' }
+    dotnet run --project native-tests/Binding.Tests.csproj -c Release
+    if ($LASTEXITCODE) { throw 'Native binding regression checks failed' }
     python -m unittest discover -s tests -p 'test_*.py' -v
     if ($LASTEXITCODE) { throw 'Integration regression checks failed' }
 } finally { Pop-Location }

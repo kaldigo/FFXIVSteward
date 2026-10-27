@@ -1,3 +1,9 @@
+## 0.1.0.45
+
+- Fix ordinary dresser binding resolution: Dalamud's single-match scanner follows leading call instructions. Use literal multi-match scanning and require exactly one body and caller match before verifying their agreement.
+- Add production-binding regression checks reproducing the scanner behaviour and holding missing, ambiguous or disagreeing signatures.
+- The 0.1.0.44 live test confirmed two new-outfit deposits. Ordinary deposits stopped before submission; existing-outfit additions remain unverified in game.
+
 ## 0.1.0.44
 
 - Replace ordinary dresser row selection and confirmation clicks with a verified MirageManager member-function binding. Both function and caller signatures must agree; unavailable bindings hold storage.

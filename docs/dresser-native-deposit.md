@@ -79,3 +79,23 @@ References: [FFXIVClientStructs MirageManager](https://github.com/aers/FFXIVClie
 and [native symbol names](https://github.com/aers/FFXIVClientStructs/blob/main/ida/data.yml).
 The local ordinary binding was derived independently from the installed client;
 no GlamourLog implementation was copied.
+
+
+## Live 0.1.0.44 result and scanner correction
+
+At 08:10:38 UTC, item 19099 created outfit 45280 and item 47243 created
+outfit 47708. Both logged exact source consumption and live dresser ownership.
+Ordinary storage stopped before submission because the runtime binding was null.
+
+Dalamud `SigScanner.ScanText` follows a leading E8/E9 before returning an address.
+Our caller pattern begins with the GetInstance call, so TryScanText returned the
+GetInstance function rather than the caller location assumed by our offset arithmetic.
+The static executable scan was correct but did not model this API behaviour.
+
+Version 0.1.0.45 uses ScanAllText, which returns literal match locations, and requires
+exactly one match for each signature. The target equality check remains mandatory.
+The native-tests project compiles the actual production binding against host API
+stubs, reproduces ScanText call-following behaviour with allocated test memory, and
+checks successful literal resolution plus missing, ambiguous and mismatched cases.
+No game function is invoked by these tests. Ordinary and existing-outfit native
+acceptance still require live tests.

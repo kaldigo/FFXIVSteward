@@ -18,8 +18,13 @@ public sealed unsafe class NativeDresserStore
     public NativeDresserStore(ISigScanner scanner,Configuration config)
     {
         this.config=config;
-        if(scanner.TryScanText(BodySignature,out var body)&&scanner.TryScanText(CallerSignature,out var caller))
+        // ScanText follows a leading E8/E9 and would return GetInstance, not this call site.
+        // ScanAllText returns literal match locations and lets us reject ambiguous signatures.
+        var bodies=scanner.ScanAllText(BodySignature);
+        var callers=scanner.ScanAllText(CallerSignature);
+        if(bodies.Length==1&&callers.Length==1)
         {
+            var body=bodies[0];var caller=callers[0];
             // GetInstance call (5), movzx r8d (8), mov rcx (3), mov edx (6), deposit call (5).
             var target=caller+27+Marshal.ReadInt32(caller+23);
             if(target==body)ordinary=(delegate* unmanaged<MirageManager*,InventoryType,ushort,byte>)body;
