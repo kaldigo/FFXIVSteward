@@ -373,7 +373,7 @@ public sealed partial class Plugin
         ImGui.TextUnformatted(config.Connected?"Steward integration enabled":"Steward integration detached");
         if(!config.Connected&&ImGui.Button("Connect Steward")){config.Connected=true;SavePolicy();}
         if(config.Connected&&ImGui.Button("Disconnect Steward from this character"))DetachPolicy();
-        ImGui.TextWrapped("Disconnecting restores AutoRetainer's own rules. It is blocked while protected overflow or an unresolved operation still needs Steward.");
+        ImGui.TextWrapped("Without Steward, AutoRetainer can run native entrust, ventures and gil withdrawal. Disposal, automated sales and glamour work stay paused. Saved collection holds remain available when you reconnect.");
         Section("Glamaholic and native plates");
         ImGui.TextWrapped("Choose which saved outfits protect items on Glamour filters.");if(ImGui.Button("Open glamour filters"))settingsPage=2;
         Section("Market Buddy and Universalis");
@@ -384,7 +384,6 @@ public sealed partial class Plugin
     private void DetachPolicy()
     {
         Stop();
-        if(config.PendingCollection.TryGetValue(player.ContentId,out var waiting)&&waiting.Count>0){Alert("Collect protected overflow before disconnecting Steward.");return;}
         try{if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Detach").InvokeFunc(player.ContentId,Endpoint)){config.Connected=false;attached=0;Save();}else Alert("Resolve the stopped run and stop AutoRetainer's queue before disconnecting.");}
         catch(Exception ex){Alert("Could not disconnect Steward: "+ex.Message);}
     }

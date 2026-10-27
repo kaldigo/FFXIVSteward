@@ -30,7 +30,7 @@ class StorageAuthority(unittest.TestCase):
         self.assertIn('AutoRetainer storage plan unavailable', view)
         plugin = (ROOT / 'Plugin.cs').read_text(encoding='utf-8')
         self.assertIn('AutoRetainer.InventoryPolicy.StoragePlanAllows', plugin)
-        self.assertIn('StorageVersion").InvokeFunc()<4', plugin)
+        self.assertIn('StorageVersion").InvokeFunc()<5', plugin)
         ui = (ROOT / 'Plugin.Storage.cs').read_text(encoding='utf-8')
         self.assertNotIn('config.Storage.Categories', ui)
         self.assertNotIn('config.Storage.NonmarketableRetainer', ui)

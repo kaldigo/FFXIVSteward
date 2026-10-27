@@ -1,3 +1,7 @@
+## 0.1.0.54
+
+Require AutoRetainer standalone capability 5 and explain disconnected behaviour. Permit clean disconnect with saved collection holds retained for reconnection, while keeping uncertain-transaction holds. Skaenwyda remains excluded from storage and ordinary sales, with native ventures and gil enabled in AutoRetainer. Requires AutoRetainer 4.6.3.23.
+
 ## 0.1.0.53
 
 Remove the master Enable automation switch: enabled features follow AutoRetainer, with log-only and genuine inventory-review holds retaining their gates. Settings edits replan pending decisions without switching participation off or cancelling acknowledgement of a submitted action. Report and skip verified unsubmitted item failures; preserve uncertain-submission, journal-save and cleanup holds. Clear operation journals for safe cancellation so rejected items cannot block the next login.

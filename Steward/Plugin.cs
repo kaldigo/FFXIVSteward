@@ -312,7 +312,7 @@ public sealed partial class Plugin : IDalamudPlugin
                 {
                     var version=pi.GetIpcSubscriber<int>("AutoRetainer.InventoryPolicy.Version").InvokeFunc();
                     if(version!=6)throw new InvalidOperationException("Update both plugins: AutoRetainer integration version 6 is required");
-                    if(pi.GetIpcSubscriber<int>("AutoRetainer.InventoryPolicy.StorageVersion").InvokeFunc()<4)throw new InvalidOperationException("Update AutoRetainer: storage destinations must come from its entrust plans");
+                    if(pi.GetIpcSubscriber<int>("AutoRetainer.InventoryPolicy.StorageVersion").InvokeFunc()<5)throw new InvalidOperationException("Update AutoRetainer: safe standalone entrust and venture mode is required");
                     if(attached==player.ContentId)
                     {if(!pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Heartbeat").InvokeFunc(attached,Endpoint))attached=0;}
                     if(attached==0 && pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Connect").InvokeFunc(player.ContentId,Endpoint))attached=player.ContentId;
