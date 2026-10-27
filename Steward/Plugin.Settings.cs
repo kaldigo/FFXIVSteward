@@ -20,7 +20,7 @@ public sealed partial class Plugin
         config.Automatic=false;StopQueue();
         config.GlamaholicExpected=config.Rules.Glamour.Glamaholic;
         config.UseBundledGlamourList=config.Rules.Glamour.EorzeaCollection;
-        config.ControlsRevision=1;Save();nextImports=0;nextReview=0;marketPreview=null;
+        config.ControlsRevision=1;Save();nextImports=0;nextReview=0;marketPreview=null;reviewJournal.Reset();
     }
     private void Setting(string title,bool value,Action<bool> update,string? description=null)
     {
@@ -42,6 +42,13 @@ public sealed partial class Plugin
         var width=Math.Clamp(ImGui.GetContentRegionAvail().X*.23f,180,240);
         if(ImGui.BeginChild("Navigation",new(width,0),true))
         {
+            var icon=textures.GetFromFile(Path.Combine(pi.AssemblyLocation.DirectoryName!,"images","icon.png")).GetWrapOrDefault();
+            if(icon!=null)
+            {
+                var size=Math.Min(125*ImGui.GetFontSize()/17,ImGui.GetContentRegionAvail().X);
+                ImGui.SetCursorPosX(ImGui.GetCursorPosX()+(ImGui.GetContentRegionAvail().X-size)/2);
+                ImGui.Image(icon.Handle,new(size,size));ImGui.Spacing();
+            }
             ImGui.TextUnformatted("Steward");ImGui.TextDisabled(config.ExecutionEnabled?"Automation enabled":"Automation paused");
             ImGui.Spacing();ImGui.SetNextItemWidth(-1);
             ImGui.InputTextWithHint("##NavigationSearch","Find a setting...",ref navigationSearch,100);
@@ -92,11 +99,29 @@ public sealed partial class Plugin
         ImGui.TextUnformatted($"{config.Rules.Sales.Count(r=>r.Enabled)} enabled sale rules · {config.Rules.Ignored.Count} item exclusions");
         ImGui.TextUnformatted($"Dresser space reserved: {config.Rules.DresserEmptySlots} slots");
         if(config.PendingCollection.TryGetValue(view.Character,out var waiting)&&waiting.Count>0)ImGui.TextWrapped($"{waiting.Count} protected items are waiting for collection. They remain protected in retainer storage.");
+        Section("Features");
+        ImGui.TextWrapped("Choose the work Steward should do. Disabling a feature preserves its settings and all item protections. Changes pause automation.");
+        DrawMarketFeatureControls();
+        if(ImGui.CollapsingHeader("Glamour collection",ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            DrawCollectionFeatureControls();
+            Setting("Clean the glamour dresser",config.CleanDresser,v=>config.CleanDresser=v,"Restore unneeded items. Moving dresser pieces to the armoire also requires armoire storage to be enabled.");
+        }
+        if(ImGui.CollapsingHeader("Storage and disposal",ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            Setting("Store protected overflow in retainers",config.Features.OverflowStorage,v=>config.Features.OverflowStorage=v,"When disabled, protected overflow stays in inventory and remains protected.");
+            Setting("Allow AutoRetainer disposal",config.Features.Disposal,v=>config.Features.Disposal=v,"Allow eligible vendor sales, desynthesis and Grand Company deliveries through AutoRetainer. Turning this off blocks these managed actions while Steward is connected.");
+        }
         Section("Run now");
         ImGui.BeginDisabled(!config.ExecutionEnabled||executionFault);
+        ImGui.BeginDisabled(!config.Features.AnyMarket);
         if(ImGui.Button("List / reprice current retainer"))market.Start();
+        ImGui.EndDisabled();
+        ImGui.BeginDisabled(!config.Features.DresserCollection&&!config.CleanDresser);
         if(ImGui.Button("Collect glamour items"))Run("Dresser");
-        ImGui.SameLine();if(ImGui.Button("Store armoire items"))Run("Armoire");
+        ImGui.EndDisabled();ImGui.SameLine();ImGui.BeginDisabled(!config.Features.ArmoireStorage);
+        if(ImGui.Button("Store armoire items"))Run("Armoire");
+        ImGui.EndDisabled();
         ImGui.EndDisabled();
         Section("Current inventory");
         ImGui.InputTextWithHint("##InventorySearch","Search item names...",ref search,128);
@@ -115,6 +140,8 @@ public sealed partial class Plugin
     }
     private void DrawGlamourPage()
     {
+        DrawCollectionFeatureControls();
+        ImGui.TextWrapped("Collection switches control item movement. The protection filters below still protect items when collection is disabled.");
         ImGui.TextWrapped("These filters decide which items need one copy in the armoire or dresser. A match from ANY enabled filter protects that copy. Extra copies can be sold or disposed of only after live collection ownership is confirmed.");
         var f=config.Rules.Glamour;
         Section("Saved outfits");
@@ -141,9 +168,45 @@ public sealed partial class Plugin
         ImGui.TextWrapped("Equipped items, gear sets, explicit keep overrides, quantity reserves and pending collection holds retain their protection. Unknown acquisition is held rather than assumed disposable. Armoire-eligible items use the armoire and do not consume dresser space. Dyes do not require extra copies.");
         if(ImGui.Button("Edit manual collection items"))settingsPage=4;
     }
+    private void DrawMarketFeatureControls()
+    {
+        if(!ImGui.CollapsingHeader("Market work",ImGuiTreeNodeFlags.DefaultOpen))return;
+        var f=config.Features;
+        Setting("List new items",f.NewListings,v=>f.NewListings=v,"Stops new listings without changing sale rules. Items that still qualify for sale remain held rather than becoming disposal candidates.");
+        Setting("Reprice existing listings",f.Repricing,v=>f.Repricing=v);
+        Setting("Apply sale rules to existing listings",f.ListingReturns,v=>f.ListingReturns=v,"Withdraw listings that no longer qualify under the current sale rules. Turn this off to leave them listed; repricing and sale-window rotation have separate switches.");
+        ImGui.BeginDisabled(!f.NewListings);
+        Setting("Rotate listings when their sale window expires",f.Rotation,v=>f.Rotation=v,"Requires new listings enabled, a sale window on the matching rule, and another eligible item waiting.");
+        ImGui.EndDisabled();
+    }
+    private void DrawCollectionFeatureControls()
+    {
+        Setting("Collect items into the glamour dresser",config.Features.DresserCollection,v=>config.Features.DresserCollection=v);
+        Setting("Store eligible items in the armoire",config.Features.ArmoireStorage,v=>config.Features.ArmoireStorage=v);
+    }
+    private void DrawRetainerSelection(HashSet<ulong> excluded,bool perRule)
+    {
+        if(view.Retainers.Count==0)ImGui.TextWrapped("Open a summoning bell to load your retainers.");
+        foreach(var id in view.Retainers.OrderBy(id=>view.RetainerNames.GetValueOrDefault(id,id.ToString())))
+        {
+            var allowed=!excluded.Contains(id);
+            ImGui.BeginDisabled(perRule&&config.ExcludedSaleRetainers.Contains(id));
+            if(ImGui.Checkbox($"{view.RetainerNames.GetValueOrDefault(id,"Retainer "+id)}##{id}",ref allowed))
+            {if(allowed)excluded.Remove(id);else excluded.Add(id);SavePolicy();}
+            ImGui.EndDisabled();
+        }
+    }
     private void DrawSalesPage()
     {
+        DrawMarketFeatureControls();
         if(!ImGui.BeginTabBar("SalesSections"))return;
+        if(ImGui.BeginTabItem("Retainers"))
+        {
+            ImGui.TextWrapped("Sale automation only runs on checked retainers. Unchecked retainers keep their listings untouched. Each sale rule can narrow this selection further.");
+            DrawRetainerSelection(config.ExcludedSaleRetainers,false);
+            ImGui.TextWrapped("Existing listings on enabled retainers are checked against the rules and withdrawn when they no longer qualify. Returned items follow normal collection, sale and disposal rules.");
+            ImGui.EndTabItem();
+        }
         if(ImGui.BeginTabItem("Rules"))
         {
         ImGui.TextWrapped("Rules run from top to bottom. The first enabled rule matching an item supplies its price, activity and stack thresholds. Collection protection and global exclusions take priority.");
@@ -176,6 +239,7 @@ public sealed partial class Plugin
         if(ImGui.BeginTabItem("Pricing"))
         {
         Section("Market pricing");
+        ImGui.TextWrapped("Live price safeguard: ignore up to three very cheap listings only when they are at most a quarter of the next price and at least ten competitor listings sit within twice that price. Sale decisions still use average values.");
         var combined=config.Rules.Quality==QualityMode.Combined;
         Setting("Compare HQ and NQ together",combined,v=>config.Rules.Quality=v?QualityMode.Combined:QualityMode.Separate);
         Setting("Use Market Buddy pricing preferences",config.ImportMarketBuddy,v=>config.ImportMarketBuddy=v,"Imports undercut, rounding and stack preferences read-only. Turn this off to use the controls below.");
@@ -208,6 +272,8 @@ public sealed partial class Plugin
     }
     private void DrawSaleRuleEditor(SaleRule rule)
     {
+        Setting("Restrict this rule to selected retainers",rule.UseRetainerFilter,v=>rule.UseRetainerFilter=v,"Optional. Global retainer exclusions always apply.");
+        if(rule.UseRetainerFilter)DrawRetainerSelection(rule.ExcludedRetainers,true);
             var name=rule.Name;if(ImGui.InputText("Name",ref name,100)){rule.Name=name;SavePolicy();}
             Section("Items matched by this rule");DrawSaleRuleCategories(rule);
             var quality=rule.Hq==null?0:rule.Hq==false?1:2;if(ImGui.Combo("Quality",ref quality,"Any quality\0NQ only\0HQ only\0")){rule.Hq=quality==0?null:quality==2;SavePolicy();}
@@ -228,7 +294,7 @@ public sealed partial class Plugin
             Setting("Rotate long-unsold listings when another item is waiting",rule.MaximumListingDays.HasValue,v=>rule.MaximumListingDays=v?60:null);
             if(rule.MaximumListingDays.HasValue)
             {var days=rule.MaximumListingDays.Value;if(ImGui.InputInt("Maximum listing window (days)",ref days)){rule.MaximumListingDays=Math.Clamp(days,1,3650);SavePolicy();}}
-            ImGui.TextWrapped("Rotation only replaces a full market slot when another eligible item is waiting. Returned items join the waiting list and remain protected from disposal until relisted. Existing listings start tracking when first observed; repricing does not reset their window.");
+            ImGui.TextWrapped("Rotation only replaces a full market slot when another eligible item is waiting. Returned items join the waiting list and follow the normal collection, sale and disposal rules. Existing listings start tracking when first observed; repricing does not reset their window.");
             Setting("Allow older known values for slow sellers",rule.AllowOlderSaleValue,v=>rule.AllowOlderSaleValue=v);
             ImGui.TextWrapped("Missing activity data holds an item when a minimum is enabled. Older prices may support a sale proposal, but cannot authorize disposal. Price floors also apply to the final listing price.");
     }
@@ -239,10 +305,6 @@ public sealed partial class Plugin
         ImGui.BeginDisabled(!config.ExecutionEnabled||!config.CleanDresser||executionFault);
         if(ImGui.Button("Clean open dresser now"))market.CleanupDresser();
         ImGui.EndDisabled();
-        Section("Waiting to relist");
-        var returns=config.ListingWindows.Holds.Where(h=>h.Character==view.Character).ToArray();
-        if(returns.Length==0)ImGui.TextDisabled("No returned listings waiting.");
-        foreach(var hold in returns)ImGui.TextWrapped($"{view.Facts(hold.ItemId)?.Name??hold.ItemId.ToString()} × {hold.Quantity}: protected from disposal until relisted.");
         Section("Inventory memory");
         ImGui.TextWrapped("Retainer, dresser and armoire observations are saved per character without a time limit. Opening storage refreshes its contents. Cached collection copies never authorize disposal or removal of a protected last copy.");
     }
@@ -313,7 +375,6 @@ public sealed partial class Plugin
     private void DetachPolicy()
     {
         Stop();
-        if(config.ListingWindows.Holds.Any(h=>h.Character==player.ContentId)){Alert("Relist reserved market items before disconnecting Steward.");return;}
         if(config.PendingCollection.TryGetValue(player.ContentId,out var waiting)&&waiting.Count>0){Alert("Collect protected overflow before disconnecting Steward.");return;}
         try{if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Detach").InvokeFunc(player.ContentId,Endpoint)){config.Connected=false;attached=0;Save();}else Alert("Resolve the stopped run and stop AutoRetainer's queue before disconnecting.");}
         catch(Exception ex){Alert("Could not disconnect Steward: "+ex.Message);}

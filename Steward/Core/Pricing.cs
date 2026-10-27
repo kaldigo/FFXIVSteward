@@ -13,6 +13,27 @@ public sealed class PricingSettings
 public sealed record Offering(uint ItemId, bool Hq, uint UnitPrice, uint Quantity, ulong RetainerId, ulong ListingId = 0);
 public static class Pricing
 {
+    public sealed record Competition(uint? Price,int IgnoredCheapListings=0);
+    // Call with a complete native comparison, already scoped to item and quality.
+    // Count distinct listing rows, never units in a stack or our own listings.
+    public static Competition SelectCompetition(IEnumerable<Offering> scoped,IReadOnlySet<ulong> ownRetainers)
+    {
+        var rows=scoped.Where(p=>p.UnitPrice>0).ToArray();
+        if(rows.Any(p=>p.RetainerId==0))return new(null);
+        var competitors=rows.Where(p=>!ownRetainers.Contains(p.RetainerId)).OrderBy(p=>p.UnitPrice).ToArray();
+        if(competitors.Length==0)return new(null);
+        var cheapest=competitors[0].UnitPrice;
+        if(competitors.Any(p=>p.ListingId==0||p.Quantity==0)||competitors.Select(p=>p.ListingId).Distinct().Count()!=competitors.Length)
+            return new(cheapest);
+        for(var skipped=1;skipped<=3&&competitors.Length>=skipped+10;skipped++)
+        {
+            var baseline=competitors[skipped].UnitPrice;
+            if((ulong)competitors[skipped-1].UnitPrice*4>baseline)continue;
+            if((ulong)competitors[skipped+9].UnitPrice>(ulong)baseline*2)continue;
+            return new(baseline,skipped);
+        }
+        return new(cheapest);
+    }
     public static uint? ListingTarget(uint competitor,uint? ownMinimum,PricingSettings settings,uint floor)
     {
         if(competitor==0)return null;
@@ -40,11 +61,11 @@ public static class Pricing
         var relevant = offerings.Where(p => p.ItemId == item && p.UnitPrice > 0 &&
             (quality == QualityMode.Combined || p.Hq == hq)).ToArray();
         if(relevant.Any(p=>p.RetainerId==0))return null;
-        var other = relevant.Where(p => !ownRetainers.Contains(p.RetainerId)).OrderBy(p => p.UnitPrice).FirstOrDefault();
+        var other = SelectCompetition(relevant,ownRetainers).Price;
         if(other == null) return null;
         var ownCheapest = relevant.Where(p => ownRetainers.Contains(p.RetainerId)).Select(p => (uint?)p.UnitPrice).Min();
-        if(ownCheapest.HasValue && ownCheapest <= other.UnitPrice) return null;
-        if(ownCurrent.HasValue && ownCurrent <= other.UnitPrice) return null;
-        return Undercut(other.UnitPrice, settings, floor);
+        if(ownCheapest.HasValue && ownCheapest <= other.Value) return null;
+        if(ownCurrent.HasValue && ownCurrent <= other.Value) return null;
+        return Undercut(other.Value, settings, floor);
     }
 }

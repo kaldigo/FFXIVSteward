@@ -60,13 +60,29 @@ class ListingWiring(unittest.TestCase):
         self.assertIn('if(changed&&config.LogOnly){reviewJournal.Reset();nextReview=0;}',preview)
         self.assertNotIn('ImGui.Button("Refresh proposed listings")',preview)
         rotation=(ROOT/'Steward/Services/MarketQueue.Rotation.cs').read_text(encoding='utf-8')
-        self.assertLess(rotation.index('ReserveReturn('),rotation.index('ui.Callback("ContextMenu",0,choice'))
+        self.assertLess(rotation.index('QueueReturn('),rotation.index('ui.Callback("ContextMenu",0,choice'))
         self.assertIn('!config.ExecutionEnabled||config.ExecutionReviewRequired',rotation)
         self.assertIn('BagQuantity(source)!=beforeQuantity+source.Quantity',rotation)
         self.assertIn('ConfirmationOwnership.Matches',rotation)
-        self.assertIn('if(acknowledged)Enqueue(proposal.Replacement',rotation)
+        self.assertIn('if(acknowledged&&!ruleReturn)Enqueue(proposal.Replacement',rotation)
         self.assertIn('else if(replan)EnqueueListingPump',rotation)
         queue=(ROOT/'Steward/Services/MarketQueue.cs').read_text(encoding='utf-8')
         scope=queue.split('if(quoteOnly)return Finish(true);')[0]
         self.assertIn('if(!choice.Eligible)',scope)
         self.assertNotIn('ui.Click("RetainerSell",21)',scope.split('private void Enqueue(Stock expected')[1])
+
+    def test_retainer_scope_gates_preview_and_every_native_market_path(self):
+        root=ROOT/'Steward'
+        for name in ['MarketQueue.cs','MarketQueue.Listing.cs','MarketQueue.Rotation.cs','MarketQueue.Returns.cs']:
+            self.assertIn('config.SalesEnabledFor(retainer)',(root/'Services'/name).read_text())
+        queue=(root/'Services/MarketQueue.cs').read_text()
+        self.assertIn('decision=marketJudge(expected,retainer,true)',queue)
+        self.assertIn('else if(config.Features.Repricing)Enqueue(listing,retainer,true,coordinated)',queue)
+        self.assertIn('EnqueueReturn(listing,retainer,coordinated)',queue)
+        review=(root/'Plugin.Review.cs').read_text()
+        self.assertIn('"WouldReturnListing"',review)
+        self.assertNotIn('"ProtectedForRelisting"',review)
+        rotation=(root/'Services/MarketQueue.Rotation.cs').read_text()
+        self.assertNotIn('ReserveReturn(',rotation)
+        self.assertIn('if(ReturnReason(source,retainer,true)==null)',rotation)
+        self.assertIn('if(ruleReturn&&ReturnReason(source,retainer,true)==null)',rotation)

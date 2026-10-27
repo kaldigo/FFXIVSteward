@@ -36,12 +36,12 @@ static class ListingWindowChecks
         var item=new ItemFacts(42,"Test",true,1,50,false,false,SourceKind.Ordinary,35);
         var evidence=new Evidence{DresserKnown=true,ArmoireKnown=true,ReferencesReady=true,GearsetsReady=true,RelistingHolds=[42]};
         var rules=new RuleSettings();
-        check(Rules.Judge(item,old,rules,evidence,83,now).Outcome==Outcome.Keep,"Returned equipment cannot be disposed of");
+        check(Rules.Judge(item,old,rules,evidence,83,now).Outcome==Outcome.Dispose,"Legacy return flags do not override normal disposal rules");
         item=item with{Marketable=true};rules.Sales.Add(new(){MinimumUnit=1,MinimumTotal=1,MaximumStack=30,MinimumDailySales=.1});
         evidence.SaleStatistics[(42,false)]=new(83,42,false,1000,.1,now,now,1000,true);
         check(Rules.Judge(item,old,rules,evidence,83,now).Outcome==Outcome.Market,"A 0.1 average daily threshold accepts one unit per ten days, including reserved returns");
         evidence.SaleStatistics[(42,false)]=evidence.SaleStatistics[(42,false)] with{DailySales=.099};
-        check(Rules.Judge(item,old,rules,evidence,83,now) is {Outcome:Outcome.Keep,SaleRejected:true},"Below-threshold returned items remain held rather than disposed");
+        check(Rules.Judge(item,old,rules,evidence,83,now) is {Outcome:Outcome.Dispose,SaleRejected:true},"Below-threshold returned equipment follows normal disposal rules");
         evidence.SaleStatistics.Clear();evidence.Prices[(42,false)]=new(42,false,83,1000,now,"Game");
         check(Rules.Judge(item,old,rules,evidence,83,now).Outcome==Outcome.Wait,"Native listing quotes cannot bypass an unknown sales-rate threshold");
     }

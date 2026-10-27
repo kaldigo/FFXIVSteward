@@ -42,8 +42,10 @@ public sealed partial class Plugin
         if(ImGui.CollapsingHeader("Existing listing windows"))
             foreach(var window in marketPreview.Windows??[])
                 ImGui.TextWrapped($"{view.Facts(window.Source.ItemId)?.Name}: {(window.Since.HasValue?(int)(DateTimeOffset.UtcNow-window.Since.Value).TotalDays:0)} days tracked · {(window.MaximumDays.HasValue?"rotate after "+window.MaximumDays.Value+" days":"rotation disabled")}");
+        foreach(var returned in marketPreview.Returns??[])
+            ImGui.TextWrapped($"Would return {view.Facts(returned.Source.ItemId)?.Name}: {returned.Reason}. Normal item rules apply after withdrawal.");
         foreach(var rotation in marketPreview.Rotations??[])
-            ImGui.TextWrapped($"Would return {view.Facts(rotation.Source.ItemId)?.Name} to inventory after {rotation.DaysListed:N0} tracked days, making room for {view.Facts(rotation.Replacement.ItemId)?.Name} × {rotation.ReplacementQuantity} at an estimated {rotation.ReplacementPrice:N0} gil each. The returned item stays protected for later relisting.");
+            ImGui.TextWrapped($"Would return {view.Facts(rotation.Source.ItemId)?.Name} to inventory after {rotation.DaysListed:N0} tracked days, making room for {view.Facts(rotation.Replacement.ItemId)?.Name} × {rotation.ReplacementQuantity} at an estimated {rotation.ReplacementPrice:N0} gil each. The returned item follows normal item rules.");
         if(plan.Held.Count>0)ImGui.TextWrapped($"{plan.Held.Count} candidates are waiting for suitable prices or complete evidence.");
         ImGui.TextWrapped("Estimates are rechecked against the market, your own listings and item protections before posting.");
     }

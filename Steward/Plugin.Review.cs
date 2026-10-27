@@ -37,7 +37,7 @@ public sealed partial class Plugin
     }
     private void LogPolicyProposal(string? action,Stock stock,Decision decision)
     {
-        if(!config.LogOnly||decision.Outcome!=Outcome.Dispose||action is not ("Vendor" or "Desynth" or "Gc"))return;
+        if(!config.Features.Disposal||!config.LogOnly||decision.Outcome!=Outcome.Dispose||action is not ("Vendor" or "Desynth" or "Gc"))return;
         var key=$"review/{player.ContentId}/{stock.Container}/{stock.Slot}/{stock.ItemId}/{stock.Quantity}/{action}/{decision.Reason}";
         if(recentDecisions.TryGetValue(key,out var at)&&Environment.TickCount64-at<60000)return;
         var entry=new ReviewEntry(player.ContentId,$"Live policy request: container {stock.Container}, slot {stock.Slot}",stock.ItemId,stock.Quantity,stock.Hq,"WouldPermit "+action,decision.Reason,Collection:CopyEvidence(stock.ItemId),RuleName:decision.Rule?.Name);
@@ -60,6 +60,11 @@ public sealed partial class Plugin
             void Inspect(string location,Stock stock)
             {
                 var decision=Judge(stock);
+                if(!config.Features.Enabled(decision.Outcome))
+                {
+                    entries.Add(new(player.ContentId,location,stock.ItemId,stock.Quantity,stock.Hq,"FeatureDisabled",$"{view.Facts(stock.ItemId)?.Name}: {decision.Outcome} is disabled; item protections remain active.",Collection:CopyEvidence(stock.ItemId)));
+                    return;
+                }
                 var sale=SaleStatistics.Select(view.Evidence,stock.ItemId,stock.Hq,config.Rules.Quality,view.World,DateTimeOffset.UtcNow);
                 if(decision.Outcome==Outcome.Wait){unavailable++;holdReasons.Add(decision.Reason);}
                 if(decision.Outcome is Outcome.CollectDresser or Outcome.CollectArmoire or Outcome.StoreRetainer or Outcome.Market or Outcome.Wait or Outcome.Keep or Outcome.Ignore)
@@ -106,12 +111,13 @@ public sealed partial class Plugin
             foreach(var rotation in marketPreview.Rotations??[])
             {
                 entries.Add(new(player.ContentId,$"Retainer {marketPreview.Retainer}, listing slot {rotation.Source.Slot}",rotation.Source.ItemId,rotation.Source.Quantity,rotation.Source.Hq,"WouldRotateListing",
-                    $"{view.Facts(rotation.Source.ItemId)?.Name}: first observed {rotation.Since:O}; {rotation.DaysListed:N1} tracked days. Return to inventory and protect for relisting; waiting replacement: {view.Facts(rotation.Replacement.ItemId)?.Name}. Live replacement comparison and return acknowledgement required.",World:marketPreview.World,Retainer:marketPreview.Retainer,Collection:CopyEvidence(rotation.Source.ItemId)));
+                    $"{view.Facts(rotation.Source.ItemId)?.Name}: first observed {rotation.Since:O}; {rotation.DaysListed:N1} tracked days. Return to inventory under normal item rules; waiting replacement: {view.Facts(rotation.Replacement.ItemId)?.Name}. Live replacement comparison and return acknowledgement required.",World:marketPreview.World,Retainer:marketPreview.Retainer,Collection:CopyEvidence(rotation.Source.ItemId)));
                 entries.Add(new(player.ContentId,$"Retainer {marketPreview.Retainer}, replacement for slot {rotation.Source.Slot}",rotation.Replacement.ItemId,rotation.ReplacementQuantity,rotation.Replacement.Hq,"WouldListAfterRotation",
                     $"{view.Facts(rotation.Replacement.ItemId)?.Name}: proposed replacement after confirmed return; {rotation.ReplacementQuantity} at {rotation.ReplacementPrice:N0} gil each. Estimate, subject to live comparison.",rotation.ReplacementPrice,(ulong)rotation.ReplacementPrice*rotation.ReplacementQuantity,marketPreview.World,marketPreview.Retainer,Collection:CopyEvidence(rotation.Replacement.ItemId)));
             }
-            foreach(var hold in config.ListingWindows.Holds.Where(h=>h.Character==player.ContentId))
-                entries.Add(new(player.ContentId,"Reserved listing return "+hold.Token,hold.ItemId,hold.Quantity,hold.Hq,"ProtectedForRelisting","Reserved after listing rotation; cannot dispose while waiting to relist.",Collection:CopyEvidence(hold.ItemId)));
+            foreach(var returned in marketPreview.Returns??[])
+                entries.Add(new(player.ContentId,$"Retainer {marketPreview.Retainer}, listing slot {returned.Source.Slot}",returned.Source.ItemId,returned.Source.Quantity,returned.Source.Hq,"WouldReturnListing",
+                    $"{view.Facts(returned.Source.ItemId)?.Name}: {returned.Reason}. Return to inventory; normal item rules apply.",World:marketPreview.World,Retainer:marketPreview.Retainer,Collection:CopyEvidence(returned.Source.ItemId)));
             entries.Add(new(player.ContentId,"Market preview summary",0,0,false,"MarketSnapshot",marketPreview.Status,World:marketPreview.World,Retainer:marketPreview.Retainer));
             entries.Add(new(player.ContentId,"Market price source",0,0,false,"PriceSourceStatus",universalis.Status+" "+universalis.Freshness,World:view.World));
             if(config.UseUniversalis)

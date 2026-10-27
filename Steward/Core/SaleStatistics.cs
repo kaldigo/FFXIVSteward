@@ -8,6 +8,10 @@ public sealed record SaleStatistic(uint World,uint ItemId,bool Hq,double? Averag
 
 public static class SaleStatistics
 {
+    public static SaleStatistic? CheapestListing(Evidence evidence,uint item,bool hq,QualityMode quality,uint world,DateTimeOffset now) =>
+        evidence.SaleStatistics.Values.Where(s=>s.ItemId==item&&s.World==world&&s.Fetched<=now&&
+            s.MinimumListing is >0 and <=999999999&&(quality==QualityMode.Combined||s.Hq==hq)).MinBy(s=>s.MinimumListing);
+
     public static SaleStatistic? Select(Evidence evidence,uint item,bool hq,QualityMode quality,uint world,DateTimeOffset now)
     {
         var values=evidence.SaleStatistics.Values.Where(s=>s.ItemId==item&&s.World==world&&s.Fetched<=now&&

@@ -24,6 +24,7 @@ public sealed unsafe class InventoryView
     public bool NativeReferencesKnown { get; private set; }
     public ulong Character { get; private set; }
     public HashSet<ulong> Retainers { get; } = [];
+    public Dictionary<ulong,string> RetainerNames { get; } = [];
     public uint World { get; set; }
     public string ReturnListingLabel { get; }
     public IReadOnlyDictionary<uint,string> Categories { get; }
@@ -69,7 +70,7 @@ public sealed unsafe class InventoryView
     {
         Evidence.InvalidateLive();
         Evidence.DresserFreeSlots=null;
-        Evidence.RelistingHolds=config.ListingWindows.Holds.Where(h=>h.Character==character&&h.Quantity>0).Select(h=>h.ItemId).ToHashSet();
+        Evidence.RelistingHolds.Clear(); // Legacy sale returns never grant collection/disposal protection.
         Evidence.PendingCollection=CollectionHolds.ForCharacter(config.PendingCollection,character);
         NativeReferencesKnown=false;
         if(Character!=character)
@@ -124,7 +125,7 @@ public sealed unsafe class InventoryView
         }
         var rm=RetainerManager.Instance();
         if(rm!=null && rm->IsReady)
-            {Retainers.Clear();foreach(var r in rm->Retainers)if(r.RetainerId!=0){Retainers.Add(r.RetainerId);config.OwnRetainers.Add(r.RetainerId);}}
+            {Retainers.Clear();foreach(var r in rm->Retainers)if(r.RetainerId!=0){Retainers.Add(r.RetainerId);RetainerNames[r.RetainerId]=r.NameString;config.OwnRetainers.Add(r.RetainerId);}}
         Evidence.ReserveStocks.AddRange(Items);
         if(rm!=null&&rm->IsReady&&Retainers.Contains(rm->LastSelectedRetainerId)&&RetainerTypes().All(t=>Loaded((uint)t)))
             {

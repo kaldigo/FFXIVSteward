@@ -10,7 +10,7 @@ public sealed unsafe partial class MarketQueue
     private uint observationWorld;
     private DateTimeOffset observationWorldSince;
     public sealed record RepriceProposal(Stock Source,uint Before,uint After,MarketReference Reference,string? RuleName=null);
-    public sealed record MarketPreview(ulong Retainer,uint World,ListingPlan? Plan,IReadOnlyList<RepriceProposal> Reprices,string Status,IReadOnlyList<RotationProposal>? Rotations=null,IReadOnlyList<ListingWindowPreview>? Windows=null);
+    public sealed record MarketPreview(ulong Retainer,uint World,ListingPlan? Plan,IReadOnlyList<RepriceProposal> Reprices,string Status,IReadOnlyList<RotationProposal>? Rotations=null,IReadOnlyList<ListingWindowPreview>? Windows=null,IReadOnlyList<ReturnProposal>? Returns=null);
 
     private void ObserveMarket(uint item,DateTimeOffset at,int request,List<Offering> values)
     {
@@ -65,8 +65,9 @@ public sealed unsafe partial class MarketQueue
         var own=OwnMinimum(id,hq);
         var observedOwn=relevant.Where(o=>config.OwnRetainers.Contains(o.RetainerId)).Select(o=>(uint?)o.UnitPrice).Min();
         if(observedOwn.HasValue)own=own.HasValue?Math.Min(own.Value,observedOwn.Value):observedOwn;
-        var competitor=relevant.Any(o=>o.RetainerId==0)?null:relevant.Where(o=>!config.OwnRetainers.Contains(o.RetainerId)).Select(o=>(uint?)o.UnitPrice).Min();
-        return new(view.World,competitor,own,at,"Complete in-game comparison");
+        var selection=Pricing.SelectCompetition(relevant,config.OwnRetainers);
+        var source="Complete in-game comparison"+(selection.IgnoredCheapListings>0?$"; ignored {selection.IgnoredCheapListings} very cheap listing(s), supported by at least 10 similar-priced competitor listings":"");
+        return new(view.World,selection.Price,own,at,source);
     }
     private MarketReference? PreviewReference(uint id,bool hq)
     {
@@ -82,6 +83,8 @@ public sealed unsafe partial class MarketQueue
             (config.Rules.Quality==QualityMode.Combined||p.Hq==hq)&&p.Observed<=now&&now-p.Observed<=TimeSpan.FromMinutes(config.Rules.MaximumPriceAgeMinutes)))
             own=own.HasValue?Math.Min(own.Value,price.UnitPrice):price.UnitPrice;
         if(quote!=null)return new(view.World,quote.UnitPrice,own,quote.Observed,quote.Source+" cache; own prices outside the current retainer may be incomplete",true);
+        var asking=SaleStatistics.CheapestListing(view.Evidence,id,hq,config.Rules.Quality,view.World,now);
+        if(asking!=null)return new(view.World,asking.MinimumListing,own,asking.Fetched,"Universalis cheapest listing across selected qualities; seller identities unavailable",true,true);
         var summary=SaleStatistics.Select(view.Evidence,id,hq,config.Rules.Quality,view.World,now);
         return summary==null?null:new(view.World,summary.MinimumListing??(uint)Math.Floor(summary.Average!.Value),own,
             summary.ValueObserved!.Value,"Universalis summary estimate; seller identities unavailable, actual posting requires native comparison",true,true);
@@ -90,26 +93,29 @@ public sealed unsafe partial class MarketQueue
     {
         if(!InventoryView.CanListStock(stock))return null;
         var item=view.Facts(stock.ItemId);if(item==null)return null;
-        var decision=(live?judge:previewJudge)(stock);
-        var rule=config.Rules.Sales.FirstOrDefault(r=>r.Matches(item,stock));
+        var retainer=OpenMarketRetainer();
+        if(!config.SalesEnabledFor(retainer))return null;
+        var decision=marketJudge(stock,retainer,live);
+        var rule=config.Rules.Sales.FirstOrDefault(r=>r.Matches(item,stock,retainer));
         return new(item,stock,decision,rule,reference??PreviewReference(stock.ItemId,stock.Hq));
     }
     public MarketPreview PreviewMarket()
     {
         if(!MarketSnapshot(out var retainer,out var listings))
             return new(0,view.World,null,[],"Open your retainer's selling list to load its actual free slots. Log-only does not open game menus or request in-game searches. Universalis may fetch price estimates in the background.");
+        if(!config.SalesEnabledFor(retainer))return new(retainer,view.World,null,[],"Sale automation is excluded for this retainer.");
         ObserveListingWindows(retainer,listings);
         if(!marketPreferencesReady())return new(retainer,view.World,null,[],"Market preferences unavailable; listing proposals held.");
         if(!view.Evidence.ReferencesReady||!view.Evidence.GearsetsReady)
             return new(retainer,view.World,null,[],"Protection references unavailable; listing proposals held. Load the native glamour plate editor and Glamaholic references; gearset evidence must also be ready.");
         var free=Enumerable.Range(0,20).Except(listings.Select(s=>(int)s.Slot)).ToArray();
-        var inputs=OrderedSaleStock(retainer).Select(s=>SaleInput(s,false)).OfType<ListingInput>()
+        var inputs=(config.Features.NewListings?OrderedSaleStock(retainer):[]).Select(s=>SaleInput(s,false)).OfType<ListingInput>()
             .Where(i=>ListingPlanner.CanConsider(i.Item,i.Stock,i.Decision,i.Rule)).ToArray();
         var plan=ListingPlanner.Plan(inputs,free,config.Pricing,view.World,config.Rules.MaximumPriceAgeMinutes,config.Rules.Quality,DateTimeOffset.UtcNow);
         List<RepriceProposal> reprices=[];
-        foreach(var listing in listings)
+        foreach(var listing in config.Features.Repricing?listings:[])
         {
-            var decision=previewJudge(listing);if(decision.Outcome is not (Outcome.Market or Outcome.Dispose))continue;
+            var decision=marketJudge(listing,retainer,false);if(ReturnReason(listing,retainer,false)!=null||decision.Rule==null||decision.Outcome is not (Outcome.Market or Outcome.Dispose))continue;
             var reference=PreviewReference(listing.ItemId,listing.Hq);if(reference?.Competitor is not uint competitor)continue;
             var before=(uint)InventoryManager.Instance()->GetRetainerMarketPrice((short)listing.Slot);
             if(before==0||before<=competitor||reference.OwnMinimum is uint own&&own<=competitor)continue;
@@ -118,17 +124,18 @@ public sealed unsafe partial class MarketQueue
                 reprices.Add(new(listing,before,target.Value,reference,decision.Rule?.Name));
         }
         var windows=listings.Select(stock=>new ListingWindowPreview(stock,config.ListingWindows.Age(view.Character,view.World,retainer,stock)?.Since,
-            view.Facts(stock.ItemId) is {} item?config.Rules.Sales.FirstOrDefault(r=>r.Matches(item,stock))?.MaximumListingDays:null)).ToArray();
-        var rotation=FindRotation(retainer,listings);
-        return new(retainer,view.World,plan,reprices,$"{listings.Count}/20 slots occupied; {plan.Listings.Count} proposed new listings; {plan.FreeSlotsRemaining} slots remain. Estimates use cached summaries or manually observed prices; execution always rechecks the game market.{(config.Rules.Sales.Any(r=>r.Enabled)?"":" Add an enabled auto-sell rule in Rules to propose new listings.")}",rotation==null?[]:[rotation],windows);
+            view.Facts(stock.ItemId) is {} item?config.Rules.Sales.FirstOrDefault(r=>r.Matches(item,stock,retainer))?.MaximumListingDays:null)).ToArray();
+        var rotation=listings.Any(s=>ReturnReason(s,retainer,false)!=null)?null:FindRotation(retainer,listings);
+        return new(retainer,view.World,plan,reprices,$"{listings.Count}/20 slots occupied; {plan.Listings.Count} proposed new listings; {plan.FreeSlotsRemaining} slots remain. Estimates use cached summaries or manually observed prices; execution always rechecks the game market.{(config.Rules.Sales.Any(r=>r.Enabled)?"":" Add an enabled auto-sell rule in Rules to propose new listings.")}",rotation==null?[]:[rotation],windows,listings.Select(s=>new ReturnProposal(s,ReturnReason(s,retainer,false))).Where(r=>r.Reason!=null).ToArray());
     }
     private void EnqueueListingPump(ulong retainer,bool coordinated,ListingPass pass)
     {
         Queue.Add(new("Fill free market slots",()=>
         {
-            if(!config.ExecutionEnabled||config.ExecutionReviewRequired)return StepResult.Failed;
+            if(!config.ExecutionEnabled||config.ExecutionReviewRequired||!config.Features.NewListings)return StepResult.Failed;
             refreshProtection();
             if(!marketPreferencesReady()||!MarketSnapshot(out var selected,out var listings)||selected!=retainer)return StepResult.Failed;
+            if(!config.SalesEnabledFor(retainer))return StepResult.Failed;
             ObserveListingWindows(retainer,listings);
             if(listings.Count>=20)
             {

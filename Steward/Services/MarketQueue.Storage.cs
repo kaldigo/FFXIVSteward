@@ -25,7 +25,7 @@ public sealed unsafe partial class MarketQueue
             {
                 var decision=StoragePolicy.WithoutDresserCopy(view.Evidence,id,remaining,
                     ()=>previewJudge(new(id,false,1,uint.MaxValue,0)));
-                if(!StoragePolicy.Restore(decision.Outcome,true,facts?.ArmoireEligible==true&&!view.Evidence.Armoire.Contains(id)))break;
+                if(!config.Features.CanRestore(decision.Outcome)||!StoragePolicy.Restore(decision.Outcome,true,facts?.ArmoireEligible==true&&!view.Evidence.Armoire.Contains(id)))break;
                 count++;candidate=decision;
             }
             if(candidate!=null)result.Add(new(id,facts?.Name??id.ToString(),candidate.Outcome==Outcome.CollectArmoire?"Restore for armoire migration":"Restore for normal inventory rules",candidate.Reason,count));
@@ -41,6 +41,7 @@ public sealed unsafe partial class MarketQueue
     }
     private void EnqueueOverflow(ulong character,ulong retainer)
     {
+        if(!config.Features.OverflowStorage)return;
         var completed=0;
         var label=retainer.ToString();
         var rm=RetainerManager.Instance();
@@ -59,7 +60,7 @@ public sealed unsafe partial class MarketQueue
                 if(!sent)
                 {
                     if(InventoryView.ReadSlot(source.Container,source.Slot)!=source)return StepResult.Failed;
-                    if(judge(source).Outcome!=Outcome.StoreRetainer)return StepResult.Completed;
+                    if(!config.Features.OverflowStorage||judge(source).Outcome!=Outcome.StoreRetainer)return StepResult.Completed;
                     var im=InventoryManager.Instance();var empty=false;
                     foreach(var type in InventoryView.RetainerTypes())
                     {var bag=im->GetInventoryContainer(type);for(var i=0;i<bag->Size;i++)if(bag->GetInventorySlot(i)->ItemId==0)empty=true;}

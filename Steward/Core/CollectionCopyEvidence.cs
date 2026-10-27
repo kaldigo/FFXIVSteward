@@ -25,7 +25,6 @@ public sealed record CollectionCopyEvidence(
         if(evidence.DresserKnown&&evidence.ArmoireKnown&&valid)
             confirmed=armoire==true?true:item.ArmoireEligible?false:after is int remaining?remaining>0:null;
         List<string> matches=[];
-        if(evidence.RelistingHolds.Contains(item.Id))matches.Add("Reserved for relisting");
         if(rules.Ignored.Contains(item.Id))matches.Add("Excluded");
         if(rules.IgnoredCategories.Contains(item.Category))matches.Add("Excluded category");
         if(rules.Keep.Contains(item.Id))matches.Add("Explicit keep");

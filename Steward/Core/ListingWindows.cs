@@ -32,6 +32,11 @@ public sealed class ListingWindows
     }
     public static bool Expired(ListingAge? age,int? days,DateTimeOffset now)=>age!=null&&days is >0 and <=3650&&age.Since<=now&&now-age.Since>=TimeSpan.FromDays(days.Value);
     public DateTimeOffset Priority(ulong character,uint world,ulong retainer,Stock stock)=>Waiting.GetValueOrDefault(Owner(character,world,retainer)+ItemKey(stock),DateTimeOffset.MaxValue);
+    public void QueueReturn(ulong character,uint world,ulong retainer,Stock stock,DateTimeOffset now,Action save)
+    {
+        Waiting[Owner(character,world,retainer)+ItemKey(stock)]=now;
+        save();
+    }
     public bool Held(ulong character,uint item)=>Holds.Any(h=>h.Character==character&&h.ItemId==item&&h.Quantity>0);
     public void ReserveReturn(string token,ulong character,uint world,ulong retainer,Stock stock,DateTimeOffset now,Action save)
     {

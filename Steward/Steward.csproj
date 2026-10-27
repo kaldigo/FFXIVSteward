@@ -5,5 +5,6 @@
     <Punchline>Collect what matters. Sell the surplus.</Punchline>
     <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings><AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+  <ItemGroup><None Include="../assets/icon.png" Link="images/icon.png" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
   <ItemGroup><EmbeddedResource Include="data/*.json" /></ItemGroup>
 </Project>

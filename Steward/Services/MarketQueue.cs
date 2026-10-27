@@ -17,6 +17,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
     private readonly NativeUi ui;
     private readonly Action<string> history;
     private readonly Action save;
+    private readonly Func<Stock,ulong,bool,Decision> marketJudge;
     private readonly Func<Stock,Decision> judge;
     private readonly Func<Stock,Decision> previewJudge;
     private readonly Action refreshProtection;
@@ -31,8 +32,8 @@ public sealed unsafe partial class MarketQueue : IDisposable
     private uint comparisonItem;
     private DateTimeOffset comparisonOpened;
     public OperationQueue Queue { get; }
-    public MarketQueue(IDalamudPluginInterface pi,IMarketBoard market,InventoryView view,Configuration config,NativeUi ui,Func<Stock,Decision> judge,Action<string> history,Action refreshProtection,Func<bool> marketPreferencesReady,Action<string> fault,Action<string> begin,Action complete,Action<uint> protectCollection,Action<string> notify,Func<Stock,Decision> previewJudge,Action save)
-    {this.save=save;this.pi=pi;this.market=market;this.view=view;this.config=config;this.ui=ui;this.judge=judge;this.history=history;this.refreshProtection=refreshProtection;this.marketPreferencesReady=marketPreferencesReady;this.fault=fault;this.protectCollection=protectCollection;this.notify=notify;this.previewJudge=previewJudge;Queue=new(begin,complete);market.OfferingsReceived+=Received;}
+    public MarketQueue(IDalamudPluginInterface pi,IMarketBoard market,InventoryView view,Configuration config,NativeUi ui,Func<Stock,Decision> judge,Action<string> history,Action refreshProtection,Func<bool> marketPreferencesReady,Action<string> fault,Action<string> begin,Action complete,Action<uint> protectCollection,Action<string> notify,Func<Stock,Decision> previewJudge,Action save,Func<Stock,ulong,bool,Decision> marketJudge)
+    {this.marketJudge=marketJudge;this.save=save;this.pi=pi;this.market=market;this.view=view;this.config=config;this.ui=ui;this.judge=judge;this.history=history;this.refreshProtection=refreshProtection;this.marketPreferencesReady=marketPreferencesReady;this.fault=fault;this.protectCollection=protectCollection;this.notify=notify;this.previewJudge=previewJudge;Queue=new(begin,complete);market.OfferingsReceived+=Received;}
     private void CheckFault(){if(Queue.Status.StartsWith("Stopped:",StringComparison.Ordinal))fault(Queue.Status);}
     private bool AcquireManualCoordination()
     {
@@ -91,11 +92,15 @@ public sealed unsafe partial class MarketQueue : IDisposable
         Queue.Begin();
         if(ui.Get("RetainerSellList")==null){history("Open the retainer sell list before starting market work.");return;}
         var rm=RetainerManager.Instance();var retainer=rm==null?0:rm->LastSelectedRetainerId;
-        if(retainer==0 || !view.Retainers.Contains(retainer)){history("Own retainer identity unavailable");return;}
+        if(!config.SalesEnabledFor(retainer) || !view.Retainers.Contains(retainer)){history("Own retainer identity unavailable");return;}
         if(coordinated ? !pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsHandoff").InvokeFunc(view.Character) : !AcquireManualCoordination())return;
         List<Stock> listings=[];InventoryView.Read(InventoryType.RetainerMarket,listings);
-        foreach(var listing in listings)Enqueue(listing,retainer,true,coordinated);
-        EnqueueListingPump(retainer,coordinated,new ListingPass());
+        foreach(var listing in listings)
+        {
+            if(ReturnReason(listing,retainer,false)!=null)EnqueueReturn(listing,retainer,coordinated);
+            else if(config.Features.Repricing)Enqueue(listing,retainer,true,coordinated);
+        }
+        if(config.Features.NewListings)EnqueueListingPump(retainer,coordinated,new ListingPass());
         if(!Queue.Running)ReleaseManualCoordination();
     }
     private void Enqueue(Stock expected,ulong retainer,bool reprice,bool coordinated,Action<Stock,bool>? completed=null,bool quoteOnly=false)
@@ -107,18 +112,19 @@ public sealed unsafe partial class MarketQueue : IDisposable
         HashSet<ushort> occupiedBefore=[];
         Queue.Add(new((reprice?"Reprice ":"List ")+expected.ItemId,()=>
         {
+            if(reprice?!config.Features.Repricing:!config.Features.NewListings)return StepResult.Failed;
             var rm=RetainerManager.Instance();
-            if(!config.ExecutionEnabled || view.World==0 || view.World!=expectedWorld || rm==null || rm->LastSelectedRetainerId!=retainer)return StepResult.Failed;
+            if(!config.ExecutionEnabled || !config.SalesEnabledFor(retainer) || view.World==0 || view.World!=expectedWorld || rm==null || rm->LastSelectedRetainerId!=retainer)return StepResult.Failed;
             if(coordinated && !pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsHandoff").InvokeFunc(view.Character))return StepResult.Failed;
             var live=InventoryView.ReadSlot(expected.Container,expected.Slot);
             if(!coordinated && (manualControl==0 || !pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsControl").InvokeFunc(manualControl)))return StepResult.Failed;
             if(phase<4 && live!=expected)return StepResult.Failed;
-            var decision=phase<4?judge(expected):new Decision(Outcome.Wait,"Awaiting acknowledgement of an already submitted action");
+            var decision=phase<4?marketJudge(expected,retainer,true):new Decision(Outcome.Wait,"Awaiting acknowledgement of an already submitted action");
             if(phase<4 && !marketPreferencesReady())return StepResult.Failed;
             var priceOnlyWait=decision is {Outcome:Outcome.Wait,Reason:"No fresh competing price; disposal is blocked"};
             var facts=phase<4?view.Facts(expected.ItemId):null;
-            var saleRule=facts==null?null:config.Rules.Sales.FirstOrDefault(r=>r.Matches(facts,expected));
-            if(phase<4 && (reprice ? decision.Outcome is not (Outcome.Market or Outcome.Dispose)&&!priceOnlyWait :
+            var saleRule=facts==null?null:config.Rules.Sales.FirstOrDefault(r=>r.Matches(facts,expected,retainer));
+            if(phase<4 && (reprice ? saleRule==null||decision.SaleRejected||decision.Outcome is not (Outcome.Market or Outcome.Dispose)&&!priceOnlyWait :
                 facts==null||!ListingPlanner.CanConsider(facts,expected,decision,saleRule)))return Finish();
             if(phase==0)
             {
@@ -155,11 +161,12 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     return StepResult.Waiting;
                 }
                 RecordGameQuotes(expected.ItemId,result);
-                decision=judge(expected);
+                decision=marketJudge(expected,retainer,true);
                 var reference=ReferenceFromOffers(expected.ItemId,expected.Hq,result.At,result.Offers);
+                if(reference.Source.Contains("ignored ",StringComparison.Ordinal))history($"Market price safeguard for {expected.ItemId}: {reference.Source}; reference {reference.Competitor:N0} gil.");
                 if(!reprice)
                 {
-                    facts=view.Facts(expected.ItemId);saleRule=facts==null?null:config.Rules.Sales.FirstOrDefault(r=>r.Matches(facts,expected));
+                    facts=view.Facts(expected.ItemId);saleRule=facts==null?null:config.Rules.Sales.FirstOrDefault(r=>r.Matches(facts,expected,retainer));
                     if(facts==null)return Finish();
                     var choice=ListingPlanner.Next(new(facts,expected,decision,saleRule,reference),config.Pricing,view.World,config.Rules.MaximumPriceAgeMinutes,DateTimeOffset.UtcNow);
                     if(!choice.Eligible){history("Held listing "+expected.ItemId+": "+choice.Reason);return Finish();}
@@ -194,7 +201,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 uint? latest;
                 if(!reprice)
                 {
-                    facts=view.Facts(expected.ItemId);saleRule=facts==null?null:config.Rules.Sales.FirstOrDefault(r=>r.Matches(facts,expected));
+                    facts=view.Facts(expected.ItemId);saleRule=facts==null?null:config.Rules.Sales.FirstOrDefault(r=>r.Matches(facts,expected,retainer));
                     if(facts==null)return StepResult.Failed;
                     var choice=ListingPlanner.Next(new(facts,expected,decision,saleRule,ReferenceFromOffers(expected.ItemId,expected.Hq,result.At,result.Offers)),
                         config.Pricing,view.World,config.Rules.MaximumPriceAgeMinutes,DateTimeOffset.UtcNow);
@@ -280,7 +287,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
         var dresserWithdrawals=0;
         var initialWaiting=view.Items.Where(s=>judge(s).Outcome==Outcome.CollectDresser).Select(s=>s.ItemId).Distinct().Count();
         List<Stock> stored=[];foreach(var type in InventoryView.RetainerTypes())InventoryView.Read(type,stored);
-        foreach(var stock in stored.Where(s=>judge(s).Outcome is Outcome.CollectArmoire or Outcome.CollectDresser || !collectionOnly&&judge(s).Outcome==Outcome.Dispose)
+        foreach(var stock in stored.Where(s=>config.Features.Enabled(judge(s).Outcome)&&(judge(s).Outcome is Outcome.CollectArmoire or Outcome.CollectDresser || !collectionOnly&&judge(s).Outcome==Outcome.Dispose))
             .OrderBy(s=>view.Facts(s.ItemId) is {} f?StoragePolicy.Priority(f,config.Rules,view.Evidence):int.MaxValue).ThenBy(s=>s.ItemId))
         {
             var sent=false;long before=0;
@@ -295,7 +302,8 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     if(!InventoryView.PlayerLoaded())return StepResult.Failed;
                     before=view.Items.Where(s=>s.ItemId==stock.ItemId&&s.Hq==stock.Hq).Sum(s=>(long)s.Quantity);
                     if(InventoryView.ReadSlot(stock.Container,stock.Slot)!=stock)return StepResult.Failed;
-                    var decision=judge(stock);if(decision.Outcome is not (Outcome.CollectArmoire or Outcome.CollectDresser or Outcome.Dispose))return StepResult.Completed;
+                    var decision=judge(stock);if(!config.Features.Enabled(decision.Outcome))return StepResult.Completed;
+                    if(decision.Outcome is not (Outcome.CollectArmoire or Outcome.CollectDresser or Outcome.Dispose))return StepResult.Completed;
                     if(decision.Outcome==Outcome.Dispose)
                     {
                         bool selected;
@@ -345,8 +353,9 @@ public sealed unsafe partial class MarketQueue : IDisposable
             Decision WithoutThisCopy(bool live=true)
             {
                 if(live)refreshProtection();
-                return StoragePolicy.WithoutDresserCopy(view.Evidence,id,view.DresserCopies(id),
+                var decision=StoragePolicy.WithoutDresserCopy(view.Evidence,id,view.DresserCopies(id),
                     ()=>(live?judge:previewJudge)(new(id,false,1,uint.MaxValue,(ushort)slot)));
+                return config.Features.CanRestore(decision.Outcome)?decision:new(Outcome.Keep,"Armoire storage is disabled");
             }
             if(!StoragePolicy.Restore(WithoutThisCopy(false).Outcome,config.CleanDresser,facts.ArmoireEligible && !view.Evidence.Armoire.Contains(id)))return;
             var sent=false;long before=0;
@@ -386,7 +395,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
         =>Plan(DepositOpenDresserCore);
     private void DepositOpenDresserCore()
     {
-        if(Queue.Running||!config.ExecutionEnabled||ui.Get("MiragePrismPrismBoxCrystallize")==null||view.Evidence.DresserFreeSlots==null)return;
+        if(Queue.Running||!config.ExecutionEnabled||!config.Features.DresserCollection||ui.Get("MiragePrismPrismBoxCrystallize")==null||view.Evidence.DresserFreeSlots==null)return;
         if(config.ExecutionReviewRequired || !config.Connected || !AcquireManualCoordination())return;
         Queue.Begin();
         foreach(var source in view.Items.ToArray().Where(s=>judge(s).Outcome==Outcome.CollectDresser).GroupBy(s=>s.ItemId).Select(g=>g.First()).OrderBy(s=>view.Facts(s.ItemId) is {} f?StoragePolicy.Priority(f,config.Rules,view.Evidence):int.MaxValue).ThenBy(s=>s.ItemId))
@@ -397,7 +406,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 if(!config.ExecutionEnabled||view.Character==0||ui.Get("MiragePrismPrismBoxCrystallize")==null)return StepResult.Failed;
                 var live=InventoryView.ReadSlot(source.Container,source.Slot);
                 if(phase<2 && live!=source)return StepResult.Failed;
-                if(phase<2 && judge(source).Outcome!=Outcome.CollectDresser)return StepResult.Completed;
+                if(phase<2 && (!config.Features.DresserCollection||judge(source).Outcome!=Outcome.CollectDresser))return StepResult.Completed;
                 var agent=AgentMiragePrismPrismBox.Instance();
                 if(agent==null||agent->Data==null)return StepResult.Failed;
                 if(phase==0)

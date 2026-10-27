@@ -33,6 +33,9 @@ public sealed class Configuration : IPluginConfiguration, IJsonOnDeserialized
     public bool UseBundledGlamourList { get; set; } = true;
     public int ControlsRevision { get; set; }
     public bool CleanDresser { get; set; }
+    public FeatureSettings Features { get; set; } = new();
+    public HashSet<ulong> ExcludedSaleRetainers { get; set; } = [];
+    public bool SalesEnabledFor(ulong retainer)=>Features.AnyMarket&&retainer!=0&&!ExcludedSaleRetainers.Contains(retainer);
     private ListingWindows listingWindows=new();
     private bool listingWindowsRead;
     public ListingWindows ListingWindows {get=>listingWindows;set{listingWindows=value;listingWindowsRead=true;}}
@@ -54,6 +57,7 @@ public sealed class Configuration : IPluginConfiguration, IJsonOnDeserialized
         MigrateControls();
         if(ListingWindows==null||SafetyRevision>=7&&!listingWindowsRead)throw new System.Text.Json.JsonException("Missing listing rotation safety state");
         ListingWindows.Validate();
+        if(Features==null||ExcludedSaleRetainers==null||Rules.Sales.Any(r=>r.ExcludedRetainers==null))throw new System.Text.Json.JsonException("Invalid retainer filters");
         // Preserve legacy single-category rules when opening the multi-category editor.
         foreach(var rule in Rules.Sales)
             if(rule.Category!=0){rule.Categories.Add(rule.Category);rule.Category=0;}

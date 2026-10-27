@@ -68,6 +68,10 @@ public sealed partial class Plugin : IDalamudPlugin
             config.SafetyRevision=7;config.LogOnly=true;config.ListingWindows=new();
             Save();
         }
+        if(config.SafetyRevision<8)
+        {
+            config.SafetyRevision=8;config.LogOnly=true;config.ListingWindows.Holds.Clear();Save();
+        }
         executionFault=config.ExecutionReviewRequired;
         if(!string.IsNullOrEmpty(config.PendingOperation))
         {
@@ -88,7 +92,7 @@ public sealed partial class Plugin : IDalamudPlugin
         dungeonSources=new(pi,data,config,Save);
         historyPath=Path.Combine(pi.GetPluginConfigDirectory(),"history.jsonl");
         reviewJournal=new(historyPath);
-        market=new(pi,board,view,config,new(gui),JudgeLive,Record,RefreshProtection,()=>imports.MarketPreferencesReady,HoldExecution,BeginOperation,CompleteOperation,ProtectCollection,Alert,Judge,Save);
+        market=new(pi,board,view,config,new(gui),JudgeLive,Record,RefreshProtection,()=>imports.MarketPreferencesReady,HoldExecution,BeginOperation,CompleteOperation,ProtectCollection,Alert,Judge,Save,JudgeMarket);
         pi.GetIpcProvider<string,string>(Endpoint).RegisterFunc(Evaluate);
         pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.OverflowNeeded").RegisterFunc(OverflowNeeded);
         pi.GetIpcProvider<ulong,string,object>("Steward.InventoryPolicy.Fault").RegisterAction(IntegrationFault);
@@ -148,10 +152,11 @@ public sealed partial class Plugin : IDalamudPlugin
         UpdateCollectionHolds();
         universalis.Tick(view.World,priceCandidates,PriceOwners,config.Rules.SummaryRefreshHours,view.Evidence,config.UseUniversalis,DateTimeOffset.UtcNow,config.Rules.SummaryHistoryDays);
     }
-    private Decision Judge(Stock stock)
+    private Decision Judge(Stock stock)=>JudgeForRetainer(stock,0);
+    private Decision JudgeForRetainer(Stock stock,ulong retainer)
     {
         var item=view.Facts(stock.ItemId);
-        var decision=item==null?new Decision(Outcome.Wait,"Unknown game item"):Rules.Judge(item,stock,config.Rules,view.Evidence,view.World,DateTimeOffset.UtcNow);
+        var decision=item==null?new Decision(Outcome.Wait,"Unknown game item"):Rules.Judge(item,stock,config.Rules,view.Evidence,view.World,DateTimeOffset.UtcNow,retainer);
         if(decision.Outcome==Outcome.Ignore)return decision;
         if(!protectionSnapshot.TryGetValue(stock.ItemId,out var protectedItem))
         {
@@ -175,6 +180,16 @@ public sealed partial class Plugin : IDalamudPlugin
             return new(Outcome.Wait,"Execution held: policy is disconnected or inventory review is required");
         RefreshProtection();
         return Judge(stock);
+    }
+    private Decision JudgeMarket(Stock stock,ulong retainer,bool live)
+    {
+        if(live)
+        {
+            if(!config.ExecutionEnabled||!player.IsLoaded||executionFault||!config.Connected||attached==0||attached!=player.ContentId)
+                return new(Outcome.Wait,"Execution held");
+            RefreshProtection();
+        }
+        return JudgeForRetainer(stock,retainer);
     }
     private void HoldExecution(string reason)
     {
@@ -219,7 +234,7 @@ public sealed partial class Plugin : IDalamudPlugin
             }
             var decision=Judge(stock);var action=root.GetProperty("Action").GetString();
             LogPolicyProposal(action,stock,decision);
-            var allow=ActionPolicy.Allows(action,decision.Outcome,config.ExecutionEnabled,config.Connected,executionFault,
+            var allow=config.Features.Allows(action,decision.Outcome)&&ActionPolicy.Allows(action,decision.Outcome,config.ExecutionEnabled,config.Connected,executionFault,
                 market.Queue.Running||ownsPostprocess,ownsPostprocess);
             var key=$"{id}/{action}/{allow}/{decision.Reason}";
             if(!recentDecisions.TryGetValue(key,out var at)||Environment.TickCount64-at>60000)
@@ -266,7 +281,7 @@ public sealed partial class Plugin : IDalamudPlugin
             if(withdrawing&&!market.Queue.Running)
             {
                 withdrawing=false;market.ReturnToRetainerMenu();
-                if(market.Queue.Status.StartsWith("Stopped")||overflowPass||collectionPass){FinishPostprocess();}
+                if(market.Queue.Status.StartsWith("Stopped")||overflowPass||collectionPass||!config.Features.AnyMarket){FinishPostprocess();}
                 else{openingMarket=true;marketOpenDeadline=Environment.TickCount64+15000;}
             }
             if(openingMarket)
@@ -308,6 +323,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private void RequestPostprocess(string retainer)
     {
         if(!player.IsLoaded||!config.ExecutionEnabled||executionFault||attached!=player.ContentId||market.Queue.Running)return;
+        if(!config.Features.AnyInventoryWork&&!config.Features.AnyMarket)return;
         if(overflowPass && !OverflowNeeded(player.ContentId))return;
         try{pi.GetIpcSubscriber<string,object>("AutoRetainer.RequestPostprocess").InvokeAction("Steward");}
         catch(Exception ex){Record("Postprocess request failed: "+ex.Message);}
@@ -319,7 +335,9 @@ public sealed partial class Plugin : IDalamudPlugin
         nextPostprocessRelease=0;
         if(!config.ExecutionEnabled || executionFault || !config.Connected || attached==0 || attached!=player.ContentId)
         {FinishPostprocess();return;}
-        try{Refresh();openingInventory=true;marketOpenDeadline=Environment.TickCount64+15000;}
+        try{Refresh();
+            if(!config.Features.AnyInventoryWork&&!config.Features.AnyMarket){FinishPostprocess();return;}
+            openingInventory=config.Features.AnyInventoryWork;openingMarket=!openingInventory&&config.Features.AnyMarket;marketOpenDeadline=Environment.TickCount64+15000;}
         catch(Exception ex){HoldExecution("Retainer postprocess planning failed: "+ex.Message);StopQueue();}
     }
     private void FinishPostprocess()
@@ -363,6 +381,8 @@ public sealed partial class Plugin : IDalamudPlugin
     }
     private void Run(string operation)
     {
+        if(operation=="Dresser"&&!config.Features.DresserCollection&&!config.CleanDresser||operation=="Armoire"&&!config.Features.ArmoireStorage)
+        {Record(operation+" feature is disabled");return;}
         if(executionFault){Record("Check inventory and clear the stopped run first");return;}
         if(!config.ExecutionEnabled){Record("Dry run: would request AutoRetainer "+operation);return;}
         if(market.Queue.Running){Record("Wait for the current operation to finish");return;}

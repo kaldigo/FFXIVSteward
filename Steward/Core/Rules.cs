@@ -19,6 +19,8 @@ public sealed class SaleRule
     public ItemGroup Group { get; set; }
     public HashSet<uint> Categories { get; set; } = [];
     public HashSet<uint> ExcludedCategories { get; set; } = [];
+    public bool UseRetainerFilter { get; set; }
+    public HashSet<ulong> ExcludedRetainers { get; set; } = [];
     public bool? Hq { get; set; }
     public uint MinimumUnit { get; set; } = 1000;
     public uint MinimumTotal { get; set; } = 5000;
@@ -26,7 +28,8 @@ public sealed class SaleRule
     public int? MaximumListingDays { get; set; }
     public double? MinimumDailySales { get; set; }
     public bool AllowOlderSaleValue { get; set; } = true;
-    public bool Matches(ItemFacts item, Stock stock) => Enabled &&
+    public bool Matches(ItemFacts item, Stock stock, ulong retainer=0) => Enabled &&
+        (retainer==0 || !UseRetainerFilter || !ExcludedRetainers.Contains(retainer)) &&
         (ItemIds.Count == 0 || ItemIds.Contains(item.Id)) &&
         (Group==ItemGroup.Any || Group==ItemGroup.Gear&&item.Equipment || Group==ItemGroup.Other&&!item.Equipment) &&
         (Categories.Count==0 ? Category==0||Category==item.Category : Categories.Contains(item.Category)) &&
@@ -86,7 +89,7 @@ public sealed class Evidence
 public static class Rules
 {
     public static Decision Judge(ItemFacts item, Stock stock, RuleSettings settings, Evidence evidence,
-        uint world, DateTimeOffset now)
+        uint world, DateTimeOffset now, ulong retainer=0)
     {
         if(item.Id==0 || stock.ItemId!=item.Id || stock.Quantity==0) return new(Outcome.Wait, "Invalid item or inventory evidence");
         if(settings.Ignored.Contains(item.Id)) return new(Outcome.Ignore, "Excluded from all Steward handling");
@@ -115,7 +118,7 @@ public static class Rules
                 return new(item.ArmoireEligible ? Outcome.CollectArmoire : Outcome.CollectDresser, "An exact copy is missing from the collection");
             }
         }
-        var rule = settings.Sales.FirstOrDefault(r => r.Matches(item, stock));
+        var rule = settings.Sales.FirstOrDefault(r => r.Matches(item, stock, retainer));
         var saleRejected=false;
         if(item.Marketable)
         {
@@ -157,7 +160,6 @@ public static class Rules
         if(!item.Equipment && !settings.NonEquipmentDisposal.Contains(item.Id))
             return new(Outcome.Keep, "Non-equipment disposal requires explicit item permission",rule,SaleRejected:saleRejected);
         if(removable<stock.Quantity)return new(Outcome.Keep,"Stack contains a quantity reserve; whole-stack disposal blocked",rule);
-        if(evidence.RelistingHolds.Contains(item.Id))return new(Outcome.Keep,"Reserved for later relisting; disposal blocked",rule,SaleRejected:saleRejected);
         return new(Outcome.Dispose, collect ? "Exact copy already collected; surplus may use AutoRetainer disposal rules" : "Outside collection rules; use AutoRetainer disposal rules",rule,SaleRejected:saleRejected);
     }
 }

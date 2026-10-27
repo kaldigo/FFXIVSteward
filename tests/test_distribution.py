@@ -98,7 +98,7 @@ class Distribution(unittest.TestCase):
   self.assertIn('protectionSnapshot.Clear();',refresh)
  def test_all_queue_paths_use_durable_start_and_acknowledgement(self):
   plugin=((ROOT/'Steward/Plugin.cs').read_text()+(ROOT/'Steward/Plugin.Settings.cs').read_text());queue=(ROOT/'Steward/Services/MarketQueue.cs').read_text()
-  self.assertIn('HoldExecution,BeginOperation,CompleteOperation,ProtectCollection,Alert,Judge,Save)',plugin)
+  self.assertIn('HoldExecution,BeginOperation,CompleteOperation,ProtectCollection,Alert,Judge,Save,JudgeMarket)',plugin)
   self.assertIn('Queue=new(begin,complete)',queue)
   self.assertLess(plugin.index('if(!string.IsNullOrEmpty(config.PendingOperation))'),plugin.index('framework.Update+=Update'))
   self.assertIn('ExecutionMode.Persist(()=>AtomicState.Write(statePath,config)',plugin)
