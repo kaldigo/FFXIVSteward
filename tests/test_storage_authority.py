@@ -4,6 +4,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1] / 'Steward'
 
 class StorageAuthority(unittest.TestCase):
+    def test_settings_do_not_disable_participation_or_cancel_an_acknowledgement(self):
+        ui = (ROOT / 'Plugin.Settings.cs').read_text(encoding='utf-8')
+        save = ui.split('private void SavePolicy()')[1].split('private void Setting')[0]
+        self.assertIn('market.ReplanPending();', save)
+        self.assertNotIn('StopQueue()', save)
+        self.assertNotIn('Enable automation', ui)
+        self.assertNotIn('public bool Automatic', (ROOT / 'Configuration.cs').read_text(encoding='utf-8'))
+
     def test_normal_entrust_uses_native_selection_and_keeps_protections(self):
         plugin = (ROOT / 'Plugin.cs').read_text(encoding='utf-8')
         entrust = plugin.split('if(action=="Entrust")')[1].split('if(action is "Store"')[0]

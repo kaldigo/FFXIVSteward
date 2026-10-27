@@ -17,7 +17,7 @@ public sealed partial class Plugin
     private static readonly string[] PageKeywords=["automation pause status inventory","market prices stacks quality undercut sales","collection outfits plates rarity dungeon raid favourites","dresser armoire overflow cleanup space","exclude keep reserve quantities categories disposal","AutoRetainer Market Buddy Universalis connection","logs diagnostics log-only testing","silver dye dedicated retainer stacks reset buyout strategy"];
     private void SavePolicy()
     {
-        config.Automatic=false;StopQueue();
+        market.ReplanPending();
         config.GlamaholicExpected=config.Rules.Glamour.Glamaholic;
         config.UseBundledGlamourList=config.Rules.Glamour.EorzeaCollection;
         config.ControlsRevision=1;Save();nextImports=0;nextReview=0;marketPreview=null;reviewJournal.Reset();
@@ -49,7 +49,7 @@ public sealed partial class Plugin
                 ImGui.SetCursorPosX(ImGui.GetCursorPosX()+(ImGui.GetContentRegionAvail().X-size)/2);
                 ImGui.Image(icon.Handle,new(size,size));ImGui.Spacing();
             }
-            ImGui.TextUnformatted("Steward");ImGui.TextDisabled(config.ExecutionEnabled?"Automation enabled":"Automation paused");
+            ImGui.TextUnformatted("Steward");ImGui.TextDisabled(config.LogOnly?"Log-only review":config.ExecutionReviewRequired?"Inventory review needed":"Following AutoRetainer");
             ImGui.Spacing();ImGui.SetNextItemWidth(-1);
             ImGui.InputTextWithHint("##NavigationSearch","Find a setting...",ref navigationSearch,100);
             for(var i=0;i<Pages.Length;i++)
@@ -58,7 +58,7 @@ public sealed partial class Plugin
                 if(!($"{Pages[i]} {PageKeywords[i]}").Contains(navigationSearch,StringComparison.OrdinalIgnoreCase))continue;
                 if(ImGui.Selectable(Pages[i],settingsPage==i))settingsPage=i;
             }
-            ImGui.Spacing();if(ImGui.Button("Stop all Steward work",new(-1,0)))Stop();
+            ImGui.Spacing();if(ImGui.Button("Stop current Steward run",new(-1,0)))Stop();
         }
         ImGui.EndChild();ImGui.SameLine();
         if(ImGui.BeginChild("SettingsPage",Vector2.Zero,false))
@@ -84,11 +84,8 @@ public sealed partial class Plugin
         ImGui.TextWrapped("Choose what to collect and sell. AutoRetainer carries out retainer and disposal work using its own enabled methods.");
         if(config.LogOnly)
         {ImGui.TextWrapped("Developer log-only mode is active. Item actions are disabled.");if(ImGui.SmallButton("Open developer tools"))settingsPage=6;}
-        ImGui.BeginDisabled(config.LogOnly||executionFault);
-        var automatic=config.Automatic;if(ImGui.Checkbox("Enable automation",ref automatic))SetAutomatic(automatic);
-        ImGui.EndDisabled();
-        ImGui.TextWrapped("Enabling automation lets Steward join AutoRetainer's retainer runs. It does not start travel or collection by itself. Use Run now to request work manually.");
-        ImGui.TextDisabled("Editing rules or storage settings pauses automation.");
+        ImGui.TextWrapped("Enabled features join AutoRetainer's runs. Use the feature switches below to choose the work, or log-only mode to review it. Run now requests a manual pass.");
+        ImGui.TextDisabled("Setting changes apply to fresh decisions; an already submitted action is verified before continuing.");
         DrawRecoveryControls();
         Section("Readiness");
         ImGui.TextUnformatted(attached==player.ContentId&&attached!=0?"AutoRetainer: connected":"AutoRetainer: waiting for connection");
@@ -103,7 +100,7 @@ public sealed partial class Plugin
         ImGui.TextUnformatted($"Dresser space reserved: {config.Rules.DresserEmptySlots} slots");
         if(config.PendingCollection.TryGetValue(view.Character,out var waiting)&&waiting.Count>0)ImGui.TextWrapped($"{waiting.Count} protected items are waiting for collection. They remain protected in retainer storage.");
         Section("Features");
-        ImGui.TextWrapped("Choose the work Steward should do. Disabling a feature preserves its settings and all item protections. Changes pause automation.");
+        ImGui.TextWrapped("Choose the work Steward should do. Disabling a feature preserves its settings and all item protections. Changes apply to fresh decisions.");
         DrawMarketFeatureControls();
         Setting("Prefer faster-selling listings",config.Rules.PreferFasterSales,v=>config.Rules.PreferFasterSales=v,"Prioritise listing quantity divided by average daily sales. Rotate only for a strictly faster replacement with known current activity. Market-wide activity is not a guaranteed sale time.");
         if(ImGui.CollapsingHeader("Glamour collection",ImGuiTreeNodeFlags.DefaultOpen))
@@ -413,9 +410,9 @@ public sealed partial class Plugin
                 {
                     var pending=config.PendingOperation;
                     var pendingCharacter=config.PendingCharacter;
-                    config.Automatic=false;executionFault=config.ExecutionReviewRequired=false;config.PendingOperation=null;config.PendingCharacter=0;
+                    executionFault=config.ExecutionReviewRequired=false;config.PendingOperation=null;config.PendingCharacter=0;
                     try{Save();}catch{config.PendingOperation=pending;config.PendingCharacter=pendingCharacter;executionFault=config.ExecutionReviewRequired=true;throw;}
-                    market.Queue.Begin();Record("User cleared both stopped-run holds after inventory review; automatic execution remains off");
+                    market.Queue.Begin();Record("User cleared both stopped-run holds after inventory review; enabled features resume on the next authorised AutoRetainer run");
                 }
             }
             catch(Exception ex){Record("Could not clear the integration hold: "+ex.Message);}

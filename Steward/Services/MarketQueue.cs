@@ -34,7 +34,8 @@ public sealed unsafe partial class MarketQueue : IDisposable
     private DateTimeOffset comparisonOpened;
     public OperationQueue Queue { get; }
     public MarketQueue(IDalamudPluginInterface pi,IMarketBoard market,InventoryView view,Configuration config,NativeUi ui,Func<Stock,Decision> judge,Action<string> history,Action refreshProtection,Func<bool> marketPreferencesReady,Action<string> fault,Action<string> begin,Action complete,Action<uint> protectCollection,Action<string> notify,Func<Stock,Decision> previewJudge,Action save,Func<Stock,ulong,bool,Decision> marketJudge,NativeDresserStore dresserStore)
-    {this.dresserStore=dresserStore;this.marketJudge=marketJudge;this.save=save;this.pi=pi;this.market=market;this.view=view;this.config=config;this.ui=ui;this.judge=judge;this.history=history;this.refreshProtection=refreshProtection;this.marketPreferencesReady=marketPreferencesReady;this.fault=fault;this.protectCollection=protectCollection;this.notify=notify;this.previewJudge=previewJudge;Queue=new(begin,complete);market.OfferingsReceived+=Received;}
+    {this.dresserStore=dresserStore;this.marketJudge=marketJudge;this.save=save;this.pi=pi;this.market=market;this.view=view;this.config=config;this.ui=ui;this.judge=judge;this.history=history;this.refreshProtection=refreshProtection;this.marketPreferencesReady=marketPreferencesReady;this.fault=fault;this.protectCollection=protectCollection;this.notify=notify;this.previewJudge=previewJudge;Queue=new(begin,complete,reason=>{history("Skipped item; continuing run: "+reason);notify("Skipped item: "+reason);});market.OfferingsReceived+=Received;}
+    public void ReplanPending(){Queue.ReplanPending();CheckFault();if(!Queue.Running)ReleaseManualCoordination();}
     private void CheckFault(){if(Queue.Status.StartsWith("Stopped:",StringComparison.Ordinal))fault(Queue.Status);}
     private bool AcquireManualCoordination()
     {
@@ -288,7 +289,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
     {
         DrainPackets();
         if(Queue.Running && manualControl!=0 && !pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsControl").InvokeFunc(manualControl))
-            Queue.Stop("Stopped: standalone control ownership was lost");
+            Queue.Stop(Queue.HasUnverifiedAction?"Stopped: standalone control ownership was lost":"Cancelled before submission: standalone control ownership was lost");
         if(Queue.Running)refreshProtection();
         Queue.Advance(now);CheckFault();if(!Queue.Running)ReleaseManualCoordination();
     }
@@ -298,6 +299,8 @@ public sealed unsafe partial class MarketQueue : IDisposable
         if(manualControl==0 || Environment.TickCount64<nextControlRelease)return;
         try
         {
+            if(!pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsControl").InvokeFunc(manualControl))
+            {manualControl=0;return;} // Never release another owner's control or keep retrying an expired lease.
             if(!pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.ReleaseControl").InvokeFunc(manualControl))
                 throw new InvalidOperationException("Control release was not acknowledged");
             manualControl=0;
@@ -329,7 +332,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
         history($"Retainer withdrawal planning: retainer={retainer}, live stacks={stored.Count}, candidates={candidates.Length}, collection only={collectionOnly}, free bag slots={InventoryView.FreeBagSlots()}, waiting dresser items={initialWaiting}");
         foreach(var stock in candidates.OrderBy(s=>view.Facts(s.ItemId) is {} f?StoragePolicy.Priority(f,config.Rules,view.Evidence):int.MaxValue).ThenBy(s=>s.ItemId))
         {
-            var sent=false;long before=0;
+            var sent=false;var attempted=false;long before=0;
             Queue.Add(new("Withdraw "+stock.ItemId,()=>
             {
                 if(!config.ExecutionEnabled||view.Character!=character||!config.Storage.RetainerEnabled(retainer))return StepResult.Failed;
@@ -358,7 +361,8 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     if(view.IsUnique(stock.ItemId)&&view.Items.Any(s=>s.ItemId==stock.ItemId))return StepResult.Completed;
                     if(decision.Outcome is Outcome.CollectDresser or Outcome.CollectArmoire)protectCollection(stock.ItemId);
                     var payload=System.Text.Json.JsonSerializer.Serialize(new{stock.Container,stock.Slot,stock.ItemId,stock.Quantity,stock.Hq,Retainer=retainer});
-                    if(!pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Retrieve").InvokeFunc(character,payload))return StepResult.Failed;
+                    attempted=true;
+                    if(!pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Retrieve").InvokeFunc(character,payload)){attempted=false;return StepResult.Failed;}
                     sent=true;return StepResult.Waiting;
                 }
                 if(InventoryView.ReadSlot(stock.Container,stock.Slot)==stock)return StepResult.Waiting;
@@ -370,7 +374,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 if(disposalOnly&&!pi.GetIpcSubscriber<ulong,ulong,uint,bool>("AutoRetainer.InventoryPolicy.CleanupWithdrawalConfirmed").InvokeFunc(character,retainer,stock.Quantity))
                     return StepResult.Failed;
                 history($"Confirmed withdrawal of {stock.ItemId} x{stock.Quantity}; retainer={retainer}, source={stock.Container}/{stock.Slot}, player count={before}->{after}");return StepResult.Completed;
-            },TimeoutMs:10000));
+            },TimeoutMs:10000,CanSkip:()=>!attempted));
         }
     }
     public void CleanupDresser()
@@ -407,7 +411,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
             if(!StoragePolicy.Restore(proposal.Outcome,config.CleanDresser,facts.ArmoireEligible && !view.Evidence.Armoire.Contains(id)))
             {retained.Add($"{facts.Name} [{id}]: {proposal.Outcome}, {proposal.Reason}");return;}
             planned++;
-            var sent=false;long before=0;var beforeCopies=0;
+            var sent=false;var attempted=false;long before=0;var beforeCopies=0;
             var retry=new DresserRestoreRetry();
             Queue.Add(new("Restore dresser item "+id,()=>
             {
@@ -436,6 +440,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     var state=new DresserRestoreState(raw,slot,live->PrismBoxStain0Ids[slot],live->PrismBoxStain1Ids[slot],beforeCopies,before);
                     if(!retry.Unchanged(state))throw new InvalidOperationException($"Dresser or inventory changed after a rejected restoration: item={id}; no retry submitted");
                     bool accepted;
+                    attempted=true;
                     if(outfitPart>=0)
                     {
                         if(!live->IsSetSlotUnlocked((uint)slot,outfitPart))return StepResult.Completed;
@@ -446,6 +451,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     else accepted=live->RestorePrismBoxItem((uint)slot);
                     if(!accepted)
                     {
+                        attempted=false; // Verified native false return submits no restoration command.
                         var detail=$"item={id}, slot={slot}, part={outfitPart}, raw={raw}, copies={beforeCopies}, carried={before}, freeSlots={InventoryView.FreeBagSlots()}, storedBytes={state.First}/{state.Second}";
                         if(!retry.Rejected(state,Environment.TickCount64))throw new InvalidOperationException("Game repeatedly rejected dresser restoration without submitting it: "+detail);
                         history("Dresser restoration deferred after native rejection (no command submitted): "+detail);
@@ -460,7 +466,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 if(acknowledgement==StepResult.Failed)throw new InvalidOperationException($"Dresser restoration acknowledgement mismatch: item={id}, dresser={beforeCopies}->{copies}, carried={before}->{after}");
                 if(acknowledgement!=StepResult.Completed)return acknowledgement;
                 history("Confirmed dresser restoration of "+id);return StepResult.Completed;
-            },TimeoutMs:10000));
+            },TimeoutMs:10000,CanSkip:()=>!attempted));
         }
     }
     public void DepositOpenDresser()
@@ -513,7 +519,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 submitted=true;
                 if(!dresserStore.Submit(manager,source,plan))throw new InvalidOperationException("Native dresser submission rejected for item "+source.ItemId);
                 return StepResult.Waiting;
-            },TimeoutMs:30000));
+            },TimeoutMs:30000,CanSkip:()=>!submitted));
         }
         if(!Queue.Running)ReleaseManualCoordination();
     }

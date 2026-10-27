@@ -1,6 +1,6 @@
 # Automatic listing and read-only review
 
-Local development implementation, 26 October 2026. Nothing is published by building this project. Protocol 6 AutoRetainer coordination remains required. Log-only defaults on; automatic execution starts off.
+Local development implementation, 26 October 2026. Nothing is published by building this project. Protocol 6 AutoRetainer coordination remains required. Log-only defaults on; enabled features follow AutoRetainer once review mode is off.
 
 ## Listing pass
 

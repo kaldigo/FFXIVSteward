@@ -68,13 +68,6 @@ static class ExecutionChecks
         catch(InvalidDataException){check(true,"Malformed quality flags rejected");}
         try{Imports.MarketCache("header\n42,N,1,0,2026-10-25,1000,X\n");throw new Exception("Bad owner accepted");}
         catch(InvalidDataException){check(true,"Unknown own-price flags cannot become competitor prices");}
-        var automatic=false;var writes=0;
-        check(!ExecutionMode.Enable(false,value=>automatic=value,()=>writes++)&&!automatic&&writes==0,
-            "An unresolved hold or unavailable connection cannot enable automatic execution");
-        try{ExecutionMode.Enable(true,value=>automatic=value,()=>throw new IOException("disk"));throw new Exception("Enable save failure swallowed");}
-        catch(IOException){check(!automatic,"Failed settings save leaves automatic execution off");}
-        check(ExecutionMode.Enable(true,value=>automatic=value,()=>writes++)&&automatic&&writes==1,
-            "Automatic execution requires a successful settings save");
         foreach(var outcome in Enum.GetValues<Outcome>())
         {
             var original=new Decision(outcome,"Original");
@@ -114,10 +107,10 @@ static class ExecutionChecks
         starting=new(_=>starting!.Stop("Stopped: startup cancellation"),()=>throw new Exception("Must not acknowledge"));
         starting.Add(new("Cancelled startup",()=>{startedTicks++;return StepResult.Completed;}));starting.Advance(9);
         check(startedTicks==0&&starting.Status=="Stopped: startup cancellation","Cancellation inside the pre-start callback cannot invoke a native tick");
-        automatic=true;var review=false;
-        try{ExecutionMode.Persist(()=>throw new IOException("rule save"),()=>{automatic=false;review=true;});}
+        var persistence=new Steward.Configuration{LogOnly=false};
+        try{ExecutionMode.Persist(()=>throw new IOException("rule save"),()=>persistence.ExecutionReviewRequired=true);}
         catch(IOException){}
-        check(!automatic&&review,"Any failed rule/settings save stops execution and requires review");
+        check(!persistence.ExecutionEnabled&&persistence.ExecutionReviewRequired,"Any failed rule/settings save stops execution and requires review");
         for(uint quantity=1;quantity<=5;quantity++)
         for(uint removed=1;removed<=quantity;removed++)
         {

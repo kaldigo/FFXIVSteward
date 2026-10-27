@@ -77,10 +77,8 @@ class FeatureWiring(unittest.TestCase):
 
     def test_storage_starts_only_from_handoff_or_explicit_run(self):
         plugin=(ROOT/'Plugin.cs').read_text()
-        automatic=plugin.split('private void SetAutomatic(bool enabled)')[1].split('private void Run(')[0]
-        self.assertNotIn('storageRun.Begin',automatic)
-        self.assertNotIn('BeginStorageRun',automatic)
-        self.assertIn('storageRun.End()',automatic)
+        self.assertNotIn('SetAutomatic',plugin)
+        self.assertNotIn('Enable automation',(ROOT/'Plugin.Settings.cs').read_text())
         stop=plugin.split('private void StopQueue()')[1].split('private void Stop()')[0]
         self.assertIn('storageRun.End()',stop)
         postprocess=plugin.split('private void Postprocess(')[1].split('private void FinishPostprocess()')[0]

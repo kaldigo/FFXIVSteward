@@ -49,7 +49,7 @@ public sealed unsafe partial class MarketQueue
         foreach(var source in view.Items.ToArray().Where(s=>s.Quantity==1&&view.StorageBlock(s,retainer)==null&&previewJudge(s).Outcome==Outcome.StoreRetainer))
         {
             protectCollection(source.ItemId); // Synchronous durable hold precedes any native transfer.
-            var sent=false;long beforePlayer=0,beforeRetainer=0;
+            var sent=false;var attempted=false;long beforePlayer=0,beforeRetainer=0;
             Queue.Add(new("Store protected overflow "+source.ItemId,()=>
             {
                 if(!config.ExecutionEnabled||view.Character!=character)return StepResult.Failed;
@@ -69,8 +69,12 @@ public sealed unsafe partial class MarketQueue
                     beforePlayer=view.Items.Where(s=>s.ItemId==source.ItemId&&s.Hq==source.Hq).Sum(s=>(long)s.Quantity);
                     beforeRetainer=destination.Where(s=>s.ItemId==source.ItemId&&s.Hq==source.Hq).Sum(s=>(long)s.Quantity);
                     var payload=System.Text.Json.JsonSerializer.Serialize(new{source.Container,source.Slot,source.ItemId,source.Quantity,source.Hq,Retainer=retainer});
+                    attempted=true;
                     if(!pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Store").InvokeFunc(character,payload))
-                        return pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.HasFault").InvokeFunc(character)?StepResult.Failed:StepResult.Completed; // Fork rejected before submission.
+                    {
+                        if(pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.HasFault").InvokeFunc(character))return StepResult.Failed;
+                        attempted=false;return StepResult.Failed; // Known rejection without a native transaction; skip this item.
+                    }
                     sent=true;return StepResult.Waiting;
                 }
                 var afterPlayer=view.Items.Where(s=>s.ItemId==source.ItemId&&s.Hq==source.Hq).Sum(s=>(long)s.Quantity);
@@ -81,7 +85,7 @@ public sealed unsafe partial class MarketQueue
                 if(pi.GetIpcSubscriber<bool>("AutoRetainer.InventoryPolicy.SubmissionPending").InvokeFunc())return StepResult.Waiting;
                 completed++;history("Confirmed protected overflow storage: "+source.ItemId+" → "+label+". Collection hold retained.");
                 return StepResult.Completed;
-            },TimeoutMs:12000));
+            },TimeoutMs:12000,CanSkip:()=>!attempted));
         }
         Queue.Add(new("Overflow storage summary",()=>
         {if(completed>0)notify($"Stored {completed} protected glamour item(s) with {label}; they remain protected while waiting for collection.");return StepResult.Completed;}));

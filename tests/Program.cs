@@ -206,7 +206,7 @@ Check(released==4&&!queue.Running&&queue.Status.Contains("cleanup failure"),"One
     var writes=new List<string>();var journal=new ReviewJournal((_,lines)=>writes.AddRange(lines));
     journal.Snapshot(Path.Combine(Path.GetTempPath(),"steward-review-mode","log.jsonl"),[new ReviewEntry(1,"test",100,1,false,"WouldDispose","Disabled")],"DisposalReview");
     Check(writes.Count==1&&writes[0].Contains("DisposalReview"),"Disposal-only review has truthful mode label");
-    var cfg=new Steward.Configuration{LogOnly=true,Automatic=true};
+    var cfg=new Steward.Configuration{LogOnly=true};
     Check(!cfg.ExecutionEnabled,"Log-only blocks automatic storage and gil");
     cfg.Features.Disposal=false;Check(!cfg.Features.Allows("Vendor",Outcome.Dispose)&&cfg.LogDisposal,"Disposal logging independent of execution permission");
 }
@@ -252,7 +252,7 @@ Check(released==4&&!queue.Running&&queue.Status.Contains("cleanup failure"),"One
     Check(strategy.Price([Offer(100,1,0)],new HashSet<ulong>{777},true)==null,"Unidentified seller holds strategy");
     Check(strategy.Price([Offer(100),Offer(100)],new HashSet<ulong>{777},true)==null,"Duplicate listing evidence rejected");
     Check(strategy.Price([Offer(50000) with{Hq=true}],new HashSet<ulong>{777},true)==null,"Impossible HQ dye evidence is held");
-    var cfg=new Steward.Configuration{Silver=strategy,ExcludedSaleRetainers=[777],LogOnly=true,Automatic=true};
+    var cfg=new Steward.Configuration{Silver=strategy,ExcludedSaleRetainers=[777],LogOnly=true};
     Check(cfg.SalesEnabledFor(777)&&!cfg.ExecutionEnabled,"Explicit strategy exception does not bypass log-only");
     cfg.Silver.Enabled=false;Check(!cfg.SalesEnabledFor(777),"Disabling strategy restores excluded retainer gate");
     Check(!new SilverStrategy{Enabled=true,Retainer=777,MinimumPrice=46000,ResetPrice=45000}.Valid,"Invalid price configuration rejected");
@@ -369,3 +369,37 @@ Console.WriteLine($"{total} checks passed including bounded rejected dresser sub
     Check(System.Text.Json.JsonSerializer.Deserialize<RuleSettings>("{}")!.NonEquipmentDisposalCategories.Count==0,"Existing configurations gain no disposal categories automatically");
 }
 Console.WriteLine($"{total} checks passed including category disposal permissions and storage authority.");
+
+{
+    var journal=false;var reports=new List<string>();var followed=false;
+    var q=new OperationQueue(_=>journal=true,()=>journal=false,reports.Add);
+    q.Add(new("Rejected item",()=>StepResult.Failed,CanSkip:()=>true));
+    q.Add(new("Next item",()=>{followed=true;return StepResult.Completed;},CanSkip:()=>true));
+    q.Advance(0);
+    Check(q.Running&&q.Skipped==1&&!journal&&reports.Count==1,"Known unsubmitted rejection reports a skip and clears only its operation journal");
+    q.Advance(1);Check(followed&&q.Completed==1&&q.Skipped==1&&!q.Running&&!journal,"Later items execute after a rejected item without disabling the run");
+    var attempted=false;journal=false;followed=false;
+    q=new(_=>journal=true,()=>journal=false,reports.Add);
+    q.Add(new("Ambiguous native call",()=>{attempted=true;throw new IOException("IPC failed after entering native call");},CanSkip:()=>!attempted));
+    q.Add(new("Must not submit",()=>{followed=true;return StepResult.Completed;}));q.Advance(0);
+    Check(q.Status.StartsWith("Stopped:")&&journal&&!followed&&q.Skipped==0,"A possibly submitted action still requires review and never continues blindly");
+    journal=false;q=new(_=>journal=true,()=>journal=false,reports.Add);
+    q.Add(new("Unavailable before submission",()=>StepResult.Waiting,TimeoutMs:1,CanSkip:()=>true));q.Advance(0);q.Advance(2);
+    Check(q.Skipped==1&&!journal&&!q.Status.StartsWith("Stopped:"),"Pre-submission timeout is a recoverable item skip");
+    journal=false;q=new(_=>journal=true,()=>journal=false,reports.Add);
+    q.Add(new("Submitted but unacknowledged",()=>StepResult.Waiting,TimeoutMs:1,CanSkip:()=>false));q.Advance(0);q.Advance(2);
+    Check(q.Status.StartsWith("Stopped:")&&journal,"Unacknowledged submission timeout remains a durable hold");
+    journal=false;q=new(_=>journal=true,()=>journal=false,reports.Add);
+    q.Add(new("Cancelled before submission",()=>StepResult.Waiting,CanSkip:()=>true));q.Advance(0);q.Stop("Cancelled");
+    Check(!journal&&!q.Running,"Safe cancellation cannot leave a stale journal that blocks the next login");
+    journal=false;var pendingCleaned=false;var activeFinished=false;
+    q=new(_=>journal=true,()=>journal=false,reports.Add);
+    q.Add(new("Already submitted",()=>activeFinished?StepResult.Completed:StepResult.Waiting,CanSkip:()=>false));
+    q.Add(new("Old planned item",()=>throw new Exception("Old decision was executed"),()=>pendingCleaned=true));q.Advance(0);q.ReplanPending();
+    Check(q.Running&&journal&&pendingCleaned,"Settings edits retain acknowledgement of the active action and remove old queued decisions");
+    activeFinished=true;q.Advance(1);Check(!journal&&!q.Running&&q.Status=="Completed","Active acknowledgement finishes normally after a settings edit");
+    journal=false;q=new(_=>journal=true,()=>throw new IOException("Cannot persist acknowledgement"),reports.Add);
+    q.Add(new("Rejected item with failed save",()=>StepResult.Failed,CanSkip:()=>true));q.Advance(0);
+    Check(q.Status.StartsWith("Stopped:")&&journal,"A failed journal save cannot silently turn a skip into permission to continue");
+}
+Console.WriteLine($"{total} checks passed including recoverable skips, live control modes and durable uncertainty.");

@@ -46,7 +46,7 @@ class ReviewWiring(unittest.TestCase):
 
     def test_mode_change_cancels_before_relaxation(self):
         review=(ROOT/'Steward/Plugin.Review.cs').read_text(encoding='utf-8')
-        self.assertLess(review.index('config.LogOnly=true;Stop();'),review.index('config.LogOnly=enabled;config.Automatic=false;Save();'))
+        self.assertLess(review.index('config.LogOnly=true;Stop();'),review.index('config.LogOnly=enabled;Save();'))
         self.assertNotIn('InvokeFunc(player.ContentId,"',review)
         self.assertIn('cached {AllaganRetainerPreview.Location(stock)}',review)
         self.assertNotIn('File.AppendAll',review)

@@ -28,8 +28,8 @@ public sealed partial class Plugin
         {
             // Set the restrictive flag before cancellation/save; changing mode never enables execution.
             config.LogOnly=true;Stop();
-            config.LogOnly=enabled;config.Automatic=false;Save();reviewJournal.Reset();nextReview=0;
-            Record(enabled?"Log-only review enabled: all managed item actions blocked":"Log-only review disabled; automatic execution remains off");
+            config.LogOnly=enabled;Save();reviewJournal.Reset();nextReview=0;
+            Record(enabled?"Log-only review enabled: all managed item actions blocked":"Log-only review disabled; enabled features resume on the next authorised AutoRetainer run");
         }
         ImGui.TextWrapped("Logs collection destinations, overflow, proposed listings and prices, disposal, and enabled dresser cleanup. No managed item actions occur in log-only mode. Open a retainer selling list to load its market capacity; cached prices are labelled estimates.");
         Setting("Log disposal candidates",config.LogDisposal,v=>config.LogDisposal=v,"Records eligibility even while AutoRetainer demo mode blocks disposal. Never enables disposal.");

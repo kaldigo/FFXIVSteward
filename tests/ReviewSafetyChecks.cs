@@ -10,7 +10,7 @@ static class ReviewSafetyChecks
         try
         {
             var path=Path.Combine(root,"state.json");
-            var config=new Configuration{SafetyRevision=6,Automatic=true,LogOnly=false,PendingCollection=new(){{11,[42]},{22,[99]}}};
+            var config=new Configuration{SafetyRevision=6,LogOnly=false,PendingCollection=new(){{11,[42]},{22,[99]}}};
             AtomicState.Write(path,config);
             var loaded=AtomicState.ReadOrMigrate<Configuration>(path,()=>throw new Exception("Unexpected migration"));
             check(loaded.PendingCollection[11].SetEquals([42]),"Actual settings file reload preserves retainer collection hold");
@@ -47,10 +47,10 @@ static class ReviewSafetyChecks
             File.Delete(path);
             try{_ = AtomicState.ReadOrMigrate(path,()=>Configuration.FromLegacy(loaded));throw new Exception("Lost authoritative state silently migrated");}
             catch(InvalidDataException){check(true,"Missing authoritative file cannot fall back to an incomplete compatibility mirror after overflow was introduced");}
-            foreach(var automatic in new[]{false,true})foreach(var logOnly in new[]{false,true})
+            foreach(var connected in new[]{false,true})foreach(var held in new[]{false,true})foreach(var logOnly in new[]{false,true})
             {
-                var mode=new Configuration{Automatic=automatic,LogOnly=logOnly};
-                check(mode.ExecutionEnabled==(automatic&&!logOnly),"Only explicit automatic plus log-only off can execute");
+                var mode=new Configuration{Connected=connected,ExecutionReviewRequired=held,LogOnly=logOnly};
+                check(mode.ExecutionEnabled==(connected&&!held&&!logOnly),"Features follow AutoRetainer without a master toggle; connection, log-only and uncertain holds gate execution");
                 if(logOnly)foreach(var outcome in Enum.GetValues<Outcome>())foreach(var action in new[]{"Gc","Vendor","Desynth","Market","Dresser","Armoire","Retrieve","Store","Discard"})
                     check(!ActionPolicy.Allows(action,outcome,mode.ExecutionEnabled,true,false,true,true),"Log-only blocks every managed action/outcome");
             }

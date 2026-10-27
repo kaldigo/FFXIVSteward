@@ -10,7 +10,7 @@ class CleanupWiring(unittest.TestCase):
   plugin=(ROOT/'Plugin.cs').read_text()
   self.assertIn('CancelCleanup();',plugin.split('private void StopQueue()')[1])
   self.assertIn('!cleanupActive&&storageRun.Allows',plugin)
-  self.assertNotIn('StartCleanup',plugin.split('private void SetAutomatic(')[1].split('private void Run(')[0])
+  self.assertNotIn('SetAutomatic',plugin)
   queue=(ROOT/'Services/MarketQueue.cs').read_text().split('public void WithdrawForOtherActions')[1].split('public void CleanupDresser')[0]
   self.assertIn('if(!disposalOnly)EnqueueOverflow',queue)
   self.assertIn('disposalOnly&&decision.Outcome!=Outcome.Dispose',queue)

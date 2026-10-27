@@ -1,3 +1,7 @@
+## 0.1.0.53
+
+Remove the master Enable automation switch: enabled features follow AutoRetainer, with log-only and genuine inventory-review holds retaining their gates. Settings edits replan pending decisions without switching participation off or cancelling acknowledgement of a submitted action. Report and skip verified unsubmitted item failures; preserve uncertain-submission, journal-save and cleanup holds. Clear operation journals for safe cancellation so rejected items cannot block the next login.
+
 ## 0.1.0.52
 
 Remove duplicate storage assignments from Steward. Ordinary entrust follows AutoRetainer's selected plan; protected overflow and previews query the current AutoRetainer plan. Migrate the currency storage role once into AutoRetainer. Add opt-in non-equipment disposal categories on the Storage page, preserving sale priority, reserves, exclusions, price-data holds and native disposal controls. Review evidence records the item or category permission. Requires AutoRetainer 4.6.3.21.

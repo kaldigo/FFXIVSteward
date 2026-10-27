@@ -60,12 +60,9 @@ public sealed partial class Plugin : IDalamudPlugin
         statePath=Path.Combine(pi.GetPluginConfigDirectory(),"steward-state.json");
         config=AtomicState.ReadOrMigrate(statePath,()=>Configuration.FromLegacy(pi.GetPluginConfig() as Configuration));
         if(config.Version!=1)throw new InvalidDataException("Unsupported Steward settings; execution cannot start");
-        // A failed Stop write must never let a later process restore an old enabled flag.
-        config.Automatic=false;
         if(config.SummaryCacheRevision<1){config.Rules.SummaryRefreshHours=Math.Clamp(config.Rules.SummaryRefreshHours,1,2);config.SummaryCacheRevision=1;}
         if(config.SafetyRevision<7)
         {
-            config.Automatic=false;
             config.SafetyRevision=7;config.LogOnly=true;config.ListingWindows=new();
             Save();
         }
@@ -76,7 +73,7 @@ public sealed partial class Plugin : IDalamudPlugin
         executionFault=config.ExecutionReviewRequired;
         if(!string.IsNullOrEmpty(config.PendingOperation))
         {
-            executionFault=config.ExecutionReviewRequired=true;config.Automatic=false;Save();
+            executionFault=config.ExecutionReviewRequired=true;Save();
         }
         Save();
         if(!config.InitialExclusionsApplied)
@@ -119,7 +116,7 @@ public sealed partial class Plugin : IDalamudPlugin
         if(args.Trim()=="trace dresser")
         {
             if(!CanTraceDresser()){chat.Print("[Steward] Stop Steward and AutoRetainer automation before starting a manual dresser trace.");return;}
-            dresserTrace.Start();chat.Print("[Steward] Dresser trace started for two minutes. Manually store one item; leave automation off and the stopped-run hold in place.");
+            dresserTrace.Start();chat.Print("[Steward] Dresser trace started for two minutes. Manually store one item; use log-only mode and leave any stopped-run hold in place.");
         }
         else if(args.Trim()=="trace stop")dresserTrace.Stop();
         else if(args.Trim()=="stop"){dresserTrace.Stop();Stop();}
@@ -133,7 +130,7 @@ public sealed partial class Plugin : IDalamudPlugin
     }
     private void Save()
     {
-        ExecutionMode.Persist(()=>AtomicState.Write(statePath,config),()=>{config.Automatic=false;executionFault=config.ExecutionReviewRequired=true;});
+        ExecutionMode.Persist(()=>AtomicState.Write(statePath,config),()=>{executionFault=config.ExecutionReviewRequired=true;});
         // This is a compatibility mirror; the synchronous private state above is authoritative.
         try{pi.SavePluginConfig(config);}catch(Exception ex){log.Error(ex,"Could not mirror Steward settings; private safety state is saved");}
     }
@@ -229,9 +226,9 @@ public sealed partial class Plugin : IDalamudPlugin
     }
     private void HoldExecution(string reason)
     {
-        if(executionFault && config.ExecutionReviewRequired && !config.Automatic)return;
+        if(executionFault && config.ExecutionReviewRequired)return;
         executionFault=config.ExecutionReviewRequired=true;
-        config.Automatic=false;
+
         try{Save();}catch(Exception ex){log.Error(ex,"Could not persist execution hold; this session remains stopped");}
         try{if(attached!=0)pi.GetIpcSubscriber<ulong,string,object>("AutoRetainer.InventoryPolicy.Hold").InvokeAction(attached,reason);}
         catch(Exception ex){log.Debug(ex,"AutoRetainer review hold could not be notified; Steward remains stopped");}
@@ -321,7 +318,7 @@ public sealed partial class Plugin : IDalamudPlugin
                     if(attached==0 && pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Connect").InvokeFunc(player.ContentId,Endpoint))attached=player.ContentId;
                     if(attached!=0&&!pi.GetIpcSubscriber<ulong,ulong,bool>("AutoRetainer.InventoryPolicy.MigrateStorageRouting").InvokeFunc(attached,config.Storage.Enabled?config.Storage.NonmarketableRetainer:0))throw new InvalidOperationException("AutoRetainer storage-role migration is not ready");
                     if(pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.HasFault").InvokeFunc(player.ContentId))HoldExecution("AutoRetainer has an unresolved inventory transaction");
-                    status=attached!=0?(config.LogOnly?"Log only: proposed actions recorded; all item actions blocked":config.Automatic?"Automatic decisions enabled":"Dry run: AutoRetainer item actions held"):"Waiting for AutoRetainer integration";
+                    status=attached!=0?(config.LogOnly?"Log only: proposed actions recorded; all item actions blocked":config.ExecutionEnabled?"Enabled features follow AutoRetainer":"Item actions held for review"):"Waiting for AutoRetainer integration";
                 }
             }
             if(ownsPostprocess && !pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsHandoff").InvokeFunc(player.ContentId))
@@ -390,7 +387,7 @@ public sealed partial class Plugin : IDalamudPlugin
             var key="refresh-error/"+ex.Message;
             if(!recentDecisions.TryGetValue(key,out var last)||Environment.TickCount64-last>60000)
             {recentDecisions[key]=Environment.TickCount64;log.Error(ex,"Steward update failed");Record("Steward refresh failed; review may be incomplete: "+ex.Message);}
-            if(config.Automatic || market.Queue.Running || ownsPostprocess)HoldExecution(ex.Message);StopQueue();
+            if(market.Queue.Running || ownsPostprocess || config.PendingOperation!=null)HoldExecution(ex.Message);StopQueue();
         }
     }
     private void RequestPostprocess(string retainer)
@@ -437,27 +434,11 @@ public sealed partial class Plugin : IDalamudPlugin
     {
         CancelCleanup();
         storageRun.End();
-        if(market.Queue.Running && !executionFault)HoldExecution("An active operation was cancelled; its last game action may still complete");
+        if(market.Queue.HasUnverifiedAction && !executionFault)HoldExecution("An active operation was cancelled; its last game action may still complete");
         openingInventory=withdrawing=openingMarket=false;overflowPass=collectionPass=false;cleanupVisited=false;
         try{market.Stop();}finally{FinishPostprocess();}
     }
-    private void Stop(){config.Automatic=false;try{StopQueue();}finally{Save();}Record("Automatic execution stopped; managed items remain held");}
-    private void SetAutomatic(bool enabled)
-    {
-        if(!enabled){Stop();return;}
-        storageRun.End();
-        if(config.LogOnly){Record("Log only is enabled. Turn it off in Developer tools before enabling automatic execution.");return;}
-        try
-        {
-            if(pi.GetIpcSubscriber<int>("AutoRetainer.InventoryPolicy.StorageVersion").InvokeFunc()<4)throw new InvalidOperationException("Update AutoRetainer before enabling managed actions: the AutoRetainer entrust-plan storage integration is required");
-            var ready=!config.LogOnly && player.IsLoaded && config.Connected && attached!=0 && attached==player.ContentId && !executionFault &&
-                !config.ExecutionReviewRequired && !market.Queue.Running && !ownsPostprocess &&
-                !pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.HasFault").InvokeFunc(player.ContentId);
-            if(!ExecutionMode.Enable(ready,value=>config.Automatic=value,Save))
-                Record("Automatic execution remains off: connect the current character and resolve the stopped run first");
-        }
-        catch(Exception ex){HoldExecution("Automatic execution could not be safely enabled: "+ex.Message);StopQueue();}
-    }
+    private void Stop(){try{StopQueue();}finally{Save();}Record("Current Steward run stopped; enabled features wait for the next authorised AutoRetainer run");}
     private void Run(string operation)
     {
         if(operation=="Dresser"&&!config.Features.DresserCollection&&!config.CleanDresser||operation=="Armoire"&&!config.Features.ArmoireStorage)

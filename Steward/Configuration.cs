@@ -14,13 +14,12 @@ public sealed class Configuration : IPluginConfiguration, IJsonOnDeserialized
         return legacy;
     }
     [JsonRequired] public int Version { get; set; } = 1;
-    public bool Automatic { get; set; }
     public HashSet<ulong> WithdrawGilRetainers { get; set; } = [];
     public SilverStrategy Silver {get;set;}=new();
     public bool LogDisposal { get; set; } = true;
     public RetainerStorageSettings Storage { get; set; } = new();
     public bool LogOnly { get; set; } = true;
-    [JsonIgnore] public bool ExecutionEnabled => Automatic && !LogOnly;
+    [JsonIgnore] public bool ExecutionEnabled => Connected && !LogOnly && !ExecutionReviewRequired;
     [JsonRequired] public int SafetyRevision { get; set; }
     public bool ExecutionReviewRequired { get; set; }
     public string? PendingOperation { get; set; }
