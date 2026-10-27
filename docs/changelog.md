@@ -1,3 +1,7 @@
+## 0.1.0.50
+
+Route all equipment by its assigned storage category regardless of marketability. Limit the currency retainer to currencies and nonmarketable non-equipment, preserving gearset, item/category, retainer and unlock exclusions. Clarify the storage labels and help text. Existing category assignments apply without editing live AutoRetainer settings; items already stored are not moved automatically.
+
 ## 0.1.0.49
 
 Wait 500 ms and retry at most twice after a dresser restoration explicitly returns false (no command submitted). Require unchanged source identity, stored-part bytes and source/destination counts, plus fresh protection and control checks; accepted or uncertain submissions never retry. Log every retained dresser entry and its rule reason so skipped items can be distinguished from unprocessed items after a stop. Native acceptance remains pending.

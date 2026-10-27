@@ -189,6 +189,25 @@ Check(released==4&&!queue.Running&&queue.Status.Contains("cleanup failure"),"One
     foreach(long? status in new long?[]{null,0,2,3})Check(storage.Block(material,proof,1,status)!=null,"Unknown/unlearned unlock held");
     Check(storage.Block(material,proof,1,1)==null,"Learned duplicate eligible");
     Check(storage.Block(material with{Category=100},proof,2,4)==null,"Currency category overrides marketability");
+    storage.Categories[10]=[1,22]; // Weapons and tools.
+    storage.Categories[11]=[34,35,43]; // Armour and accessories.
+    foreach(var marketable in new[]{false,true})
+    foreach(var (category,destination) in new (uint,ulong)[]{(1,10),(22,10),(34,11),(35,11),(43,11)})
+    {
+        var gearItem=material with{Equipment=true,Category=category,Marketable=marketable};
+        Check(storage.Block(gearItem,proof,destination,4)==null,"All gear uses its category destination regardless of marketability");
+        Check(storage.Block(gearItem,proof,destination==10?11ul:10ul,4)!=null,"Gear cannot leak to the other gear destination");
+        Check(storage.Block(gearItem,proof,2,4)!=null,"Currency retainer never receives gear");
+        proof.Gearsets.Add(gearItem.Id);
+        Check(storage.Block(gearItem,proof,destination,4)!=null,"Gearset protection still overrides gear destination");
+        proof.Gearsets.Clear();
+        storage.ExcludedItems.Add(gearItem.Id);
+        Check(storage.Block(gearItem,proof,destination,4)!=null,"Explicit item exclusion still overrides gear destination");
+        storage.ExcludedItems.Remove(gearItem.Id);
+    }
+    storage.Categories[2]=[1,48];
+    Check(storage.Block(material with{Equipment=true,Category=1,Marketable=false},proof,2,4)!=null,"Legacy currency category overlap cannot admit gear");
+    Check(storage.Block(material,proof,2,4)!=null,"Currency retainer does not take marketable non-gear categories");
     var writes=new List<string>();var journal=new ReviewJournal((_,lines)=>writes.AddRange(lines));
     journal.Snapshot(Path.Combine(Path.GetTempPath(),"steward-review-mode","log.jsonl"),[new ReviewEntry(1,"test",100,1,false,"WouldDispose","Disabled")],"DisposalReview");
     Check(writes.Count==1&&writes[0].Contains("DisposalReview"),"Disposal-only review has truthful mode label");

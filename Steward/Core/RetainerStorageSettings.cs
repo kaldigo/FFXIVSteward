@@ -21,7 +21,9 @@ public sealed class RetainerStorageSettings
         // 1=learned, 2=unlearned, 3=unknown, 4=not an unlock. Null is unavailable.
         if(unlockStatus is not (1 or 4))return "Unlearned or unverified unlock item: keep available to use";
         if(!Enabled)return null;
-        if(!item.Marketable||item.Category==100)return retainer==NonmarketableRetainer?null:"Nonmarketable items belong on the currency retainer";
+        if(!item.Equipment&&(!item.Marketable||item.Category==100))
+            return retainer==NonmarketableRetainer?null:"Currencies and nonmarketable non-gear items belong on the currency retainer";
+        if(retainer==NonmarketableRetainer)return "Currency retainer only accepts currencies and nonmarketable non-gear items";
         return Categories.TryGetValue(retainer,out var categories)&&categories.Contains(item.Category)?null:"Item belongs to another storage category";
     }
 }
