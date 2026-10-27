@@ -3,7 +3,7 @@
     "Author": "kaldigo",
     "Name": "Steward",
     "InternalName": "Steward",
-    "AssemblyVersion": "0.1.0.29",
+    "AssemblyVersion": "0.1.0.30",
     "Description": "Collection-aware inventory decisions and market rules coordinated with the AutoRetainer integration fork. Starts in dry-run mode.",
     "ApplicableVersion": "any",
     "RepoUrl": "https://github.com/kaldigo/FFXIVSteward",
@@ -13,11 +13,11 @@
     "CanUnloadAsync": false,
     "LoadPriority": 0,
     "Punchline": "Collect what matters. Sell the surplus.",
-    "Changelog": "Add global sale-retainer selection and optional per-rule restrictions. Check existing listings against sale rules and log/return known failures. Returned market stock follows normal collection, sale and disposal rules; no automatic relisting protection. Combined HQ/NQ previews select the cheapest available listing independently of historical averages. Add the bundled Steward icon above sidebar navigation. Safety revision 8 restores log-only and clears legacy sale-return reserves while preserving collection and uncertain-operation holds. Native return interaction still requires in-game verification. Add a live-comparison safeguard against 1\u20133 extreme low-price outliers supported by ten similarly priced competing listings; average-value decisions stay unchanged. Add independent feature switches for market actions, collection destinations, overflow and disposal; keep existing dresser-cleanup toggle. Disabled features retain protection rules and settings, gate native/IPC work, and are labelled in review logs. Collection withdrawals no longer inherit sale-retainer exclusions.",
+    "Changelog": "Group category selectors like the marketboard: Main Arm/Off Arm, Armor, Items and Housing. Combine hand/tool variants and add whole-group Select all/Clear all controls, preserving partial saved selections. Persist native glamour-plate references per character and reuse them after restart; refresh automatically from live observations, including empty plates. Label saved/live reference evidence in the UI and logs. Missing or corrupt plate caches remain unavailable and never establish collection ownership. Runtime layout and restart behavior remain subject to in-game verification.",
     "AcceptsFeedback": true,
     "IconUrl": "https://raw.githubusercontent.com/kaldigo/FFXIVSteward/main/assets/icon.png",
-    "DownloadLinkInstall": "https://github.com/kaldigo/FFXIVSteward/releases/download/v0.1.0.29/Steward.zip",
-    "DownloadLinkUpdate": "https://github.com/kaldigo/FFXIVSteward/releases/download/v0.1.0.29/Steward.zip",
-    "DownloadLinkTesting": "https://github.com/kaldigo/FFXIVSteward/releases/download/v0.1.0.29/Steward.zip"
+    "DownloadLinkInstall": "https://github.com/kaldigo/FFXIVSteward/releases/download/v0.1.0.30/Steward.zip",
+    "DownloadLinkUpdate": "https://github.com/kaldigo/FFXIVSteward/releases/download/v0.1.0.30/Steward.zip",
+    "DownloadLinkTesting": "https://github.com/kaldigo/FFXIVSteward/releases/download/v0.1.0.30/Steward.zip"
   }
 ]
