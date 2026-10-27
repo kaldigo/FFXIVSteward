@@ -18,8 +18,6 @@ public sealed partial class Plugin
         DrawCategorySelection("Included categories",rule.Categories,"All categories","Empty means every category can match this sale rule. Select categories to limit it to those item types.");
         DrawCategorySelection("Excluded categories for this rule",rule.ExcludedCategories,"None excluded","Checked categories cannot match this rule, even if included above. They can still match a later sale rule.");
     }
-    private static string CategorySection(uint id,byte major)=>id is >=64 and <=80 or 82 or 95?"Housing":major switch
-    {1=>"Weapons",2=>"Crafting and gathering tools",3=>"Armour and shields",4=>"Accessories",5=>"Consumables",6=>"Materials and components",_=>"Other items"};
     private void DrawCategorySelection(string label,HashSet<uint> selected,string emptyLabel,string description)
     {
         var summary=selected.Count==0?emptyLabel:$"{selected.Count} selected";
@@ -35,32 +33,47 @@ public sealed partial class Plugin
             if(selected.Count>0)ImGui.TextWrapped("Selected: "+string.Join(", ",selected.Take(8).Select(id=>view.Categories.GetValueOrDefault(id,"Unavailable")))+(selected.Count>8?" …":""));
             if(ImGui.SmallButton("Select all")){selected.UnionWith(view.Categories.Keys.Where(id=>id!=39));SavePolicy();}
             ImGui.SameLine();if(ImGui.SmallButton("Clear selection")){selected.Clear();SavePolicy();}
-            var visible=view.Categories.OrderBy(p=>view.CategoryDetails.GetValueOrDefault(p.Key).Major)
-                .ThenBy(p=>view.CategoryDetails.GetValueOrDefault(p.Key).Minor)
-                .Where(p=>(p.Key!=39||selected.Contains(p.Key))&&(query.Length==0||p.Value.Contains(query,StringComparison.OrdinalIgnoreCase)||CategorySection(p.Key,view.CategoryDetails.GetValueOrDefault(p.Key).Major).Contains(query,StringComparison.OrdinalIgnoreCase)||p.Key.ToString().Contains(query))).ToArray();
+            var choices=CategoryDisplay.Build(view.Categories,view.CategoryDetails)
+                .Where(c=>c.Id!=39||selected.Contains(39)).ToArray();
+            var visible=choices.Where(c=>query.Length==0||c.Name.Contains(query,StringComparison.OrdinalIgnoreCase)||
+                c.Group.Contains(query,StringComparison.OrdinalIgnoreCase)||c.Members.Any(id=>view.Categories[id].Contains(query,StringComparison.OrdinalIgnoreCase)||id.ToString().Contains(query))).ToArray();
             if(visible.Length==0)ImGui.TextDisabled("No matching categories.");
-            foreach(var group in visible.GroupBy(p=>CategorySection(p.Key,view.CategoryDetails.GetValueOrDefault(p.Key).Major)))
+            foreach(var groupName in CategoryDisplay.Groups)
             {
-                Section(group.Key);
+                var group=visible.Where(c=>c.Group==groupName).ToArray();if(group.Length==0)continue;
+                ImGui.PushID(groupName);
+                Section(groupName);
+                if(ImGui.SmallButton("Select all")){CategoryDisplay.Set(selected,choices.Where(c=>c.Group==groupName),true);SavePolicy();}
+                ImGui.SameLine();if(ImGui.SmallButton("Clear all")){CategoryDisplay.Set(selected,choices.Where(c=>c.Group==groupName),false);SavePolicy();}
+                if(ImGui.IsItemHovered())ImGui.SetTooltip("Applies to the whole group, including categories hidden by search. An empty overall selection uses the default shown above.");
                 var right=ImGui.GetCursorScreenPos().X+ImGui.GetContentRegionAvail().X;
                 var size=ImGui.GetFrameHeight();
                 var width=size*2+ImGui.GetStyle().ItemSpacing.X;
                 var first=true;
-                foreach(var (id,name) in group)
+                foreach(var category in group)
                 {
+                    var id=category.Id;var name=category.Name;
                     if(!first&&ImGui.GetItemRectMax().X+ImGui.GetStyle().ItemSpacing.X+width<=right)ImGui.SameLine();
                     first=false;ImGui.PushID((int)id);ImGui.BeginGroup();
-                    var enabled=selected.Contains(id);var changed=ImGui.Checkbox("##Selected",ref enabled);
+                    var count=category.Members.Count(selected.Contains);var partial=count>0&&count<category.Members.Count;
+                    var enabled=count==category.Members.Count;
+                    var changed=ImGui.Checkbox("##Selected",ref enabled);
+                    if(partial)
+                    {
+                        var corner=ImGui.GetItemRectMin();
+                        ImGui.GetWindowDrawList().AddLine(new(corner.X+size*.25f,corner.Y+size*.5f),new(corner.X+size*.75f,corner.Y+size*.5f),ImGui.GetColorU32(ImGuiCol.CheckMark),2);
+                    }
                     ImGui.SameLine();
-                    var icon=view.CategoryDetails.GetValueOrDefault(id).Icon;
+                    var icon=category.Icon;
                     if(icon!=0&&textures.GetFromGameIcon(new GameIconLookup(icon,hiRes:true)).TryGetWrap(out var wrap,out _))ImGui.Image(wrap.Handle,new(size,size));
                     else ImGui.Dummy(new(size,size));
                     if(ImGui.IsItemClicked()){enabled=!enabled;changed=true;}
                     ImGui.EndGroup();
-                    if(ImGui.IsItemHovered())ImGui.SetTooltip(name+(enabled?" — selected":" — not selected"));
-                    if(changed){if(enabled)selected.Add(id);else selected.Remove(id);SavePolicy();}
+                    if(ImGui.IsItemHovered())ImGui.SetTooltip(name+(partial?" — partially selected; click to select both":enabled?" — selected":" — not selected")+"\n"+string.Join(", ",category.Members.Select(member=>view.Categories[member])));
+                    if(changed){CategoryDisplay.Set(selected,[category],enabled);SavePolicy();}
                     ImGui.PopID();
                 }
+                ImGui.PopID();
             }
             foreach(var id in selected.Where(id=>!view.Categories.ContainsKey(id)).ToArray())
             {var enabled=true;if(ImGui.Checkbox($"Unavailable category {id}",ref enabled)){selected.Remove(id);SavePolicy();}}

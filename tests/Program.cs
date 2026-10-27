@@ -90,6 +90,7 @@ SaleControlChecks.Run(Check);
 PriceOutlierChecks.Run(Check);
 FeatureToggleChecks.Run(Check);
 ReferenceRefreshChecks.Run(Check);
+NativePlateCacheChecks.Run(Check);
 GlamourFilterChecks.Run(Check,now);
 Console.WriteLine($"{total} checks passed including disposal/protection safety regressions.");
 if(args.Length==3)

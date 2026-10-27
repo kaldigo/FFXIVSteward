@@ -18,8 +18,9 @@ public sealed partial class Plugin
     private long nextReview;
     private string ReviewPath=>Path.Combine(pi.GetPluginConfigDirectory(),"review.jsonl");
     private CollectionCopyEvidence? CopyEvidence(uint id,int removals=0)=>view.Facts(id) is {} item?
-        CollectionCopyEvidence.Capture(item,config.Rules,view.Evidence,view.NativeReferencesKnown,
-            view.NativeReferences.Contains(id),DateTimeOffset.UtcNow,removals):null;
+        CollectionCopyEvidence.Capture(item,config.Rules,view.Evidence,view.NativeReferencesAvailable,
+            view.NativeReferences.Contains(id),DateTimeOffset.UtcNow,removals) with
+        {NativePlateSource=view.NativeReferencesKnown?"Live":view.NativeReferencesCached?"Saved per-character plate references":"Unavailable",NativePlateObservedAt=view.NativeReferencesObservedAt}:null;
     private void DrawReviewSettings()
     {
         var enabled=config.LogOnly;
@@ -125,7 +126,7 @@ public sealed partial class Plugin
                     entries.Add(new(player.ContentId,"Universalis price hold",held.ItemId,0,false,"PriceHeld",$"{view.Facts(held.ItemId)?.Name}: {held.Reason}",World:view.World));
             var disposals=entries.Count(e=>e.Action=="WouldDispose");var removals=entries.Where(e=>e.Location=="Glamour dresser").Sum(e=>e.Quantity);
             entries.Add(new(player.ContentId,"Review summary",0,0,false,"Snapshot",
-                $"{disposals} disposal candidates (cached retainer observations labelled); {removals} dresser removals. Protected non-equipment stacks: {entries.Count(e=>e.Action=="ProtectedNonEquipment")}. Enabled sale rules: {config.Rules.Sales.Count(r=>r.Enabled)}; quality: {config.Rules.Quality}. Held/unverified stacks: {unavailable} ({string.Join("; ",holdReasons.Order())}). Cleanup enabled: {config.CleanDresser}. References ready: {view.Evidence.ReferencesReady}; native plates known: {view.NativeReferencesKnown}; Glamaholic known: {view.Evidence.GlamaholicKnown}; gearsets ready: {view.Evidence.GearsetsReady}; dresser known: {view.Evidence.DresserKnown}; armoire known: {view.Evidence.ArmoireKnown}. {tracked.Status} {inventoryMemory.Status}"));
+                $"{disposals} disposal candidates (cached retainer observations labelled); {removals} dresser removals. Protected non-equipment stacks: {entries.Count(e=>e.Action=="ProtectedNonEquipment")}. Enabled sale rules: {config.Rules.Sales.Count(r=>r.Enabled)}; quality: {config.Rules.Quality}. Held/unverified stacks: {unavailable} ({string.Join("; ",holdReasons.Order())}). Cleanup enabled: {config.CleanDresser}. References ready: {view.Evidence.ReferencesReady}; native plates known: {view.NativeReferencesKnown}; saved native plates available: {view.NativeReferencesCached}; Glamaholic known: {view.Evidence.GlamaholicKnown}; gearsets ready: {view.Evidence.GearsetsReady}; dresser known: {view.Evidence.DresserKnown}; armoire known: {view.Evidence.ArmoireKnown}. {tracked.Status} {inventoryMemory.Status}"));
             if(!reviewJournal.Snapshot(ReviewPath,entries))nextReview=0;
         }
         catch(Exception ex){Alert("Review logging could not complete: "+ex.Message+". Log-only mode still blocks all managed item actions.");}

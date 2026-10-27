@@ -8,7 +8,7 @@ class CategoryWiring(unittest.TestCase):
         view=(ROOT/'Steward/Services/InventoryView.cs').read_text(encoding='utf-8')
         self.assertIn('GetExcelSheet<Sheets.ItemUICategory>()',view)
         ui=(ROOT/'Steward/Plugin.RuleCategories.cs').read_text(encoding='utf-8')
-        self.assertIn('view.Categories.OrderBy',ui)
+        self.assertIn('CategoryDisplay.Build(view.Categories,view.CategoryDetails)',ui)
         self.assertIn('Included categories',ui)
         self.assertIn('Excluded categories for this rule',ui)
         self.assertIn('rule.Group=ItemGroup.Any',ui)

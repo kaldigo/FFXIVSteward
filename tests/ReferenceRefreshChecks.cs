@@ -22,6 +22,9 @@ static class ReferenceRefreshChecks
             }
             view.NativeReferencesKnown=false;imports.RefreshReferences();
             check(!view.Evidence.ReferencesReady,"Real native plate unavailability still holds actions");
+            view.NativeReferencesCached=true;imports.RefreshReferences();
+            check(view.Evidence.ReferencesReady&&view.Evidence.References.Contains(99),"Saved native plate configuration supplies references without asserting live native data");
+            view.NativeReferencesCached=false;
             view.NativeReferencesKnown=true;File.WriteAllText(path,"invalid");imports.RefreshReferences();
             check(!view.Evidence.ReferencesReady&&!view.Evidence.GlamaholicKnown,"Malformed saved outfits cannot reuse ready cached imports");
             File.Delete(path);imports.RefreshReferences();

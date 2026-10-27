@@ -54,5 +54,22 @@ static class CategoryChecks
         check(roundtrip.IgnoredCategories.SetEquals([45])&&roundtrip.Sales[0].Categories.SetEquals([54,55]),"Category inclusions and global exclusions persist");
         rules.Sales=[new(){Name="First",ExcludedCategories=[54]},matRule];
         check(rules.Sales.First(r=>r.Matches(mat,Stock(mat)))==matRule,"Rule exclusion allows a later rule to match; global exclusions remain separate");
+        var names=new Dictionary<uint,string>{[6]="One-handed Thaumaturge's Arm",[7]="Two-handed Thaumaturge's Arm",[12]="Carpenter primary",[13]="Carpenter secondary",[32]="Fisher primary",[99]="Fisher secondary",[11]="Shield",[40]="Necklace",[54]="Reagent",[57]="Furnishing"};
+        var details=names.Keys.ToDictionary(id=>id,id=>(Icon:id,Major:(byte)(id is 6 or 7 or 11?1:id is 12 or 13 or 32 or 99?2:id==40?4:6),Minor:(byte)id));
+        var choices=CategoryDisplay.Build(names,details);
+        check(choices.Count==7,"Hand variants are one displayed category each");
+        check(choices.Single(c=>c.Id==6).Members.ToHashSet().SetEquals([6,7]),"One/two-handed caster arms share one checkbox");
+        check(choices.Single(c=>c.Id==32).Members.ToHashSet().SetEquals([32,99]),"Fisher primary/offhand share one checkbox");
+        check(choices.Where(c=>c.Group=="Main Arm/Off Arm").Count()==3,"Tools and weapons share the screenshot's group");
+        check(choices.Single(c=>c.Id==11).Group=="Armor"&&choices.Single(c=>c.Id==40).Group=="Armor","Shields and accessories join armor");
+        check(choices.Single(c=>c.Id==57).Group=="Housing"&&choices.Single(c=>c.Id==54).Group=="Items","Housing and general items use screenshot groups");
+        var chosen=new HashSet<uint>{6,54};
+        _=CategoryDisplay.Build(names,details);check(chosen.SetEquals([6,54]),"Displaying a partial saved selection never widens it");
+        CategoryDisplay.Set(chosen,choices.Where(c=>c.Group=="Main Arm/Off Arm"),true);
+        check(chosen.SetEquals([6,7,12,13,32,99,54]),"Group select includes all underlying hand variants and preserves other groups");
+        CategoryDisplay.Set(chosen,choices.Where(c=>c.Group=="Main Arm/Off Arm"),false);
+        check(chosen.SetEquals([54]),"Group clear removes only that group's categories");
+        CategoryDisplay.Set(chosen,[choices.Single(c=>c.Id==6)],true);
+        check(chosen.SetEquals([6,7,54]),"Combined checkbox selects both underlying IDs");
     }
 }

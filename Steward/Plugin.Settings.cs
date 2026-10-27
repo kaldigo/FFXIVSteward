@@ -90,8 +90,9 @@ public sealed partial class Plugin
         DrawRecoveryControls();
         Section("Readiness");
         ImGui.TextUnformatted(attached==player.ContentId&&attached!=0?"AutoRetainer: connected":"AutoRetainer: waiting for connection");
-        ImGui.TextUnformatted(view.Evidence.ReferencesReady?"Selected glamour references: ready":!view.NativeReferencesKnown&&config.Rules.Glamour.NativePlates?"Waiting for in-game glamour plate data":"Waiting for selected glamour references");
-        if(!view.NativeReferencesKnown&&config.Rules.Glamour.NativePlates)ImGui.TextWrapped("Open the in-game glamour plate editor to load your saved plates.");
+        ImGui.TextUnformatted(view.Evidence.ReferencesReady?(view.NativeReferencesCached&&config.Rules.Glamour.NativePlates?"Selected glamour references: ready (saved native plates)":"Selected glamour references: ready"):!view.NativeReferencesAvailable&&config.Rules.Glamour.NativePlates?"Waiting for in-game glamour plate data":"Waiting for selected glamour references");
+        if(!view.NativeReferencesAvailable&&config.Rules.Glamour.NativePlates)ImGui.TextWrapped("Open the in-game glamour plate editor to load your saved plates.");
+        if(view.NativeReferencesCached&&config.Rules.Glamour.NativePlates)ImGui.TextWrapped($"Using saved native plate references from {view.NativeReferencesObservedAt:yyyy-MM-dd HH:mm} UTC. Opening the plate editor refreshes them automatically.");
         if(!view.Evidence.GlamaholicKnown&&config.Rules.Glamour.Glamaholic)ImGui.TextWrapped("Glamaholic is selected but its saved outfits are unavailable. Check that the plugin is installed and configured.");
         ImGui.TextUnformatted(view.Evidence.DresserKnown?"Glamour dresser: ready":"Glamour dresser: open it to verify current contents");
         ImGui.TextUnformatted(view.Evidence.ArmoireKnown?"Armoire: ready":"Armoire: open it to verify current contents");

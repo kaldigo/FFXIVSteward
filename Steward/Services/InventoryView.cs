@@ -23,6 +23,9 @@ public sealed unsafe class InventoryView
     public HashSet<uint> NativeReferences { get; private set; } = [];
     public bool NativeReferencesKnown { get; private set; }
     public ulong Character { get; private set; }
+    public bool NativeReferencesCached { get; private set; }
+    public DateTimeOffset? NativeReferencesObservedAt { get; private set; }
+    public bool NativeReferencesAvailable=>NativeReferencesKnown||NativeReferencesCached;
     public HashSet<ulong> Retainers { get; } = [];
     public Dictionary<ulong,string> RetainerNames { get; } = [];
     public uint World { get; set; }
@@ -80,6 +83,8 @@ public sealed unsafe class InventoryView
             NativeReferencesKnown=false;NativeReferences.Clear();Retainers.Clear();
             Retainers.UnionWith(memory.Owners(character));
         }
+        NativeReferencesCached=memory.TryNativePlates(character,out var savedPlates,out var savedAt);
+        NativeReferences=savedPlates;NativeReferencesObservedAt=savedAt;
         Evidence.ReserveStocks.Clear();Items.Clear();Evidence.Gearsets.Clear();Evidence.GearsetsReady=false;
         memory.Apply(character,Evidence);
         if(character==0)return;
@@ -116,7 +121,10 @@ public sealed unsafe class InventoryView
         {
             NativeReferences=[];
             foreach(var plate in mm->GlamourPlates)foreach(var id in plate.ItemIds)if(id!=0)NativeReferences.Add(id%1000000);
-            NativeReferencesKnown=true;
+            NativeReferencesKnown=true;NativeReferencesCached=false;
+            NativeReferencesObservedAt=DateTimeOffset.UtcNow;
+            memory.ObserveNativePlates(character,NativeReferences,NativeReferencesObservedAt.Value);
+            memory.TryNativePlates(character,out _,out var observedPlatesAt);NativeReferencesObservedAt=observedPlatesAt;
         }
         var ui=UIState.Instance();
         if(ui!=null && ui->Cabinet.IsCabinetLoaded())

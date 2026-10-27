@@ -44,7 +44,7 @@ public sealed class ExternalImports
             else if(filters.Glamaholic)errors.Add("Glamaholic config not found");
         }
         catch(Exception ex){glamReady=!filters.Glamaholic;if(filters.Glamaholic)errors.Add("Glamaholic: "+ex.Message);}
-        view.Evidence.References=references;view.Evidence.ReferencesReady=GlamourProtection.ReferencesReady(filters,view.NativeReferencesKnown,glamReady);
+        view.Evidence.References=references;view.Evidence.ReferencesReady=GlamourProtection.ReferencesReady(filters,view.NativeReferencesAvailable,glamReady);
         return errors;
     }
     public void Refresh()

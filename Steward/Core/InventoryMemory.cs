@@ -2,11 +2,17 @@ using System.Text.Json;
 
 namespace Steward.Core;
 
-// Preview/prefetch observations only. Never sets native readiness or supplies a disposal copy count.
+// Inventory observations are preview/prefetch only; never supply live ownership or disposal copy counts.
+// Native plate configurations are separately observed, per-character references usable across sessions.
 public sealed class InventoryMemory : IDisposable
 {
     public sealed class CharacterInventory
     {
+        public bool NativePlatesObserved { get; set; }
+        private HashSet<uint> nativePlateItems=[];
+        [System.Text.Json.Serialization.JsonIgnore] public bool NativePlateItemsRead { get; private set; }
+        public HashSet<uint> NativePlateItems { get=>nativePlateItems;set{nativePlateItems=value;NativePlateItemsRead=true;} }
+        public DateTimeOffset? NativePlatesObservedAt { get; set; }
         public bool DresserObserved { get; set; }
         public bool ArmoireObserved { get; set; }
         public HashSet<uint> Dresser { get; set; }=[];
@@ -27,7 +33,8 @@ public sealed class InventoryMemory : IDisposable
             if(new FileInfo(path).Length>8*1024*1024)throw new InvalidDataException("Oversized inventory cache");
             var loaded=JsonSerializer.Deserialize<Dictionary<ulong,CharacterInventory>>(File.ReadAllText(path))??throw new InvalidDataException("Missing inventory cache");
             foreach(var (id,c) in loaded)
-                if(id==0||c==null||c.Dresser==null||c.Armoire==null||c.Retainers==null||c.Dresser.Contains(0)||c.Armoire.Contains(0)||
+                if(id==0||c==null||c.Dresser==null||c.Armoire==null||c.Retainers==null||c.Dresser.Contains(0)||c.Armoire.Contains(0)||c.NativePlateItems==null||c.NativePlateItems.Contains(0)||c.NativePlateItems.Count>4096||
+                    c.NativePlatesObserved&&(!c.NativePlateItemsRead||c.NativePlatesObservedAt==null||c.NativePlatesObservedAt==default(DateTimeOffset)||c.NativePlatesObservedAt>DateTimeOffset.UtcNow)||
                     c.Retainers.Any(r=>r.Key==0||r.Value==null||r.Value.Count>175||r.Value.Any(s=>s==null||!Valid(s))))
                     throw new InvalidDataException("Invalid inventory cache");
             characters=loaded;
@@ -41,6 +48,21 @@ public sealed class InventoryMemory : IDisposable
         if(id==0)throw new ArgumentException("Character required");
         if(!characters.TryGetValue(id,out var c))characters[id]=c=new();
         return c;
+    }
+    public void ObserveNativePlates(ulong character,IEnumerable<uint> items,DateTimeOffset observed)
+    {
+        if(character==0)return;
+        var ids=items.ToHashSet();
+        if(ids.Contains(0)||ids.Count>4096||observed==default||observed>DateTimeOffset.UtcNow)throw new InvalidDataException("Invalid native plate reference snapshot");
+        var c=For(character);
+        if(c.NativePlatesObserved&&c.NativePlateItems.SetEquals(ids))return;
+        c.NativePlateItems=ids;c.NativePlatesObserved=true;c.NativePlatesObservedAt=observed;dirty=true;
+    }
+    public bool TryNativePlates(ulong character,out HashSet<uint> items,out DateTimeOffset? observed)
+    {
+        items=[];observed=null;
+        if(character==0||!characters.TryGetValue(character,out var c)||!c.NativePlatesObserved)return false;
+        items=[..c.NativePlateItems];observed=c.NativePlatesObservedAt;return true;
     }
     public void ObserveCollection(ulong id,Evidence e)
     {

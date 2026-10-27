@@ -7,7 +7,7 @@ public sealed record CollectionCopyEvidence(
     int? DresserCopiesAfterProposal,bool? CollectionConfirmedAfterProposal,bool ProposalWithinObservedCopies,
     bool LastCopyOmittedForDecision,bool? NativePlateReference,bool? GlamaholicReference,
     bool GearsetsReady,bool? GearsetReference,bool ReferencesReady,string ProtectionMatches,
-    bool NonEquipmentDisposalAllowed,SourceKind AcquisitionSource,byte Rarity,bool Marketable,uint ItemCategory,bool Equipment,bool? CachedDresserCopy=null,bool? CachedArmoireCopy=null)
+    bool NonEquipmentDisposalAllowed,SourceKind AcquisitionSource,byte Rarity,bool Marketable,uint ItemCategory,bool Equipment,bool? CachedDresserCopy=null,bool? CachedArmoireCopy=null,string NativePlateSource="Live or unavailable",DateTimeOffset? NativePlateObservedAt=null)
 {
     public static CollectionCopyEvidence Capture(ItemFacts item,RuleSettings rules,Evidence evidence,
         bool nativeKnown,bool nativeReference,DateTimeOffset observedAt,int removals=0)
