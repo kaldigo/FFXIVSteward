@@ -340,6 +340,8 @@ public sealed partial class Plugin : IDalamudPlugin
             {
                 collectionPass=false;
                 nextDresserAttempt=0;nextAutomaticWork=0;
+                // Start the return route before another sweep, including passes that took over a minute.
+                nextCollectionAttempt=Math.Max(nextCollectionAttempt,Environment.TickCount64+5000);
                 Record("Collection retainer pass finished; collection storage may resume immediately");
             }
             if(!ownsPostprocess&&!market.Queue.Running&&Environment.TickCount64>=nextAutomaticWork&&attached==player.ContentId&&attached!=0)

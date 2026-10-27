@@ -2,6 +2,23 @@ using Steward.Core;
 
 var total=0;
 void Check(bool condition,string name) { total++; if(!condition) throw new Exception(name); }
+// Real native source-category table and tree metadata; no display names or ordinal assumptions.
+{
+    uint[][] categories=[[0,1,2,3],[3500,3200],[3201,3202,3203],[3205,3206],[3207,3208],[3209,3300]];
+    for(var c=0;c<categories.Length;c++)foreach(var container in categories[c])
+        Check(DresserSource.Category(container)==c,$"Dresser source category for {container}");
+    foreach(var container in new uint[]{10000,2000,3204,3400,uint.MaxValue})
+        Check(DresserSource.Category(container)==-1,"Unsupported container is never assigned to inventory category");
+    var source=new Stock(47948,false,1,0,3);
+    DresserTreeRow[] rows=[new(0,4,2,0,3),new(1,0,0,0,9),new(2,0,2,0,7),new(3,0,2,1,3),new(8,0,2,0,3)];
+    Check(DresserSource.Find(rows,2,source)==8,"Header and unrelated duplicates do not match exact candidate");
+    Check(DresserSource.Find(rows.Reverse(),2,source)==8,"Tree reordering does not alter exact source mapping");
+    Check(DresserSource.Find(rows,1,source)==-1,"Stale agent index rejected");
+    Check(DresserSource.Find(rows,2,source with{Slot=4})==-1,"Missing source slot rejected");
+    Check(DresserSource.Find(rows.Append(new(9,0,2,0,3)),2,source)==-1,"Ambiguous metadata rejected");
+    Check(DresserSource.Find([new(0,4,0,0,0),new(1,0,0,0,0)],0,new(14799,false,1,0,0))==1,"Recorded chestwrap agent row zero maps past header to tree index one");
+    Check(DresserSource.Find([new(1,2,0,0,0)],0,new(14799,false,1,0,0))==-1,"Outfit group cannot masquerade as a single source item");
+}
 // Replay the manual trace's parentless Yes/No ownership, and reject replacement dialogs/sources.
 {
     var traced=new Stock(14799,false,1,0,0);

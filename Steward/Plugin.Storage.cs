@@ -63,18 +63,16 @@ public sealed partial class Plugin
     private bool AutomaticStorageWork()
     {
         if(!player.IsLoaded||attached!=player.ContentId||!config.Connected||!config.ExecutionEnabled||executionFault||market.Queue.Running||ownsPostprocess||overflowPass||collectionPass)return false;
-        // Finish the carried batch before requesting more retainer withdrawals or another trip.
-        var carriedActions=view.Items.ToArray().Select(s=>Judge(s).Outcome).Where(config.Features.Enabled).ToHashSet();
-        var carriedCollection=carriedActions.Contains(Outcome.CollectDresser)||carriedActions.Contains(Outcome.CollectArmoire);
-        if(market.DresserOpen&&carriedActions.Contains(Outcome.CollectDresser))return false;
-        if(!carriedCollection&&Environment.TickCount64>=nextCollectionAttempt&&CollectionNeeded(player.ContentId))
+        // Existing player/armoury items must not suppress missing-item retainer collection.
+        if(Environment.TickCount64>=nextCollectionAttempt&&CollectionNeeded(player.ContentId))
         {
             if(!market.CloseDresserForStorage())return false;
             nextCollectionAttempt=Environment.TickCount64+60000;
             collectionPass=true;
             try
             {
-                if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,"Collect"))return true;
+                if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,"Collect"))
+                {Record("Collection retainer pass requested; existing player gear does not block withdrawals");return true;}
                 collectionPass=false;nextCollectionAttempt=Environment.TickCount64+5000;Alert("Protected items on retainers are waiting for collection. Move near a summoning bell and keep free inventory space.");
             }
             catch{collectionPass=false;throw;}

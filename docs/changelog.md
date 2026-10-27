@@ -1,3 +1,10 @@
+## 0.1.0.42
+
+- Restore retainer collection when eligible gear is already in player inventory or the armoury chest. Existing carried gear no longer prevents missing-copy withdrawals; space, duplicate and protection checks remain.
+- Select the dresser source category for each inventory container and wait for native list rebuilding. Match item rows using agent index, source container and slot instead of display names or row order.
+- Preserve immediate return after withdrawal passes, including long-running passes. Add retainer/source/player-count evidence to withdrawal logs.
+- Automated checks pass; the complete live cycle still needs in-game acceptance. Disposal settings and AutoRetainer's executor are unchanged; outfit-conversion windows remain held.
+
 ## 0.1.0.41
 
 - Correct ordinary dresser storage using the recorded manual list-click, owned Yes/No, and inventory/dresser acknowledgement flow. Resolve tree entries independently of agent rows, which exclude headers.

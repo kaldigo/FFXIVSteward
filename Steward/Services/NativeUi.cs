@@ -43,34 +43,52 @@ public sealed unsafe class NativeUi(IGameGui gui)
     }
     public bool Callback(string name,params int[] values)
         =>CallbackCore(name,true,values);
+    public int DresserCategory()
+    {
+        var addon=(AddonMiragePrismPrismBoxCrystallize*)Get("MiragePrismPrismBoxCrystallize");
+        var agent=AgentMiragePrismPrismBox.Instance();
+        if(addon==null||addon->CategoryDropDown==null||agent==null||agent->Data==null)return -1;
+        var category=agent->Data->CrystallizeCategory;
+        return category is >=0 and <6&&addon->CategoryDropDown->GetSelectedItemIndex()==category?category:-1;
+    }
+    public bool AdvanceDresserCategory()
+    {
+        if(!DresserSelectionReady()||Visible("SelectYesno")||Visible("MiragePrismPrismSetConvert"))return false;
+        var addon=(AddonMiragePrismPrismBoxCrystallize*)Get("MiragePrismPrismBoxCrystallize");
+        return addon!=null&&ClickButton(&addon->AtkUnitBase,addon->CategoryNextButton);
+    }
     public bool DresserSelectionReady()
     {
         var addon=(AddonMiragePrismPrismBoxCrystallize*)Get("MiragePrismPrismBoxCrystallize");
-        return addon!=null&&addon->ItemTreeList!=null&&!addon->ItemTreeList->LayoutRefreshPending&&!addon->ItemTreeList->IsUpdatePending;
+        var agent=AgentMiragePrismPrismBox.Instance();
+        return addon!=null&&addon->ItemTreeList!=null&&agent!=null&&agent->Data!=null&&
+            !agent->Data->IsPopulatingList&&agent->Data->IsPopulatingComplete&&
+            !addon->ItemTreeList->LayoutRefreshPending&&!addon->ItemTreeList->IsUpdatePending;
     }
-    public bool SelectDresserItem(string name,out int treeIndex)
+    public bool SelectDresserItem(Stock source,int agentIndex,out int treeIndex)
     {
         treeIndex=-1;
+        if(!DresserSelectionReady()||DresserCategory()!=DresserSource.Category(source.Container))return false;
         var addon=(AddonMiragePrismPrismBoxCrystallize*)Get("MiragePrismPrismBoxCrystallize");
-        if(addon==null||addon->ItemTreeList==null)return false;
+        var agent=AgentMiragePrismPrismBox.Instance();
+        if(agentIndex<0||agentIndex>=agent->Data->CrystallizeItemCount)return false;
+        var candidate=agent->Data->CrystallizeItems[agentIndex];
+        if(candidate.ItemId%1000000!=source.ItemId||(uint)candidate.Inventory!=source.Container||candidate.Slot!=source.Slot)return false;
         var list=addon->ItemTreeList;
-        if(list->LayoutRefreshPending||list->IsUpdatePending)return false;
-        // Tree indices include headers: the recorded chestwrap was tree index 1, agent row 0.
-        // Match a unique named leaf, then validate the exact native source before confirmation.
-        var selected=-1;
+        List<DresserTreeRow> rows=[];
         for(var i=0;i<list->Items.Count;i++)
         {
             var entry=list->Items[i].Value;
-            if(entry==null||(entry->Type&(TreeListItemType.Group|TreeListItemType.SectionHeader))!=0||entry->StringValues.Count==0)continue;
-            if(entry->StringValues[0].ToString()!=name)continue;
-            if(selected>=0)return false;
-            if(entry->IsHidden||(entry->State&TreeListItemState.Disabled)!=0)return false;
-            selected=i;
+            if(entry==null||entry->UIntValues.Count!=6)continue;
+            rows.Add(new(i,entry->UIntValues[0],entry->UIntValues[1],entry->UIntValues[3],entry->UIntValues[4]));
         }
+        var selected=DresserSource.Find(rows,agentIndex,source);
         if(selected<0)return false;
+        var item=list->Items[selected].Value;
+        if(item->IsHidden||(item->State&TreeListItemState.Disabled)!=0)return false;
         treeIndex=selected;
         list->DispatchItemEvent(selected,AtkEventType.ListItemClick);
-        return true; // Submission only. The queue verifies native selection and ownership next frame.
+        return true; // Submission only. Exact source and dialog ownership are verified before Yes.
     }
     public bool OwnsDresserConfirmation(ushort owner,Stock source)
     {

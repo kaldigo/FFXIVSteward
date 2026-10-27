@@ -324,8 +324,9 @@ public sealed unsafe partial class MarketQueue : IDisposable
             try{return pi.GetIpcSubscriber<uint,uint,bool>("AutoRetainer.InventoryPolicy.DisposalSelected").InvokeFunc(stock.ItemId,stock.Quantity);}
             catch{return false;}
         }
-        foreach(var stock in StoragePolicy.PlanWithdrawals(stored,previewJudge,config.Features.Enabled,DisposalSelected,collectionOnly)
-            .OrderBy(s=>view.Facts(s.ItemId) is {} f?StoragePolicy.Priority(f,config.Rules,view.Evidence):int.MaxValue).ThenBy(s=>s.ItemId))
+        var candidates=StoragePolicy.PlanWithdrawals(stored,previewJudge,config.Features.Enabled,DisposalSelected,collectionOnly);
+        history($"Retainer withdrawal planning: retainer={retainer}, live stacks={stored.Count}, candidates={candidates.Length}, collection only={collectionOnly}, free bag slots={InventoryView.FreeBagSlots()}, waiting dresser items={initialWaiting}");
+        foreach(var stock in candidates.OrderBy(s=>view.Facts(s.ItemId) is {} f?StoragePolicy.Priority(f,config.Rules,view.Evidence):int.MaxValue).ThenBy(s=>s.ItemId))
         {
             var sent=false;long before=0;
             Queue.Add(new("Withdraw "+stock.ItemId,()=>
@@ -363,7 +364,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 if(after<before+stock.Quantity)return StepResult.Waiting;
                 if(after!=before+stock.Quantity || !StockTransition.Removed(stock,InventoryView.ReadSlot(stock.Container,stock.Slot),stock.Quantity,true))return StepResult.Failed;
                 if(judge(stock).Outcome==Outcome.CollectDresser)dresserWithdrawals++;
-                history("Confirmed withdrawal of "+stock.ItemId+" x"+stock.Quantity);return StepResult.Completed;
+                history($"Confirmed withdrawal of {stock.ItemId} x{stock.Quantity}; retainer={retainer}, source={stock.Container}/{stock.Slot}, player count={before}->{after}");return StepResult.Completed;
             },TimeoutMs:10000));
         }
     }
@@ -438,7 +439,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
         Queue.Begin();
         foreach(var source in view.Items.ToArray().Where(s=>previewJudge(s).Outcome==Outcome.CollectDresser).GroupBy(s=>s.ItemId).Select(g=>g.First()).OrderBy(s=>view.Facts(s.ItemId) is {} f?StoragePolicy.Priority(f,config.Rules,view.Evidence):int.MaxValue).ThenBy(s=>s.ItemId))
         {
-            var phase=0;ushort confirmationOwner=0;
+            var phase=0;ushort confirmationOwner=0;var requestedCategory=-1;
             StepResult RejectDresser(string reason)
             {
                 var currentAgent=AgentMiragePrismPrismBox.Instance();
@@ -471,21 +472,36 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 if(phase==0)
                 {
                     if(ui.Visible("SelectYesno"))return RejectDresser("another confirmation is already open");
-                    if(!ui.DresserSelectionReady())return StepResult.Waiting;
+                    var im=InventoryManager.Instance();var inv=im->GetInventoryContainer((InventoryType)source.Container);
+                    var item=inv==null?null:inv->GetInventorySlot(source.Slot);
+                    if(item==null)return RejectDresser("the source inventory slot is unavailable");
+                    if(item->GetConditionPercentage()!=100||im->GetInventoryItemCount(21800)<1){notify("Dresser deposit needs fully repaired gear and a glamour prism. Item "+source.ItemId+" remains protected.");return StepResult.Completed;}
+                    var category=DresserSource.Category(source.Container);
+                    if(category<0)return RejectDresser("the source inventory has no supported dresser category");
+                    var currentCategory=ui.DresserCategory();
+                    if(!ui.DresserSelectionReady()||currentCategory<0)return StepResult.Waiting;
+                    if(requestedCategory>=0)
+                    {
+                        if(currentCategory!=requestedCategory)return StepResult.Waiting;
+                        requestedCategory=-1;
+                    }
+                    if(currentCategory!=category)
+                    {
+                        requestedCategory=(currentCategory+1)%6;
+                        if(!ui.AdvanceDresserCategory())return RejectDresser("the source-category control is not ready");
+                        history($"Dresser source category advancing: item={source.ItemId}, source={source.Container}/{source.Slot}, from={currentCategory}, requested={requestedCategory}, target={category}");
+                        return StepResult.Waiting;
+                    }
                     var selected=-1;
                     for(var i=0;i<agent->Data->CrystallizeItemCount;i++)
                     {
                         var row=agent->Data->CrystallizeItems[i];
                         if(row.ItemId%1000000==source.ItemId&&(uint)row.Inventory==source.Container&&row.Slot==source.Slot){selected=i;break;}
                     }
-                    if(selected<0){notify("Dresser deposit held for "+view.Facts(source.ItemId)?.Name+": the item is not available in the current dresser filter.");return StepResult.Completed;}
-                    var im=InventoryManager.Instance();var inv=im->GetInventoryContainer((InventoryType)source.Container);
-                    var item=inv->GetInventorySlot(source.Slot);
-                    if(item->GetConditionPercentage()!=100||im->GetInventoryItemCount(21800)<1){notify("Dresser deposit needs fully repaired gear and a glamour prism. Item "+source.ItemId+" remains protected.");return StepResult.Completed;}
+                    if(selected<0){notify("Dresser deposit held for "+view.Facts(source.ItemId)?.Name+$": source {source.Container}/{source.Slot} is absent from loaded category {category}; game or plugin filters may exclude it.");return StepResult.Completed;}
                     confirmationOwner=ui.Get("MiragePrismPrismBoxCrystallize")->Id;
                     history($"Dresser deposit selection requested: item={source.ItemId}, source={source.Container}/{source.Slot}, row={selected}; {ui.Describe("MiragePrismPrismBox")}; {ui.Describe("MiragePrismPrismBoxCrystallize")}");
-                    var itemName=view.Facts(source.ItemId)?.Name;
-                    if(itemName==null||!ui.SelectDresserItem(itemName,out var treeIndex))return RejectDresser("the dresser tree has no unique ready item matching the requested gear");
+                    if(!ui.SelectDresserItem(source,selected,out var treeIndex))return RejectDresser($"no unique ready dresser row for category {category}, agent row {selected}, exact inventory source {source.Container}/{source.Slot}");
                     phase=1;
                     history($"Dresser list click submitted: item={source.ItemId}, agent row={selected}, tree index={treeIndex}; waiting for exact source confirmation");
                     return StepResult.Waiting;

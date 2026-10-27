@@ -35,11 +35,12 @@ class FeatureWiring(unittest.TestCase):
     def test_dresser_selection_does_not_close_windows(self):
         ui=(ROOT/'Services/NativeUi.cs').read_text()
         self.assertIn('list->DispatchItemEvent(selected,AtkEventType.ListItemClick)',ui)
-        self.assertIn('TreeListItemType.Group|TreeListItemType.SectionHeader',ui)
-        self.assertIn('if(selected>=0)return false',ui)
+        self.assertIn('entry->UIntValues[1],entry->UIntValues[3],entry->UIntValues[4]',ui)
+        self.assertIn('DresserSource.Find(rows,agentIndex,source)',ui)
+        self.assertNotIn('StringValues',ui)
         self.assertNotIn('CallbackCore("MiragePrismPrismBoxCrystallize"',ui)
         queue=(ROOT/'Services/MarketQueue.cs').read_text()
-        self.assertIn('ui.SelectDresserItem(itemName,out var treeIndex)',queue)
+        self.assertIn('ui.SelectDresserItem(source,selected,out var treeIndex)',queue)
         self.assertIn('ui.OwnsDresserConfirmation(confirmationOwner,source)',queue)
         self.assertIn('ui.ClickDresserConfirmation(confirmationOwner,source,true)',queue)
         self.assertIn('ui.CancelDresserConfirmation(confirmationOwner,source)',queue)
@@ -57,8 +58,23 @@ class FeatureWiring(unittest.TestCase):
         self.assertIn('AutoRetainer.PluginState.IsBusy',transition)
         self.assertIn('nextDresserAttempt=0;nextAutomaticWork=0',transition)
         storage=(ROOT/'Plugin.Storage.cs').read_text()
-        self.assertIn('if(market.DresserOpen&&carriedActions.Contains(Outcome.CollectDresser))return false',storage)
-        self.assertIn('if(!carriedCollection&&Environment.TickCount64>=nextCollectionAttempt',storage)
+        self.assertNotIn('carriedCollection',storage)
+        self.assertNotIn('carriedActions',storage)
+        self.assertIn('if(Environment.TickCount64>=nextCollectionAttempt&&CollectionNeeded(player.ContentId))',storage)
+        flow=storage.split('private bool AutomaticStorageWork()')[1]
+        self.assertLess(flow.index('CollectionNeeded(player.ContentId)'),flow.index('NeedsCollectionVisit(false)'))
+        self.assertIn('nextCollectionAttempt=Math.Max(nextCollectionAttempt,Environment.TickCount64+5000)',transition)
+
+    def test_dresser_category_waits_for_native_acknowledgement(self):
+        queue=(ROOT/'Services/MarketQueue.cs').read_text().split('private void DepositOpenDresserCore()')[1]
+        self.assertIn('DresserSource.Category(source.Container)',queue)
+        self.assertIn('if(currentCategory!=requestedCategory)return StepResult.Waiting',queue)
+        self.assertLess(queue.index('ui.AdvanceDresserCategory()'),queue.index('ui.SelectDresserItem(source'))
+        ui=(ROOT/'Services/NativeUi.cs').read_text()
+        self.assertIn('CategoryDropDown->GetSelectedItemIndex()==category',ui)
+        self.assertIn('!agent->Data->IsPopulatingList&&agent->Data->IsPopulatingComplete',ui)
+        self.assertNotIn('CrystallizeCategory =',ui)
+        self.assertIn('candidate.Slot!=source.Slot',ui)
 
     def test_permissions_and_review_are_gated_without_changing_rules(self):
         plugin=(ROOT/'Plugin.cs').read_text()
