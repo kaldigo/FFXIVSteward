@@ -14,6 +14,8 @@ public sealed partial class Plugin
         view.Retainers.Contains(retainer)&&config.Storage.RetainerEnabled(retainer);
     private void StartCleanup()
     {
+        if(Steward.Services.AutoDutyCoordination.OwnsTravel(pi))
+        {Alert("Stop AutoDuty before starting full cleanup. Its separate GC step still uses Steward protections.");return;}
         if(!CleanupAllowed(player.ContentId)||ownsPostprocess||market.Queue.Running||cleanupActive)
         {Alert("Enable disposal and automation, resolve any stopped run, and wait for current work before starting full cleanup.");return;}
         try

@@ -403,3 +403,12 @@ Console.WriteLine($"{total} checks passed including category disposal permission
     Check(q.Status.StartsWith("Stopped:")&&journal,"A failed journal save cannot silently turn a skip into permission to continue");
 }
 Console.WriteLine($"{total} checks passed including recoverable skips, live control modes and durable uncertainty.");
+Check(!AutoDutyTravel.Owned(_=>null),"Absent AutoDuty permits ordinary storage travel");
+foreach(var looping in new[]{false,true})
+foreach(var navigating in new[]{false,true})
+foreach(var stopped in new[]{false,true})
+    Check(AutoDutyTravel.Owned(name=>name switch
+    {"AutoDuty.IsLooping"=>looping,"AutoDuty.IsNavigating"=>navigating,_=>stopped})==(looping||navigating||!stopped),
+        "AutoDuty owns travel during loops, navigation and active stages");
+Check(AutoDutyTravel.Owned(_=>throw new InvalidOperationException()),"Unavailable AutoDuty state holds competing travel");
+Console.WriteLine("10 AutoDuty travel coordination checks passed.");

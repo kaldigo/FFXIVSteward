@@ -1,3 +1,7 @@
+## 0.1.0.56
+
+Defer Steward storage travel while AutoDuty owns the run, expire previous follow-up travel permission and leave glamour collection items on retainers for later. Preserve native AutoRetainer GC execution and disposal protections, including the managed-discard prohibition. Add coordination regression checks; live AutoDuty acceptance remains to be tested.
+
 ## 0.1.0.55
 
 Dresser cleanup skips unique items already carried in bags, armoury or equipped, warns the player and continues. Recheck live ownership before restoration and wait when inventory is unavailable. Close the dresser after automatic storage work finishes; do not close pending confirmations or active operations.

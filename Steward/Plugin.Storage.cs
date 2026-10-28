@@ -15,6 +15,7 @@ public sealed partial class Plugin
     private readonly StorageRun storageRun=new();
     private void BeginStorageRun(bool authorized)
     {
+        if(AutoDutyCoordination.OwnsTravel(pi)){storageRun.End();return;}
         if(authorized&&!storageRun.Allows(player.ContentId,config.ExecutionEnabled))
         {
             cleanupVisited=false;
@@ -72,6 +73,7 @@ public sealed partial class Plugin
     }
     private bool AutomaticStorageWork()
     {
+        if(AutoDutyCoordination.OwnsTravel(pi)){storageRun.End();return true;}
         if(!storageRun.Allows(player.ContentId,config.ExecutionEnabled))return false;
         if(!player.IsLoaded||attached!=player.ContentId||!config.Connected||!config.ExecutionEnabled||executionFault||market.Queue.Running||ownsPostprocess||overflowPass||collectionPass)return false;
         // Existing player/armoury items must not suppress missing-item retainer collection.

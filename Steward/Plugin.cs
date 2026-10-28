@@ -308,6 +308,8 @@ public sealed partial class Plugin : IDalamudPlugin
             if(Environment.TickCount64>=nextRefresh)
             {
                 nextRefresh=Environment.TickCount64+500;Refresh();
+                // Expire follow-up permission rather than resuming an old route after AutoDuty stops.
+                if(AutoDutyCoordination.OwnsTravel(pi))storageRun.End();
                 if(config.Connected && player.ContentId!=0)
                 {
                     var version=pi.GetIpcSubscriber<int>("AutoRetainer.InventoryPolicy.Version").InvokeFunc();
@@ -441,6 +443,8 @@ public sealed partial class Plugin : IDalamudPlugin
     private void Stop(){try{StopQueue();}finally{Save();}Record("Current Steward run stopped; enabled features wait for the next authorised AutoRetainer run");}
     private void Run(string operation)
     {
+        if(AutoDutyCoordination.OwnsTravel(pi))
+        {Record("AutoDuty owns travel. Stop its run before requesting Steward storage travel.");return;}
         if(operation=="Dresser"&&!config.Features.DresserCollection&&!config.CleanDresser||operation=="Armoire"&&!config.Features.ArmoireStorage)
         {Record(operation+" feature is disabled");return;}
         if(executionFault){Record("Check inventory and clear the stopped run first");return;}

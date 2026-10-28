@@ -332,6 +332,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
         history($"Retainer withdrawal planning: retainer={retainer}, live stacks={stored.Count}, candidates={candidates.Length}, collection only={collectionOnly}, free bag slots={InventoryView.FreeBagSlots()}, waiting dresser items={initialWaiting}");
         foreach(var stock in candidates.OrderBy(s=>view.Facts(s.ItemId) is {} f?StoragePolicy.Priority(f,config.Rules,view.Evidence):int.MaxValue).ThenBy(s=>s.ItemId))
         {
+            if(AutoDutyCoordination.OwnsTravel(pi)&&previewJudge(stock).Outcome is Outcome.CollectArmoire or Outcome.CollectDresser)continue;
             var sent=false;var attempted=false;long before=0;
             Queue.Add(new("Withdraw "+stock.ItemId,()=>
             {
@@ -345,6 +346,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     before=view.Items.Where(s=>s.ItemId==stock.ItemId&&s.Hq==stock.Hq).Sum(s=>(long)s.Quantity);
                     if(InventoryView.ReadSlot(stock.Container,stock.Slot)!=stock)return StepResult.Failed;
                     var decision=judge(stock);if(!config.Features.Enabled(decision.Outcome))return StepResult.Completed;
+                    if(AutoDutyCoordination.OwnsTravel(pi)&&decision.Outcome is Outcome.CollectArmoire or Outcome.CollectDresser)return StepResult.Completed;
                     if(disposalOnly&&decision.Outcome!=Outcome.Dispose)return StepResult.Completed;
                     if(decision.Outcome is not (Outcome.CollectArmoire or Outcome.CollectDresser or Outcome.Dispose))return StepResult.Completed;
                     if(decision.Outcome==Outcome.Dispose)
