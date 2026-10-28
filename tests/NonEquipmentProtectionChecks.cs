@@ -4,6 +4,9 @@ static class NonEquipmentProtectionChecks
 {
     public static void Run(Action<bool,string> check,DateTimeOffset now)
     {
+        var fishable=AcquisitionSources.Fishable([(4776,true),(4927,true),(0,true),(8791,false)],[(100,true,10),(101,false,10),(102,true,0),(0,true,10)]);
+        check(fishable.SetEquals([4776,4927,100]),"Only logged fish and visible spearfishing catches in a territory prove a fishing source");
+        check(AcquisitionSources.Merge(SourceKind.Ordinary,SourceKind.Special)==SourceKind.Special,"Fishing never overrides a known special acquisition source");
         var rules=new RuleSettings {NonEquipmentDisposalCategories=[57],NonEquipmentDisposal=[8791]};
         var evidence=new Evidence {ReferencesReady=true,GearsetsReady=true,DresserKnown=true,ArmoireKnown=true};
         var item=new ItemFacts(8791,"Eternity Cake",false,1,1,false,false,SourceKind.Unknown,57);
@@ -31,5 +34,11 @@ static class NonEquipmentProtectionChecks
         }
         rules.NonEquipmentDisposal.Clear();rules.NonEquipmentDisposalCategories.Clear();
         check(Judge().Outcome==Outcome.Keep,"Repeatable source alone never grants disposal permission");
+        item=new(4927,"Striped Goby",false,1,1,true,false,fishable.Contains(4927)?SourceKind.Ordinary:SourceKind.Unknown,47);
+        stock=new(item.Id,false,10,0,1);rules.NonEquipmentDisposalCategories.Add(47);
+        evidence.Prices[(item.Id,false)]=new(item.Id,false,1,20,now,"test");
+        check(Judge().Outcome==Outcome.Dispose,"Known fish below sale rules may be disposed with category permission");
+        rules.Sales=[new(){MinimumUnit=1,MinimumTotal=1}];
+        check(Judge().Outcome==Outcome.Market,"Fish sale eligibility still protects stock from disposal");
     }
 }

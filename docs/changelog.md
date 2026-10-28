@@ -1,3 +1,7 @@
+## 0.1.0.64
+
+Recognise fish in the game fishing log and visible spearfishing records as repeatable acquisition sources. Ordinary fish no longer fall into the unknown-source disposal hold. Preserve special-source precedence, sale rules, explicit category permissions and all existing protection checks. Validated all 14 fish/kelp types from the recorded disposal pass against local game data. Includes the non-equipment protection fix from 0.1.0.63.
+
 ## 0.1.0.63
 
 Protect non-equipment with unknown acquisition from disposal, independently of item/category permissions. Preserve special and difficult-to-replace non-equipment rewards from disposal and automatic sales, including duplicates; glamour-filter settings cannot disable these holds. Show the acquisition hold in review evidence and clarify category permissions. Known repeatable items retain ordinary sale and disposal rules. No live settings or execution holds are changed. Automated protection tests pass; verify updated proposals in log-only before enabling disposal.

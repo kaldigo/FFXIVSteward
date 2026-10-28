@@ -15,6 +15,7 @@ public sealed unsafe class InventoryView
     private readonly Dictionary<uint,uint[]> outfits;
     private readonly (uint Row,uint Item)[] cabinet;
     private readonly HashSet<uint> crafted;
+    private readonly HashSet<uint> fishable;
     private readonly HashSet<uint> cabinetItems;
     private readonly Dictionary<uint,ItemFacts> itemMetadata=[];
     private readonly IReadOnlyDictionary<uint,SourceKind> acquisitionSources=AcquisitionSources.Load();
@@ -42,6 +43,9 @@ public sealed unsafe class InventoryView
         cabinetItems=cabinet.Select(c=>c.Item).ToHashSet();
         outfits=data.GetExcelSheet<Sheets.MirageStoreSetItem>().ToDictionary(r=>r.RowId,r=>new[]{r.MainHand.RowId,r.OffHand.RowId,r.Head.RowId,r.Body.RowId,r.Hands.RowId,r.Legs.RowId,r.Feet.RowId,r.Earrings.RowId,r.Necklace.RowId,r.Bracelets.RowId,r.Ring.RowId});
         crafted=data.GetExcelSheet<Sheets.Recipe>().Where(r=>r.ItemResult.RowId!=0).Select(r=>r.ItemResult.RowId).ToHashSet();
+        fishable=AcquisitionSources.Fishable(
+            data.GetExcelSheet<Sheets.FishParameter>().Select(r=>(r.Item.RowId,r.IsInLog)),
+            data.GetExcelSheet<Sheets.SpearfishingItem>().Select(r=>(r.Item.RowId,r.IsVisible,r.TerritoryType.RowId)));
     }
     public bool DresserEligible(uint id)=>data.GetExcelSheet<Sheets.Item>().TryGetRow(id,out var row)&&row.IsGlamorous;
     public DresserDeposit DresserDepositFor(Stock source)
@@ -96,7 +100,7 @@ public sealed unsafe class InventoryView
                 row.ItemUICategory.RowId,row.PriceLow,row.LevelItem.RowId==1);
             itemMetadata[id]=facts;
         }
-        var source=config.Sources.GetValueOrDefault(id,crafted.Contains(id)?SourceKind.Ordinary:SourceKind.Unknown);
+        var source=config.Sources.GetValueOrDefault(id,crafted.Contains(id)||fishable.Contains(id)?SourceKind.Ordinary:SourceKind.Unknown);
         source=AcquisitionSources.Merge(source,acquisitionSources.GetValueOrDefault(id));
         source=AcquisitionSources.Merge(source,config.DutySources.GetValueOrDefault(id));
         source=AcquisitionSources.Merge(source,facts.Source);

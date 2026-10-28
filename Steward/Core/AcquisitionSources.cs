@@ -4,6 +4,11 @@ namespace Steward.Core;
 
 public static class AcquisitionSources
 {
+    public static HashSet<uint> Fishable(IEnumerable<(uint Item,bool InLog)> rod,
+        IEnumerable<(uint Item,bool Visible,uint Territory)> spear) =>
+        rod.Where(r=>r.Item!=0&&r.InLog).Select(r=>r.Item)
+            .Concat(spear.Where(r=>r.Item!=0&&r.Visible&&r.Territory!=0).Select(r=>r.Item)).ToHashSet();
+
     public static IReadOnlyDictionary<uint,SourceKind> Load()
     {
         var assembly=typeof(AcquisitionSources).Assembly;
