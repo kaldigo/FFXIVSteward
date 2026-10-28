@@ -3,6 +3,22 @@ using Steward.Core;
 var total=0;
 void Check(bool condition,string name) { total++; if(!condition) throw new Exception(name); }
 {
+    foreach(var reason in new[]{"Cached collection copy is unverified; preserve until collection is observed","Live dresser or armoire ownership is unavailable","Special or difficult-to-replace non-equipment reward; preserve all copies"})
+        Check(StoragePolicy.EntrustCandidate(new(Outcome.Keep,reason),true),"Safe storage does not require disposal ownership proof: "+reason);
+    foreach(var reason in new[]{"AutoRetainer protection is unavailable","Explicit AutoRetainer protection","Unlearned or unverified unlock item: keep available to use"})
+        Check(!StoragePolicy.EntrustCandidate(new(Outcome.Keep,reason),true),"Entrust retains native and use-first holds: "+reason);
+    foreach(var outcome in new[]{Outcome.Ignore,Outcome.CollectArmoire,Outcome.CollectDresser})
+        Check(!StoragePolicy.EntrustCandidate(new(outcome,"test"),true),"Entrust does not divert known pending collection or ignored items");
+    Check(!StoragePolicy.EntrustCandidate(new(Outcome.StoreRetainer,"test"),false),"Disabled overflow remains disabled");
+    var run=new StorageRun();run.Restored(12);
+    Check(!run.EntrustPending,"No follow-up from an unauthorised dresser action");
+    run.Begin(12,true);run.Restored(13);Check(!run.EntrustPending,"No cross-character follow-up");
+    run.Restored(12);Check(run.EntrustPending,"Confirmed restoration requests native entrust");
+    run.EntrustStarted();Check(!run.EntrustPending,"Accepted pass consumes request so unique skips cannot loop");
+    run.Restored(12);run.End();Check(!run.EntrustPending,"Stopping clears follow-up permission");
+    run.Begin(12,true);run.Restored(12);run.Begin(13,true);Check(!run.EntrustPending,"Character changes clear pending storage");
+}
+{
     Stock[] sources=[new(1,false,1,10000,0),new(2,false,1,10000,1),new(3,false,1,10000,2),new(4,false,1,10000,3)];
     Decision JudgeCleanup(Stock s)=>new(s.ItemId switch{1=>Outcome.CollectDresser,2=>Outcome.Dispose,3=>Outcome.Ignore,_=>Outcome.Dispose},"test");
     var selected=StoragePolicy.PlanWithdrawals(sources,JudgeCleanup,_=>true,s=>s.ItemId==2,false,true);

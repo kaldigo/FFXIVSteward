@@ -12,6 +12,21 @@ public sealed partial class Plugin
     private long nextCollectionAttempt;
     private long nextDresserAttempt;
     private bool cleanupVisited;
+    private bool postCleanupEntrustPass;
+    private long nextPostCleanupEntrust;
+    private void TryPostCleanupEntrust()
+    {
+        if(!storageRun.EntrustPending||postCleanupEntrustPass||!storageRun.Allows(player.ContentId,config.ExecutionEnabled)||
+            executionFault||ownsPostprocess||market.Queue.Running||AutoDutyCoordination.OwnsTravel(pi)||Environment.TickCount64<nextPostCleanupEntrust)return;
+        if(!market.CloseDresserForStorage())return;
+        nextPostCleanupEntrust=Environment.TickCount64+15000;
+        if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,"Entrust"))
+        {
+            storageRun.EntrustStarted();postCleanupEntrustPass=true;
+            Record("Post-dresser native entrust pass requested; AutoRetainer owns plans and transfers, with no disposal, sales or collection withdrawals");
+        }
+        else Alert("Dresser cleanup finished; follow-up storage is waiting for AutoRetainer and a reachable summoning bell. Items remain safe in inventory.");
+    }
     private readonly StorageRun storageRun=new();
     private void BeginStorageRun(bool authorized)
     {
@@ -19,6 +34,7 @@ public sealed partial class Plugin
         if(authorized&&!storageRun.Allows(player.ContentId,config.ExecutionEnabled))
         {
             cleanupVisited=false;
+            nextPostCleanupEntrust=0;
             nextCollectionAttempt=nextDresserAttempt=nextOverflowAttempt=nextAutomaticWork=0;
         }
         storageRun.Begin(player.ContentId,authorized);
@@ -76,6 +92,9 @@ public sealed partial class Plugin
         if(AutoDutyCoordination.OwnsTravel(pi)){storageRun.End();return true;}
         if(!storageRun.Allows(player.ContentId,config.ExecutionEnabled))return false;
         if(!player.IsLoaded||attached!=player.ContentId||!config.Connected||!config.ExecutionEnabled||executionFault||market.Queue.Running||ownsPostprocess||overflowPass||collectionPass)return false;
+        // Once collection is finished, retry only the requested storage pass; closing
+        // the dresser must not turn lost live ownership into another dresser visit.
+        if(storageRun.EntrustPending&&nextPostCleanupEntrust>0){TryPostCleanupEntrust();return true;}
         // Existing player/armoury items must not suppress missing-item retainer collection.
         if(Environment.TickCount64>=nextCollectionAttempt&&CollectionNeeded(player.ContentId))
         {

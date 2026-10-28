@@ -5,7 +5,14 @@ namespace Steward.Core;
 public sealed class StorageRun
 {
     private ulong owner;
-    public void Begin(ulong character,bool authorized) => owner=authorized?character:0;
+    public bool EntrustPending { get; private set; }
+    public void Restored(ulong character) { if(owner!=0&&owner==character)EntrustPending=true; }
+    public void EntrustStarted() => EntrustPending=false;
+    public void Begin(ulong character,bool authorized)
+    {
+        if(!authorized||owner!=character)End();
+        owner=authorized?character:0;
+    }
     public bool Allows(ulong character,bool executionEnabled) => executionEnabled&&owner!=0&&owner==character;
-    public void End() => owner=0;
+    public void End() { owner=0;EntrustPending=false; }
 }

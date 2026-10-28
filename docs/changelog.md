@@ -1,3 +1,7 @@
+## 0.1.0.67
+
+Allow safe native entrusting when collection ownership is cached or unavailable, retaining inventory exclusions, gearsets, explicit protections and disposal checks. After confirmed dresser restoration, request one native AutoRetainer storage pass once collection work finishes; never repeat for unique conflicts. Requires the matching AutoRetainer update for the follow-up route.
+
 ## 0.1.0.66
 
 Protect unresolved non-equipment from automatic sales as well as disposal, before evaluating sale rules. Special and quest-reward classifications also preserve all copies regardless of item/category disposal permissions. Add regression coverage for matching sale rules and protected duplicate stacks. No live settings or execution holds are changed.

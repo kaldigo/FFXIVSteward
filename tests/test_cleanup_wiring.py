@@ -15,7 +15,7 @@ class CleanupWiring(unittest.TestCase):
   self.assertIn('return StepResult.Completed;',live.split('attempted=true')[0])
  def test_automatic_storage_closes_dresser_only_after_work_finishes(self):
   plugin=(ROOT/'Plugin.cs').read_text()
-  self.assertIn('!market.Queue.Running&&!StorageWorkRemaining()&&market.CloseDresserForStorage()',plugin)
+  self.assertIn('!market.Queue.Running&&!StorageWorkRemaining()&&!storageRun.EntrustPending&&!postCleanupEntrustPass&&market.CloseDresserForStorage()',plugin)
   storage=(ROOT/'Services/MarketQueue.Storage.cs').read_text().split('public sealed record CleanupCandidate')[0]
   self.assertIn('ui.Get("MiragePrismPrismBox")!=null||',storage)
   self.assertIn('Queue.Running||',storage)
@@ -38,3 +38,15 @@ class CleanupWiring(unittest.TestCase):
   self.assertIn('InventoryView.FreeBagSlots()<2',queue)
   self.assertIn('view.IsUnique(stock.ItemId)&&view.Items.Any(s=>s.ItemId==stock.ItemId)',queue)
 
+
+ def test_followup_requires_confirmed_restore_and_finishes_without_repeating(self):
+  queue=(ROOT/'Services/MarketQueue.cs').read_text()
+  ack=queue.split('Confirmed dresser restoration of ')[1]
+  self.assertIn('DresserRestored?.Invoke(view.Character)',ack)
+  plugin=(ROOT/'Plugin.cs').read_text()
+  self.assertIn('market.DresserRestored+=storageRun.Restored;',plugin)
+  self.assertIn('postCleanupEntrustPass=false;storageRun.End();',plugin)
+  storage=(ROOT/'Plugin.Storage.cs').read_text().split('private void TryPostCleanupEntrust()')[1].split('private readonly StorageRun')[0]
+  for gate in ['!storageRun.EntrustPending','!storageRun.Allows','executionFault','AutoDutyCoordination.OwnsTravel','market.CloseDresserForStorage()']:
+   self.assertIn(gate,storage)
+  self.assertLess(storage.index('InvokeFunc(player.ContentId,"Entrust")'),storage.index('storageRun.EntrustStarted()'))

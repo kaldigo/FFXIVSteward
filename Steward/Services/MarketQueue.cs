@@ -480,6 +480,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
             },TimeoutMs:10000,CanSkip:()=>!attempted));
         }
     }
+    public event Action<ulong>? DresserRestored;
     public void CleanupDresser()
         =>Plan(CleanupDresserCore);
     private void CleanupDresserCore()
@@ -579,7 +580,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 var acknowledgement=DresserRestoration.Acknowledge(beforeCopies,copies,before,after);
                 if(acknowledgement==StepResult.Failed)throw new InvalidOperationException($"Dresser restoration acknowledgement mismatch: item={id}, dresser={beforeCopies}->{copies}, carried={before}->{after}");
                 if(acknowledgement!=StepResult.Completed)return acknowledgement;
-                history("Confirmed dresser restoration of "+id);return StepResult.Completed;
+                history("Confirmed dresser restoration of "+id);DresserRestored?.Invoke(view.Character);return StepResult.Completed;
             },TimeoutMs:10000,CanSkip:()=>!attempted));
         }
     }

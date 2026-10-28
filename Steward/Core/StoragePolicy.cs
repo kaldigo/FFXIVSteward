@@ -2,6 +2,12 @@ namespace Steward.Core;
 
 public static class StoragePolicy
 {
+    // Collection ownership is required for disposal, not for a reversible native deposit.
+    // Destination selection and inventory-specific exclusions are checked separately.
+    public static bool EntrustCandidate(Decision decision,bool overflowEnabled) =>
+        (decision.Outcome!=Outcome.StoreRetainer||overflowEnabled)&&
+        decision.Outcome is not (Outcome.CollectArmoire or Outcome.CollectDresser or Outcome.Ignore)&&
+        decision.Reason is not ("AutoRetainer protection is unavailable" or "Explicit AutoRetainer protection" or "Unlearned or unverified unlock item: keep available to use");
     public static Stock[] PlanWithdrawals(IEnumerable<Stock> inventory,Func<Stock,Decision> judge,
         Func<Outcome,bool> enabled,Func<Stock,bool> disposalSelected,bool collectionOnly,bool disposalOnly=false) =>
         inventory.ToArray().Where(stock=>

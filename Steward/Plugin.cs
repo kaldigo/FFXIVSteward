@@ -93,6 +93,7 @@ public sealed partial class Plugin : IDalamudPlugin
         historyPath=Path.Combine(pi.GetPluginConfigDirectory(),"history.jsonl");
         reviewJournal=new(historyPath);
         market=new(pi,board,view,config,new(gui),JudgeLive,Record,RefreshProtection,()=>imports.MarketPreferencesReady,HoldExecution,BeginOperation,CompleteOperation,ProtectCollection,Alert,Judge,Save,JudgeMarket,new NativeDresserStore(sigScanner,config),interop);
+        market.DresserRestored+=storageRun.Restored;
         dresserTrace=new(lifecycle,gui,Record,id=>$"item={id}, player quantity={view.Items.Where(s=>s.ItemId==id).Sum(s=>(long)s.Quantity)}, live dresser={view.Evidence.DresserKnown}, dresser owned={view.Evidence.Dresser.Contains(id)}, prisms={view.Items.Where(s=>s.ItemId==21800).Sum(s=>(long)s.Quantity)}");
         pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.StrategyRetainer").RegisterFunc(r=>config.ExecutionEnabled&&!executionFault&&config.Connected&&attached==player.ContentId&&player.IsLoaded&&config.Features.AnyMarket&&config.Silver.Owns(r));
         pi.GetIpcProvider<string,string>(Endpoint).RegisterFunc(Evaluate);
@@ -239,8 +240,7 @@ public sealed partial class Plugin : IDalamudPlugin
     {
         if(character!=0 && character==player.ContentId){HoldExecution("AutoRetainer: "+reason);StopQueue();}
     }
-    private bool StorageCandidate(Decision decision)=>(decision.Outcome!=Outcome.StoreRetainer||config.Features.OverflowStorage)&&decision.Outcome is not (Outcome.CollectArmoire or Outcome.CollectDresser or Outcome.Ignore)&&
-        decision.Reason is not ("AutoRetainer protection is unavailable" or "Explicit AutoRetainer protection" or "Unlearned or unverified unlock item: keep available to use" or "Live dresser or armoire ownership is unavailable" or "Cached collection copy is unverified; preserve until collection is observed");
+    private bool StorageCandidate(Decision decision)=>StoragePolicy.EntrustCandidate(decision,config.Features.OverflowStorage);
     private string Evaluate(string request)
     {
         try
@@ -364,6 +364,7 @@ public sealed partial class Plugin : IDalamudPlugin
                 var busy=pi.GetIpcSubscriber<bool>("AutoRetainer.PluginState.IsBusy").InvokeFunc();
                 if(!busy)
                 {
+                    if(postCleanupEntrustPass){postCleanupEntrustPass=false;storageRun.End();Record("Post-dresser native entrust pass finished; items without an eligible destination remain in inventory");}
                     dungeonSources.Tick();
                     if(!cleanupActive&&storageRun.Allows(player.ContentId,config.ExecutionEnabled)&&!executionFault)
                     {
@@ -372,7 +373,8 @@ public sealed partial class Plugin : IDalamudPlugin
                         {
                             if(!market.Queue.Running)market.DepositOpenDresser();
                             if(!market.Queue.Running)market.CleanupDresser();
-                            if(!market.Queue.Running&&!StorageWorkRemaining()&&market.CloseDresserForStorage())storageRun.End();
+                            if(!market.Queue.Running&&!StorageWorkRemaining())TryPostCleanupEntrust();
+                            if(!market.Queue.Running&&!StorageWorkRemaining()&&!storageRun.EntrustPending&&!postCleanupEntrustPass&&market.CloseDresserForStorage())storageRun.End();
                         }
                     }
                 }
@@ -437,7 +439,7 @@ public sealed partial class Plugin : IDalamudPlugin
         CancelCleanup();
         storageRun.End();
         if(market.Queue.HasUnverifiedAction && !executionFault)HoldExecution("An active operation was cancelled; its last game action may still complete");
-        openingInventory=withdrawing=openingMarket=false;overflowPass=collectionPass=false;cleanupVisited=false;
+        openingInventory=withdrawing=openingMarket=false;overflowPass=collectionPass=false;cleanupVisited=false;postCleanupEntrustPass=false;nextPostCleanupEntrust=0;
         try{market.Stop();}finally{FinishPostprocess();}
     }
     private void Stop(){try{StopQueue();}finally{Save();}Record("Current Steward run stopped; enabled features wait for the next authorised AutoRetainer run");}
