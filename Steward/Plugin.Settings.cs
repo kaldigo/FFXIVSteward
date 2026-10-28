@@ -234,6 +234,7 @@ public sealed partial class Plugin
             var deleted=ImGui.SmallButton("Delete");
             if(deleted){config.Rules.Sales.Remove(rule);ruleUiIds.Remove(rule);SavePolicy();}
             ImGui.TextWrapped($"At least {rule.MinimumUnit:N0} gil each / {rule.MinimumTotal:N0} gil per listing · Up to {rule.MaximumStack} per stack");
+            if(rule.AllowLowPriority)ImGui.TextWrapped($"Spare slots: from {rule.ListingMinimumUnit:N0} gil each / {rule.ListingMinimumTotal:N0} gil per listing · Low priority");
             var scope=rule.Group==ItemGroup.Gear?"Equipment only · ":rule.Group==ItemGroup.Other?"Non-equipment only · ":"";
             ImGui.TextWrapped(scope+(rule.Categories.Count==0?"All categories":string.Join(", ",rule.Categories.Take(4).Select(id=>view.Categories.GetValueOrDefault(id,"Unavailable")))+(rule.Categories.Count>4?" …":""))+$" · {rule.ExcludedCategories.Count} excluded");
             if(expanded&&!deleted){ImGui.Indent();DrawSaleRuleEditor(rule);ImGui.Unindent();}
@@ -291,6 +292,21 @@ public sealed partial class Plugin
             var unit=(int)Math.Min(rule.MinimumUnit,999999999);var total=(int)Math.Min(rule.MinimumTotal,999999999);var stack=rule.MaximumStack;
             if(ImGui.InputInt("Minimum gil per item",ref unit)){rule.MinimumUnit=(uint)Math.Clamp(unit,1,999999999);SavePolicy();}
             if(ImGui.InputInt("Minimum gil per listing",ref total)){rule.MinimumTotal=(uint)Math.Clamp(total,1,999999999);SavePolicy();}
+            Setting("Fill spare slots with lower-value items",rule.AllowLowPriority,v=>rule.AllowLowPriority=v,
+                "Normal-priority stock is listed first across all rules. Lower-priority items remain protected for sale, use the same activity threshold and cannot replace normal-priority listings.");
+            if(rule.AllowLowPriority)
+            {
+                ImGui.Indent();
+                var lowUnit=(int)Math.Min(rule.LowPriorityMinimumUnit,999999999);
+                var lowTotal=(int)Math.Min(rule.LowPriorityMinimumTotal,999999999);
+                if(ImGui.InputInt("Spare-slot minimum gil per item",ref lowUnit)){rule.LowPriorityMinimumUnit=(uint)Math.Clamp(lowUnit,1,(int)Math.Max(1,rule.MinimumUnit));SavePolicy();}
+                if(ImGui.InputInt("Spare-slot minimum gil per listing",ref lowTotal)){rule.LowPriorityMinimumTotal=(uint)Math.Clamp(lowTotal,1,(int)Math.Max(1,rule.MinimumTotal));SavePolicy();}
+                if(ImGui.SmallButton("General preset: 20,000 gil")){rule.LowPriorityMinimumUnit=rule.LowPriorityMinimumTotal=20000;SavePolicy();}
+                ImGui.SameLine();
+                if(ImGui.SmallButton("Materials preset: 500 each / 2,500 total")){rule.LowPriorityMinimumUnit=500;rule.LowPriorityMinimumTotal=2500;SavePolicy();}
+                ImGui.TextWrapped("These are lower limits, not target prices. Existing protections, stack sizes and sales-activity requirements still apply.");
+                ImGui.Unindent();
+            }
             if(ImGui.InputInt("Maximum items per stack",ref stack)){rule.MaximumStack=Math.Clamp(stack,1,9999);SavePolicy();}
             Setting("Require minimum sales activity",rule.MinimumDailySales.HasValue,v=>rule.MinimumDailySales=v ? 0.1 : null);
             if(rule.MinimumDailySales.HasValue)

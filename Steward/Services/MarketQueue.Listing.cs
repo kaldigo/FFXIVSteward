@@ -15,7 +15,7 @@ public sealed unsafe partial class MarketQueue
         var silver=config.Silver.Matches(retainer,stock.ItemId)?config.Silver:null;
         var rule=view.Facts(stock.ItemId) is {} facts?MarketRule(facts,stock,retainer):null;
         return CachedRepricing.Decide(view.Evidence.AllaganPrices,view.World,stock.ItemId,stock.Hq,
-            silver==null?config.Rules.Quality:QualityMode.Separate,before,config.Pricing,rule?.MinimumUnit??1,
+            silver==null?config.Rules.Quality:QualityMode.Separate,before,config.Pricing,rule?.ListingMinimumUnit??1,
             DateTimeOffset.UtcNow,config.Rules.SummaryRefreshHours,silver);
     }
     private void RecordCacheChecks(ulong retainer,IEnumerable<Stock> listings)
@@ -155,7 +155,7 @@ public sealed unsafe partial class MarketQueue
             if(reference?.Competitor is not uint competitor)continue;
             var before=(uint)InventoryManager.Instance()->GetRetainerMarketPrice((short)listing.Slot);
             if(before==0||before<=competitor||reference.OwnMinimum is uint own&&own<=competitor)continue;
-            var target=Pricing.Undercut(competitor,config.Pricing,decision.Rule?.MinimumUnit??1);
+            var target=Pricing.Undercut(competitor,config.Pricing,decision.Rule?.ListingMinimumUnit??1);
             if(target.HasValue&&MarketSubmission.CanCommit(listing,listing,decision,true,target.Value,listing.Quantity,(int)target.Value,(int)listing.Quantity,9999))
                 reprices.Add(new(listing,before,target.Value,reference,decision.Rule?.Name));
         }

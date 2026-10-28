@@ -24,6 +24,12 @@ public sealed class SaleRule
     public bool? Hq { get; set; }
     public uint MinimumUnit { get; set; } = 1000;
     public uint MinimumTotal { get; set; } = 5000;
+    public bool AllowLowPriority { get; set; }
+    public uint LowPriorityMinimumUnit { get; set; } = 500;
+    public uint LowPriorityMinimumTotal { get; set; } = 2500;
+    [System.Text.Json.Serialization.JsonIgnore] public uint ListingMinimumUnit=>AllowLowPriority?Math.Max(1,Math.Min(MinimumUnit,LowPriorityMinimumUnit)):MinimumUnit;
+    [System.Text.Json.Serialization.JsonIgnore] public uint ListingMinimumTotal=>AllowLowPriority?Math.Max(1,Math.Min(MinimumTotal,LowPriorityMinimumTotal)):MinimumTotal;
+    public int Priority(double? unit,uint quantity)=>AllowLowPriority&&(!unit.HasValue||unit<MinimumUnit||unit*quantity<MinimumTotal)?1:0;
     public int MaximumStack { get; set; } = 99;
     public int? MaximumListingDays { get; set; }
     public double? MinimumDailySales { get; set; }
@@ -139,9 +145,9 @@ public static class Rules
                     if(rule.MinimumDailySales is double minimum && (value.DailySales==null||!current))
                         return new(Outcome.Wait,"Rule sales velocity is unknown; item held",rule);
                     var quantity=Math.Min(removable.Value,(uint)Math.Clamp(rule.MaximumStack,1,9999));
-                    if(value.Average>=rule.MinimumUnit&&value.Average*quantity>=rule.MinimumTotal&&
+                    if(value.Average>=rule.ListingMinimumUnit&&value.Average*quantity>=rule.ListingMinimumTotal&&
                         (rule.MinimumDailySales==null||value.DailySales>=rule.MinimumDailySales))
-                        return new(Outcome.Market,"Matches average-value and sales-velocity rule: "+rule.Name,rule,(uint)Math.Floor(value.Average!.Value),MaximumRemovable:removable);
+                        return new(Outcome.Market,(rule.Priority(value.Average,quantity)>0?"Low-priority sale; fill spare slots: ":"Matches average-value and sales-velocity rule: ")+rule.Name,rule,(uint)Math.Floor(value.Average!.Value),MaximumRemovable:removable);
                     saleRejected=true;
                 }
                 // An old value can propose a sale, but a quiet or truncated history window never permits destruction.
@@ -157,7 +163,7 @@ public static class Rules
             if(rule != null)
             {
                 var quantity = Math.Min(removable.Value, (uint)Math.Clamp(rule.MaximumStack, 1, 9999));
-                if(quote.UnitPrice >= rule.MinimumUnit && (ulong)quote.UnitPrice*quantity >= rule.MinimumTotal)
+                if(quote.UnitPrice >= rule.ListingMinimumUnit && (ulong)quote.UnitPrice*quantity >= rule.ListingMinimumTotal)
                     return new(Outcome.Market, "Matches sale rule: " + rule.Name, rule, quote.UnitPrice,MaximumRemovable:removable);
             }
         }

@@ -414,3 +414,6 @@ Check(AutoDutyTravel.Owned(_=>throw new InvalidOperationException()),"Unavailabl
 Console.WriteLine("10 AutoDuty travel coordination checks passed.");
 CachedRepricingChecks.Run(Check);
 Console.WriteLine("Allagan cached repricing checks passed.");
+
+LowPriorityChecks.Run(Check);
+Console.WriteLine("Lower-priority sale tier checks passed.");

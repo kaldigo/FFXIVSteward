@@ -17,7 +17,7 @@ public static class ListingPolicy
         if(decision.Outcome is Outcome.Keep or Outcome.CollectArmoire or Outcome.CollectDresser or Outcome.StoreRetainer)
             return "Needed outside the market: "+decision.Reason;
         if(price==0)return null;
-        if(price<rule.MinimumUnit||(ulong)price*stock.Quantity<rule.MinimumTotal)return "Current listing is below the rule's price floor";
+        if(price<rule.ListingMinimumUnit||(ulong)price*stock.Quantity<rule.ListingMinimumTotal)return "Current listing is below the rule's price floor";
         var limit=Math.Clamp(rule.MaximumStack,1,9999);
         if(pricing.UseMaxStackSize)limit=Math.Min(limit,Math.Clamp(pricing.MaximumStackSize,1,9999));
         if(stock.Quantity>limit)return "Current stack exceeds the sale stack limit";

@@ -9,7 +9,7 @@ static class CategoryChecks
         var gear=new ItemFacts(42,"Gear",true,2,90,true,false,SourceKind.NormalRaid,35);
         var mat=new ItemFacts(43,"Material",false,1,1,true,false,SourceKind.Ordinary,54);
         var food=mat with{Id=44,Name="Food",Category=45};
-        Stock Stock(ItemFacts item)=>new(item.Id,false,30,0,0);
+        Stock Stock(ItemFacts item)=>new(item.Id,false,30,0,(ushort)(item.Id-42));
         var gearRule=new SaleRule{Name="Gear",Group=ItemGroup.Gear,MaximumStack=1,MinimumUnit=5000,MinimumTotal=5000};
         var matRule=new SaleRule{Name="Materials",Group=ItemGroup.Other,Categories=[54,55],MaximumStack=30,MinimumUnit=100,MinimumTotal=1000};
         check(gearRule.Matches(gear,Stock(gear))&&!gearRule.Matches(mat,Stock(mat)),"Gear rule excludes materials");

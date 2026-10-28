@@ -17,7 +17,7 @@ class ListingWiring(unittest.TestCase):
         planner=(ROOT/'Steward/Core/ListingPlanner.cs').read_text(encoding='utf-8')
         self.assertGreaterEqual(live.count('ListingPlanner.Next('),2)
         self.assertIn('ListingPlanner.Plan(',preview)
-        self.assertIn('var choice=Next(input,pricing,world,maxAgeMinutes,now)',planner)
+        self.assertIn('Choice:Next(p.Input,pricing,world,maxAgeMinutes,now)',planner)
         self.assertIn('if(!success)pass.Rejected(source)',preview)
         self.assertIn('pass.Next(candidates,listings.Count)',preview)
 

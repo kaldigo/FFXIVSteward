@@ -1,3 +1,7 @@
+## 0.1.0.58
+
+Add an optional lower-priority tier to sale rules, with presets of 20,000 gil for general items and 500 gil each / 2,500 per stack for materials. Normal-priority stock fills slots first, including before lower-value split remainders. Eligible lower-tier items remain protected for sale; activity requirements and other protections still apply. Use the lower floors consistently for listing, repricing and existing-listing checks. Lower-priority stock cannot rotate out normal-priority listings. Existing rules remain unchanged until the tier is enabled.
+
 ## 0.1.0.57
 
 Use Allagan Market's cache to skip unchanged listing comparisons and log repricing decisions. Show provisional silver strategy price increases, decreases and below-floor buyout alerts from cached competition. Share a complete identified comparison across an item's stacks within the current pass, with bounded freshness and all per-stack protections preserved. Unknown or own-price cache entries still require a comparison. Log-only remains read-only.

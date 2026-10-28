@@ -228,9 +228,9 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 }
                 else
                 {
-                    target=Pricing.Target(expected.ItemId,expected.Hq,beforePrice,result.Offers,config.OwnRetainers,config.Rules.Quality,config.Pricing,decision.Rule?.MinimumUnit??1);
+                    target=Pricing.Target(expected.ItemId,expected.Hq,beforePrice,result.Offers,config.OwnRetainers,config.Rules.Quality,config.Pricing,decision.Rule?.ListingMinimumUnit??1);
                     if(target==null)return Finish();quantity=(int)expected.Quantity;
-                    if(decision.Rule!=null&&(ulong)target.Value*(uint)quantity<decision.Rule.MinimumTotal)return Finish();
+                    if(decision.Rule!=null&&(ulong)target.Value*(uint)quantity<decision.Rule.ListingMinimumTotal)return Finish();
                 }
                 var agent=AgentRetainer.Instance();
                 if(agent==null||agent->SellItemInventoryType!=(InventoryType)expected.Container||agent->SellItemInventorySlot!=expected.Slot)return StepResult.Failed;
@@ -269,7 +269,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     latest=choice.UnitPrice;decision=decision with{Outcome=Outcome.Market,Reason="Validated live listing plan",Rule=saleRule,UnitPrice=latest};
                     if(!MarketSnapshot(out var selected,out var currentListings,false)||selected!=retainer||!occupiedBefore.SetEquals(currentListings.Select(s=>s.Slot)))return StepResult.Failed;
                 }
-                else latest=Pricing.Target(expected.ItemId,expected.Hq,beforePrice,result.Offers,config.OwnRetainers,config.Rules.Quality,config.Pricing,decision.Rule?.MinimumUnit??1);
+                else latest=Pricing.Target(expected.ItemId,expected.Hq,beforePrice,result.Offers,config.OwnRetainers,config.Rules.Quality,config.Pricing,decision.Rule?.ListingMinimumUnit??1);
                 var maximum=decision.Rule?.MaximumStack??9999;
                 if(config.Pricing.UseMaxStackSize&&!config.Silver.Matches(retainer,expected.ItemId))maximum=Math.Min(maximum,config.Pricing.MaximumStackSize);
                 if(latest!=target || !MarketSubmission.CanCommit(expected,InventoryView.ReadSlot(expected.Container,expected.Slot),decision,reprice,

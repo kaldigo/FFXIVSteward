@@ -120,7 +120,7 @@ public sealed partial class Plugin
                 foreach(var listing in plan.Listings)
                     entries.Add(new(player.ContentId,$"Retainer {marketPreview.Retainer}, proposed market slot {listing.MarketSlot+1}; source {listing.Source.Container}:{listing.Source.Slot}",
                         listing.Source.ItemId,listing.Quantity,listing.Source.Hq,"WouldList",
-                        $"{view.Facts(listing.Source.ItemId)?.Name}: {listing.Quantity} at {listing.UnitPrice:N0} gil each; total {listing.Total:N0} gil. Estimate; live comparison and protection rechecked before execution.",
+                        $"{view.Facts(listing.Source.ItemId)?.Name}: {listing.Quantity} at {listing.UnitPrice:N0} gil each; total {listing.Total:N0} gil. {(listing.Priority>0?"Low priority; spare slots only.":"Normal priority.")} Estimate; live comparison and protection rechecked before execution.",
                         listing.UnitPrice,listing.Total,marketPreview.World,marketPreview.Retainer,listing.Reference.Source,listing.Reference.Observed,Collection:CopyEvidence(listing.Source.ItemId),RuleName:listing.RuleName));
                 foreach(var repricing in marketPreview.Reprices)
                     entries.Add(new(player.ContentId,$"Retainer {marketPreview.Retainer}, listing slot {repricing.Source.Slot}",repricing.Source.ItemId,repricing.Source.Quantity,repricing.Source.Hq,
