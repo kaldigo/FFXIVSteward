@@ -1,3 +1,7 @@
+## 0.1.0.65
+
+Recognise mining/botany items on located gathering nodes, targeted non-random retainer ventures, seed-backed garden crops and inspection conversions from verified gathered inputs and reviewed permanent city-supplier material stock as repeatable acquisition sources. These materials retain sale-rule and disposal-category checks instead of being held as unknown. Identify non-equipment quest rewards and recorded duty drops, distinguishing normal duties from special/high-end rewards. Verified repeatable material sources take precedence over incidental reward routes; mixed duty-only sources retain the strongest protection. Genuinely unknown sources remain held. No live settings are changed.
+
 ## 0.1.0.64
 
 Recognise fish in the game fishing log and visible spearfishing records as repeatable acquisition sources. Ordinary fish no longer fall into the unknown-source disposal hold. Preserve special-source precedence, sale rules, explicit category permissions and all existing protection checks. Validated all 14 fish/kelp types from the recorded disposal pass against local game data. Includes the non-equipment protection fix from 0.1.0.63.

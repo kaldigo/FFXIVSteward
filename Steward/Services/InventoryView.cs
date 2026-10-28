@@ -16,6 +16,9 @@ public sealed unsafe class InventoryView
     private readonly (uint Row,uint Item)[] cabinet;
     private readonly HashSet<uint> crafted;
     private readonly HashSet<uint> fishable;
+    private readonly HashSet<uint> repeatableMaterials;
+    private readonly HashSet<uint> questRewards;
+    private readonly IReadOnlyDictionary<uint,SourceKind> nonEquipmentDuties=AcquisitionSources.Load("non-equipment-duty-sources.json");
     private readonly HashSet<uint> cabinetItems;
     private readonly Dictionary<uint,ItemFacts> itemMetadata=[];
     private readonly IReadOnlyDictionary<uint,SourceKind> acquisitionSources=AcquisitionSources.Load();
@@ -46,6 +49,35 @@ public sealed unsafe class InventoryView
         fishable=AcquisitionSources.Fishable(
             data.GetExcelSheet<Sheets.FishParameter>().Select(r=>(r.Item.RowId,r.IsInLog)),
             data.GetExcelSheet<Sheets.SpearfishingItem>().Select(r=>(r.Item.RowId,r.IsVisible,r.TerritoryType.RowId)));
+        var gatheringBases=data.GetExcelSheet<Sheets.GatheringPoint>().Where(r=>r.TerritoryType.RowId!=0)
+            .Select(r=>r.GatheringPointBase.RowId).ToHashSet();
+        var gatheringRows=data.GetExcelSheet<Sheets.GatheringPointBase>()
+            .Where(r=>gatheringBases.Contains(r.RowId)&&r.GatheringType.RowId<4)
+            .SelectMany(r=>r.Item).Select(r=>r.RowId).ToHashSet();
+        var normalTasks=data.GetExcelSheet<Sheets.RetainerTask>().Where(r=>!r.IsRandom&&r.ClassJobCategory.RowId!=0)
+            .Select(r=>r.Task.RowId).ToHashSet();
+        repeatableMaterials=AcquisitionSources.RepeatableMaterials(
+            data.GetExcelSheet<Sheets.GatheringItem>().Select(r=>(r.Item.RowId,gatheringRows.Contains(r.RowId))),
+            data.GetExcelSheet<Sheets.RetainerTaskNormal>().Select(r=>(r.Item.RowId,normalTasks.Contains(r.RowId))));
+        var inspectionInputs=repeatableMaterials.Concat(fishable).ToHashSet();
+        repeatableMaterials.UnionWith(AcquisitionSources.InspectionOutputs(
+            data.GetExcelSheet<Sheets.HWDGathererInspection>().SelectMany(r=>r.HWDGathererInspectionData)
+                .Select(r=>(r.RequiredItem.RowId!=0?r.RequiredItem.Value.Item.RowId:r.FishParameter.RowId!=0?r.FishParameter.Value.Item.RowId:0,
+                    r.ItemReceived.RowId,(uint)r.AmountRequired)),inspectionInputs));
+        var seedRows=data.GetExcelSheet<Sheets.Item>().Where(r=>r.AdditionalData.Is<Sheets.GardeningSeed>())
+            .Select(r=>r.AdditionalData.RowId).ToHashSet();
+        repeatableMaterials.UnionWith(data.GetExcelSheet<Sheets.GardeningSeed>()
+            .Where(r=>seedRows.Contains(r.RowId)&&r.Item.RowId!=0).Select(r=>r.Item.RowId));
+        foreach(var entry in data.GetSubrowExcelSheet<Sheets.GilShopItem>().SelectMany(r=>r))
+        {
+            if(entry.Item.RowId==0||!data.GetExcelSheet<Sheets.GilShop>().TryGetRow(entry.RowId,out var shop))continue;
+            var item=entry.Item.Value;
+            if(AcquisitionSources.ReviewedGilMaterial(entry.RowId,item.EquipSlotCategory.RowId!=0,shop.FestivalId,shop.Quest.RowId,
+                entry.QuestRequired.Any(q=>q.RowId!=0),entry.AchievementRequired.RowId,entry.StateRequired,item.PriceMid))
+                repeatableMaterials.Add(entry.Item.RowId);
+        }
+        questRewards=data.GetExcelSheet<Sheets.Quest>().SelectMany(r=>r.Reward.Where(i=>i.Is<Sheets.Item>()).Select(i=>i.RowId)
+            .Concat(r.OptionalItemReward.Select(i=>i.RowId))).Where(id=>id!=0).ToHashSet();
     }
     public bool DresserEligible(uint id)=>data.GetExcelSheet<Sheets.Item>().TryGetRow(id,out var row)&&row.IsGlamorous;
     public DresserDeposit DresserDepositFor(Stock source)
@@ -100,7 +132,9 @@ public sealed unsafe class InventoryView
                 row.ItemUICategory.RowId,row.PriceLow,row.LevelItem.RowId==1);
             itemMetadata[id]=facts;
         }
-        var source=config.Sources.GetValueOrDefault(id,crafted.Contains(id)||fishable.Contains(id)?SourceKind.Ordinary:SourceKind.Unknown);
+        var source=config.Sources.GetValueOrDefault(id,crafted.Contains(id)||fishable.Contains(id)||repeatableMaterials.Contains(id)?SourceKind.Ordinary:SourceKind.Unknown);
+        if(!facts.Equipment&&source==SourceKind.Unknown)
+            source=nonEquipmentDuties.GetValueOrDefault(id,questRewards.Contains(id)?SourceKind.Special:SourceKind.Unknown);
         source=AcquisitionSources.Merge(source,acquisitionSources.GetValueOrDefault(id));
         source=AcquisitionSources.Merge(source,config.DutySources.GetValueOrDefault(id));
         source=AcquisitionSources.Merge(source,facts.Source);

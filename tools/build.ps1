@@ -7,6 +7,8 @@ try {
     $cfg=Get-Content release-config.json -Raw | ConvertFrom-Json
     python tools/build_common_glamour.py --check
     if ($LASTEXITCODE) { throw 'Common glamour evidence or generated list failed validation' }
+    python tools/check_non_equipment_sources.py
+    if ($LASTEXITCODE) { throw 'Non-equipment acquisition evidence failed validation' }
     $buildArgs=@('build',$cfg.project,'-c','Release','-p:UseSharedCompilation=false','--nologo')
     if ($Version) { $buildArgs+="-p:Version=$Version" }
     & dotnet @buildArgs

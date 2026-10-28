@@ -5,6 +5,7 @@
  <ItemGroup><Compile Include="../Steward/Services/UniversalisPrices.cs" Link="Services/UniversalisPrices.cs" /></ItemGroup>
  <ItemGroup>
   <EmbeddedResource Include="../Steward/data/acquisition-sources.json" LogicalName="acquisition-sources.json" />
+  <EmbeddedResource Include="../Steward/data/non-equipment-duty-sources.json" LogicalName="non-equipment-duty-sources.json" />
   <EmbeddedResource Include="../Steward/data/common-glamour.json" LogicalName="Steward.data.common-glamour.json" />
   <EmbeddedResource Include="../docs/data/common-glamour-evidence.json" LogicalName="CommonGlamourEvidence" />
  </ItemGroup>
