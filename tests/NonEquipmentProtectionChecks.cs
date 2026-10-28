@@ -29,17 +29,18 @@ static class NonEquipmentProtectionChecks
         {
             item=item with{Source=source};
             check(Judge().Outcome==Outcome.Keep,"Non-gear source protection beats item and category disposal permission: "+source);
-            foreach(var action in new[]{"Vendor","Gc","Desynth","Retrieve","Discard"})
+            foreach(var action in new[]{"Vendor","Gc","Desynth","Retrieve","Discard","Market"})
                 check(!ActionPolicy.Allows(action,Judge().Outcome,true,true,false),"Protected non-gear cannot reach "+action);
             evidence.Dresser.Add(item.Id);evidence.Armoire.Add(item.Id);
             check(Judge().Outcome==Outcome.Keep,"Collection or duplicate copies cannot release non-gear source hold");
             check(CollectionCopyEvidence.Capture(item,rules,evidence,true,false,now).ProtectionMatches.Contains(NonEquipmentProtection.Reason(item)!),"Review includes non-gear source hold");
         }
         item=item with{Source=SourceKind.Special,Marketable=true};
+        rules.Glamour.SpecialRewards=false;
         rules.Sales=[new(){MinimumUnit=1,MinimumTotal=1}];evidence.Prices[(item.Id,false)]=new(item.Id,false,1,2000,now,"test");
-        check(Judge().Outcome==Outcome.Keep,"Special rewards are not automatically sold");
+        check(Judge().Outcome==Outcome.Keep,"Special non-gear rewards stay protected even when the glamour special-reward filter is disabled");
         item=item with{Source=SourceKind.Unknown};
-        check(Judge().Outcome==Outcome.Market,"Unknown-source tradeable stock can satisfy an explicit sale rule");
+        check(Judge().Outcome==Outcome.Keep,"Unresolved-source stock is protected even when a sale rule matches");
         rules.Sales.Clear();check(Judge().Outcome==Outcome.Keep,"Failure to match a sale rule never releases unknown source for disposal");
         foreach(var source in new[]{SourceKind.Ordinary,SourceKind.NormalDungeon,SourceKind.NormalRaid})
         {

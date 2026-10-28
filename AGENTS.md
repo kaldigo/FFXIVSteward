@@ -1,6 +1,6 @@
 # Steward
 
-Non-equipment disposal permissions never override acquisition protection. Unknown sources hold disposal even after rejected sale rules; verified special, alliance, savage and high-end rewards preserve every copy and also block automatic sales. These holds are independent of glamour filters and never create a dresser destination. Known repeatable sources still require explicit disposal permission and all other gates. Review evidence must expose the source hold. Unknown-source tradeable items may still meet an explicit sale rule; this does not authorize disposal.
+Non-equipment disposal permissions never override acquisition protection. Unknown sources block both automatic sales and disposal before sale rules; verified special, alliance, savage and high-end rewards preserve every copy and also block automatic sales. These holds are independent of glamour filters and never create a dresser destination. Known repeatable sources still require explicit disposal permission and all other gates. Review evidence must expose the source hold. Unresolved-source tradeable items remain protected even when a sale rule matches.
 
 During the current in-game testing workflow, publish completed, tested fixes and verify the release/feed without requiring another user request to publish. The user explicitly authorized this ongoing workflow. Do not change live saved settings or clear execution holds as part of publication.
 

@@ -1,3 +1,7 @@
+## 0.1.0.66
+
+Protect unresolved non-equipment from automatic sales as well as disposal, before evaluating sale rules. Special and quest-reward classifications also preserve all copies regardless of item/category disposal permissions. Add regression coverage for matching sale rules and protected duplicate stacks. No live settings or execution holds are changed.
+
 ## 0.1.0.65
 
 Recognise mining/botany items on located gathering nodes, targeted non-random retainer ventures, seed-backed garden crops and inspection conversions from verified gathered inputs and reviewed permanent city-supplier material stock as repeatable acquisition sources. These materials retain sale-rule and disposal-category checks instead of being held as unknown. Identify non-equipment quest rewards and recorded duty drops, distinguishing normal duties from special/high-end rewards. Verified repeatable material sources take precedence over incidental reward routes; mixed duty-only sources retain the strongest protection. Genuinely unknown sources remain held. No live settings are changed.

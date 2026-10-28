@@ -109,7 +109,6 @@ public static class Rules
         if(!evidence.GearsetsReady || !evidence.ReferencesReady) return new(Outcome.Wait, "Glamour references or gear sets are unavailable");
         if(evidence.Gearsets.Contains(item.Id)) return new(Outcome.Keep, "Equipped or referenced by a gear set");
         var nonEquipmentHold=NonEquipmentProtection.Reason(item);
-        if(nonEquipmentHold!=null&&item.Source!=SourceKind.Unknown)return new(Outcome.Keep,nonEquipmentHold);
         var removable=QuantityReserve.Removable(stock,settings.QuantityReserves.GetValueOrDefault(item.Id),evidence.ReserveStocks);
         if(removable==null)return new(Outcome.Wait,"Quantity reserve needs live source inventory");
         if(removable==0)return new(Outcome.Keep,"Quantity reserve protects this stack");
@@ -131,6 +130,7 @@ public static class Rules
                 return new(item.ArmoireEligible ? Outcome.CollectArmoire : Outcome.CollectDresser, "An exact copy is missing from the collection");
             }
         }
+        if(nonEquipmentHold!=null)return new(Outcome.Keep,nonEquipmentHold);
         var rule = settings.Sales.FirstOrDefault(r => r.Matches(item, stock, retainer));
         var saleRejected=false;
         if(item.Marketable)
@@ -170,7 +170,6 @@ public static class Rules
             }
         }
         }
-        if(nonEquipmentHold!=null)return new(Outcome.Keep,nonEquipmentHold,rule,SaleRejected:saleRejected);
         if(!item.Equipment && !settings.AllowsNonEquipmentDisposal(item))
             return new(Outcome.Keep, "Non-equipment disposal requires explicit item permission",rule,SaleRejected:saleRejected);
         if(removable<stock.Quantity)return new(Outcome.Keep,"Stack contains a quantity reserve; whole-stack disposal blocked",rule);

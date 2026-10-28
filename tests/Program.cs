@@ -141,12 +141,12 @@ item=item with{EquipLevel=90};Check(Judge().Outcome==Outcome.Dispose,"Ordinary u
 e.CuratedGlamour.Add(42);Check(Judge().Outcome==Outcome.CollectDresser,"Curated dungeon glamour protected");e.CuratedGlamour.Clear();
 e.References.Add(42);Check(Judge().Outcome==Outcome.CollectDresser,"Plate protects ordinary gear");
 e.References.Clear();item=item with{Source=SourceKind.Unknown};Check(Judge().Outcome==Outcome.Keep,"Unknown source held");
-item=item with{Equipment=false,Marketable=true};
+item=item with{Equipment=false,Marketable=true,Source=SourceKind.Ordinary};
 Check(Judge().Outcome==Outcome.Wait,"Missing price blocks disposal");
 e.Prices[(42,false)]=new(42,false,1,1000,now,"Test");settings.Sales.Add(new(){MinimumUnit=1000,MinimumTotal=5000,MaximumStack=5});
 stock=stock with{Quantity=5};Check(Judge().Outcome==Outcome.Market,"Sale criteria match");
 stock=stock with{Quantity=4};Check(Judge().Outcome==Outcome.Keep,"Below-floor non-equipment stays protected by default");
-settings.NonEquipmentDisposal.Add(42);Check(Judge().Outcome==Outcome.Keep,"Unknown source cannot be released by explicit disposal permission");
+settings.NonEquipmentDisposal.Add(42);item=item with{Source=SourceKind.Unknown};Check(Judge().Outcome==Outcome.Keep,"Unknown source cannot be released by explicit disposal permission");
 item=item with{Source=SourceKind.Ordinary};Check(Judge().Outcome==Outcome.Dispose,"Verified ordinary non-equipment disposal still respects actual sale thresholds");
 settings.NonEquipmentDisposal.Clear();
 e.Prices[(42,false)]=e.Prices[(42,false)] with{Observed=now.AddHours(-1)};Check(Judge().Outcome==Outcome.Wait,"Stale price held");
