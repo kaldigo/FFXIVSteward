@@ -32,6 +32,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
     private readonly Dictionary<uint,(DateTimeOffset At,int Request,List<Offering> Offers)> offers=[];
     private uint comparisonItem;
     private DateTimeOffset comparisonOpened;
+    private readonly MarketSearchPacing searchPacing=new();
     public OperationQueue Queue { get; }
     public MarketQueue(IDalamudPluginInterface pi,IMarketBoard market,InventoryView view,Configuration config,NativeUi ui,Func<Stock,Decision> judge,Action<string> history,Action refreshProtection,Func<bool> marketPreferencesReady,Action<string> fault,Action<string> begin,Action complete,Action<uint> protectCollection,Action<string> notify,Func<Stock,Decision> previewJudge,Action save,Func<Stock,ulong,bool,Decision> marketJudge,NativeDresserStore dresserStore,IGameInteropProvider interop)
     {this.dresserStore=dresserStore;this.marketJudge=marketJudge;this.save=save;this.pi=pi;this.market=market;this.view=view;this.config=config;this.ui=ui;this.judge=judge;this.history=history;this.refreshProtection=refreshProtection;this.marketPreferencesReady=marketPreferencesReady;this.fault=fault;this.protectCollection=protectCollection;this.notify=notify;this.previewJudge=previewJudge;Queue=new(begin,complete,reason=>{history("Skipped item; continuing run: "+reason);notify("Skipped item: "+reason);});market.OfferingsReceived+=Received;InitializeSearchResponses(interop);}
@@ -132,6 +133,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
         uint? target=null;uint? beforePrice=null;var quantity=0;var locked=false;
         HashSet<ushort> occupiedBefore=[];
         long beforeResponse=0;var beforeRequest=-1;var comparisonHeld="search not started";
+        var searchRetries=0;var pacingLogged=false;
         (DateTimeOffset At,int Request,List<Offering> Offers)? comparison=null;
         bool TryComparison(out (DateTimeOffset At,int Request,List<Offering> Offers) result)
         {
@@ -230,14 +232,32 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 var proxy=FFXIVClientStructs.FFXIV.Client.UI.Info.InfoProxyItemSearch.Instance();
                 if(proxy==null)return Finish();
                 if(searchResponseHook==null){history("Market comparisons unavailable: response observer could not be initialized");return Finish();}
+                searchPacing.Observe(Volatile.Read(ref searchResponse));
+                if(!searchPacing.Ready(DateTimeOffset.UtcNow))
+                {
+                    if(!pacingLogged){history($"Market search pacing: item={expected.ItemId}, wait={(searchPacing.NextSearch-DateTimeOffset.UtcNow).TotalSeconds:F1}s");pacingLogged=true;}
+                    return StepResult.Waiting;
+                }
                 offers.Clear();opened=DateTimeOffset.UtcNow;comparisonItem=expected.ItemId;comparisonOpened=opened;
                 beforeRequest=proxy->CurrentRequestId;beforeResponse=Volatile.Read(ref searchResponse)?.Sequence??0;
-                if(!ui.Click("RetainerSell",4))return Fail("Compare Prices button unavailable");phase=2;return StepResult.Waiting;
+                if(!ui.Click("RetainerSell",4))return Fail("Compare Prices button unavailable");
+                searchPacing.Sent(opened);pacingLogged=false;phase=2;return StepResult.Waiting;
             }
             if(phase==2)
             {
                 if(!TryComparison(out var result))
                 {
+                    var response=Volatile.Read(ref searchResponse);
+                    if(response!=null&&response.Sequence>beforeResponse&&response.At>=opened&&response.Item%1000000==expected.ItemId&&response.Status!=0)
+                    {
+                        searchPacing.Observe(response);
+                        if(response.Status==MarketSearchPacing.RateLimited&&searchRetries<2)
+                        {
+                            searchRetries++;history($"Market search rate limited: item={expected.ItemId}; retry {searchRetries}/2 after cooldown");
+                            ui.Close("ItemSearchResult");opened=DateTimeOffset.UtcNow;phase=1;return StepResult.Waiting;
+                        }
+                        history($"Held market item {expected.ItemId}: server search status 0x{response.Status:X8}, retries={searchRetries}; no listing submitted");return Finish();
+                    }
                     if(DateTimeOffset.UtcNow-opened>TimeSpan.FromSeconds(10))
                     {
                         var packet=offers.TryGetValue(expected.ItemId,out var captured)?$"packet request={captured.Request}, rows={captured.Offers.Count}":"no captured packet for item";
@@ -364,7 +384,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     throw new InvalidOperationException("Market Buddy did not confirm release of Steward's lock");
             }
             if(finished)completed?.Invoke(expected,successful);
-        },20000));
+        },45000));
     }
     public void Advance(long now)
     {

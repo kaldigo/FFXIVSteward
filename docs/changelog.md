@@ -1,3 +1,7 @@
+## 0.1.0.62
+
+Pace fresh in-game market searches with a three-second gap after requests/responses, shared across items and retainer passes. Detect rate-limit status 0x70000003 immediately and retry the same item up to twice after a five-second cooldown. Preserve complete-result validation and per-stack submission checks; cached comparisons for additional stacks bypass the search delay. Bound retry time and keep rate-limited items held rather than treating failures as empty markets.
+
 ## 0.1.0.61
 
 Dispatch retainer price and quantity updates without treating the callback return as acknowledgement. Require matching agent and displayed numeric values before final submission, with a bounded readback wait. Add specific listing failure reasons and state diagnostics, plus distinct dispatch, submit and confirmed-listing records so unconfirmed actions are distinguishable in the logs.

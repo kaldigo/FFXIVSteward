@@ -419,3 +419,17 @@ LowPriorityChecks.Run(Check);
 Console.WriteLine("Lower-priority sale tier checks passed.");
 NativeComparisonChecks.Run(Check);
 Console.WriteLine("Native market comparison checks passed.");
+
+var pacing=new MarketSearchPacing();
+Check(pacing.Ready(now),"First market search needs no delay");
+pacing.Sent(now);
+Check(!pacing.Ready(now.AddSeconds(2.9))&&pacing.Ready(now.AddSeconds(3)),"Requests are spaced by at least three seconds");
+pacing.Observe(new(1,42,10,0,now.AddSeconds(1)));
+Check(!pacing.Ready(now.AddSeconds(3.9))&&pacing.Ready(now.AddSeconds(4)),"Completed response also starts a three-second gap");
+pacing.Observe(new(2,43,0,MarketSearchPacing.RateLimited,now.AddSeconds(4)));
+Check(!pacing.Ready(now.AddSeconds(8.9))&&pacing.Ready(now.AddSeconds(9)),"Rate limit starts five-second backoff");
+pacing.Observe(new(1,42,10,0,now.AddSeconds(1)));
+Check(pacing.NextSearch==now.AddSeconds(9),"Old response cannot shorten cooldown");
+pacing.Observe(new(2,43,0,MarketSearchPacing.RateLimited,now.AddSeconds(20)));
+Check(pacing.NextSearch==now.AddSeconds(9),"Same receipt does not perpetually extend backoff");
+Console.WriteLine("Market search pacing checks passed.");

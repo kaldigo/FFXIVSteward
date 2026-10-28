@@ -39,3 +39,13 @@ class CacheRepricing(unittest.TestCase):
   self.assertIn('CachedRepricing.Decide',silver)
   self.assertIn('higher-priced alternatives require one shared comparison',silver)
   self.assertNotIn('ui.Click',silver)
+
+ def test_search_delay_preserves_cache_reuse_and_bounds_retries(self):
+  text=(ROOT/'Services/MarketQueue.cs').read_text()
+  self.assertLess(text.index('if(passComparisons.TryGetValue'),text.index('if(!searchPacing.Ready'))
+  self.assertIn('searchRetries<2',text)
+  self.assertIn('response.Sequence>beforeResponse',text)
+  self.assertIn('response.Item%1000000==expected.ItemId',text)
+  self.assertIn('response.Status==MarketSearchPacing.RateLimited',text)
+  self.assertIn('searchPacing.Sent(opened)',text)
+  self.assertIn('},45000));',text)
