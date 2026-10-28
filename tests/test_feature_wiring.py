@@ -115,7 +115,8 @@ class FeatureWiring(unittest.TestCase):
         withdrawal=queue.split('private void WithdrawForOtherActionsCore')[1].split('public void CleanupDresser')[0] if 'private void WithdrawForOtherActionsCore' in queue else queue.split('public void WithdrawForOtherActions')[1].split('public void CleanupDresser')[0]
         self.assertNotIn('SalesEnabledFor',withdrawal)
         self.assertIn('config.Features.Enabled',withdrawal)
-        self.assertIn('else if(config.Features.Repricing)Enqueue(',queue)
+        self.assertIn('else if(config.Features.Repricing)',queue)
+        self.assertIn('if(cached.NeedsComparison)Enqueue(',queue)
         self.assertIn('if(config.Features.NewListings)EnqueueListingPump',queue)
         self.assertIn('config.Features.CanRestore',(ROOT/'Services/MarketQueue.Storage.cs').read_text())
     def test_native_rotation_and_return_recheck_toggles(self):

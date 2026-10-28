@@ -1,3 +1,7 @@
+## 0.1.0.57
+
+Use Allagan Market's cache to skip unchanged listing comparisons and log repricing decisions. Show provisional silver strategy price increases, decreases and below-floor buyout alerts from cached competition. Share a complete identified comparison across an item's stacks within the current pass, with bounded freshness and all per-stack protections preserved. Unknown or own-price cache entries still require a comparison. Log-only remains read-only.
+
 ## 0.1.0.56
 
 Defer Steward storage travel while AutoDuty owns the run, expire previous follow-up travel permission and leave glamour collection items on retainers for later. Preserve native AutoRetainer GC execution and disposal protections, including the managed-discard prohibition. Add coordination regression checks; live AutoDuty acceptance remains to be tested.

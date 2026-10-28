@@ -105,7 +105,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
         if(Queue.Running||!config.ExecutionEnabled||config.ExecutionReviewRequired||!config.Connected) return;
         refreshProtection();
         if(!marketPreferencesReady()){history("Market preferences are unavailable; market execution held");return;}
-        Queue.Begin();
+        Queue.Begin();passComparisons.Clear();
         if(ui.Get("RetainerSellList")==null){history("Open the retainer sell list before starting market work.");return;}
         var rm=RetainerManager.Instance();var retainer=rm==null?0:rm->LastSelectedRetainerId;
         if(!config.SalesEnabledFor(retainer) || !view.Retainers.Contains(retainer)){history("Own retainer identity unavailable");return;}
@@ -114,7 +114,12 @@ public sealed unsafe partial class MarketQueue : IDisposable
         foreach(var listing in listings)
         {
             if(ReturnReason(listing,retainer,false)!=null)EnqueueReturn(listing,retainer,coordinated);
-            else if(config.Features.Repricing)Enqueue(listing,retainer,true,coordinated);
+            else if(config.Features.Repricing)
+            {
+                var cached=CachedReprice(listing,retainer);
+                history($"Reprice cache check: item={listing.ItemId}, slot={listing.Slot}, target={cached.Target}, {cached.Reason}");
+                if(cached.NeedsComparison)Enqueue(listing,retainer,true,coordinated);
+            }
         }
         if(config.Features.NewListings)EnqueueListingPump(retainer,coordinated,new ListingPass());
         if(!Queue.Running)ReleaseManualCoordination();
@@ -126,6 +131,22 @@ public sealed unsafe partial class MarketQueue : IDisposable
         var opened=DateTimeOffset.MinValue;var sent=DateTimeOffset.MinValue;
         uint? target=null;uint? beforePrice=null;var quantity=0;var locked=false;
         HashSet<ushort> occupiedBefore=[];
+        (DateTimeOffset At,int Request,List<Offering> Offers)? comparison=null;
+        bool TryComparison(out (DateTimeOffset At,int Request,List<Offering> Offers) result)
+        {
+            if(comparison is {} shared)
+            {
+                result=shared;
+                return view.World==expectedWorld&&shared.At<=DateTimeOffset.UtcNow&&DateTimeOffset.UtcNow-shared.At<=TimeSpan.FromMinutes(2);
+            }
+            if(offers.TryGetValue(expected.ItemId,out result)&&ComparisonReady(expected.ItemId,opened,result))
+            {
+                comparison=result;
+                passComparisons[expected.ItemId]=new(expectedWorld,result.Request,result.At,result.Offers.ToList(),true);
+                return true;
+            }
+            return false;
+        }
         Queue.Add(new((reprice?"Reprice ":"List ")+expected.ItemId,()=>
         {
             if(reprice?!config.Features.Repricing:!config.Features.NewListings)return StepResult.Failed;
@@ -166,12 +187,19 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     if(DateTimeOffset.UtcNow-opened>TimeSpan.FromSeconds(5)){history("Held listing "+expected.ItemId+": native selling window unavailable.");return Finish();}
                     return StepResult.Waiting;
                 }
+                if(passComparisons.TryGetValue(expected.ItemId,out var shared)&&shared.Complete&&shared.World==expectedWorld&&
+                    shared.At<=DateTimeOffset.UtcNow&&DateTimeOffset.UtcNow-shared.At<=TimeSpan.FromMinutes(2))
+                {
+                    comparison=(shared.At,shared.Request,shared.Offers);
+                    history($"Reusing verified comparison for item {expected.ItemId}, listing slot {expected.Slot}");
+                    phase=2;return StepResult.Waiting;
+                }
                 offers.Clear();opened=DateTimeOffset.UtcNow;comparisonItem=expected.ItemId;comparisonOpened=opened;
                 if(!ui.Click("RetainerSell",4))return StepResult.Failed;phase=2;return StepResult.Waiting;
             }
             if(phase==2)
             {
-                if(!offers.TryGetValue(expected.ItemId,out var result)||!ComparisonReady(expected.ItemId,opened,result))
+                if(!TryComparison(out var result))
                 {
                     if(DateTimeOffset.UtcNow-opened>TimeSpan.FromSeconds(10))
                     {history("Held market item "+expected.ItemId+": complete fresh competition unavailable; trying other source stacks.");return Finish();}
@@ -222,7 +250,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 if(agent->SellItemUnitPrice!=target || agent->SellItemQuantity!=quantity ||
                     dialog->AskingPrice->Value!=target || dialog->Quantity->Value!=quantity)return StepResult.Waiting;
                 if(reprice && (uint)InventoryManager.Instance()->GetRetainerMarketPrice((short)expected.Slot)!=beforePrice)return StepResult.Failed;
-                if(!offers.TryGetValue(expected.ItemId,out var result) || !ComparisonReady(expected.ItemId,opened,result))return StepResult.Failed;
+                if(!TryComparison(out var result))return StepResult.Failed;
                 uint? latest;
                 if(config.Silver.Matches(retainer,expected.ItemId))
                 {

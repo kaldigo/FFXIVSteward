@@ -60,6 +60,7 @@ public sealed class RuleSettings
 }
 public sealed class Evidence
 {
+    public IReadOnlyList<Quote> AllaganPrices { get; set; }=[];
     public void InvalidateLive()
     {
         DresserKnown=ArmoireKnown=GearsetsReady=ReferencesReady=false;

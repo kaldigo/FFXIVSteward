@@ -56,6 +56,7 @@ public sealed class ExternalImports
             try{var path=Path.Combine(directory,"Marketbuddy.json");if(File.Exists(path)){config.Pricing=ReadCached(path,Imports.MarketBuddy);MarketPreferencesReady=true;}else errors.Add("Market Buddy settings not found; market execution held");}
             catch(Exception ex){errors.Add("Market Buddy: "+ex.Message);}
         }
+        view.Evidence.AllaganPrices=[];
         try
         {
             var sales=Path.Combine(directory,"AllaganMarket","SaleItems.csv");
@@ -67,7 +68,8 @@ public sealed class ExternalImports
                 if(uint.Parse(fields[1])==view.World)config.OwnRetainers.Add(ulong.Parse(fields[0]));
             }
             var path=Path.Combine(directory,"AllaganMarket","MarketPriceCache.csv");
-            if(File.Exists(path))foreach(var quote in ReadCached(path,Imports.MarketCache))
+            if(File.Exists(path))view.Evidence.AllaganPrices=ReadCached(path,Imports.MarketCache);
+            foreach(var quote in view.Evidence.AllaganPrices)
             {
                 var key=(quote.ItemId,quote.Hq);
                 if(quote.World==view.World && (!view.Evidence.Prices.TryGetValue(key,out var current)||current.Observed<quote.Observed))view.Evidence.Prices[key]=quote;

@@ -412,3 +412,5 @@ foreach(var stopped in new[]{false,true})
         "AutoDuty owns travel during loops, navigation and active stages");
 Check(AutoDutyTravel.Owned(_=>throw new InvalidOperationException()),"Unavailable AutoDuty state holds competing travel");
 Console.WriteLine("10 AutoDuty travel coordination checks passed.");
+CachedRepricingChecks.Run(Check);
+Console.WriteLine("Allagan cached repricing checks passed.");

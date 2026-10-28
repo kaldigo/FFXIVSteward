@@ -36,12 +36,31 @@ public sealed unsafe partial class MarketQueue
         var mix=string.Join("; ",SilverStrategy.Mix.Select(m=>$"{listings.Count(s=>s.ItemId==SilverStrategy.ItemId&&!s.Hq&&s.Quantity==m.Quantity)}/{m.Count} stacks of {m.Quantity}"));
         var wrong=listings.Count(s=>s.ItemId!=SilverStrategy.ItemId||s.Hq||!SilverStrategy.Mix.Any(m=>m.Quantity==s.Quantity));
         var status=$"Silver strategy: {mix}. {wrong} unrelated or differently-sized listing(s). Other items are untouched; nonstandard dye stacks are repriced but never resized or withdrawn. ";
-        if(!observedMarkets.TryGetValue(SilverStrategy.ItemId,out var observed)||!observed.Complete||observed.World!=view.World||observed.At>DateTimeOffset.UtcNow||DateTimeOffset.UtcNow-observed.At>TimeSpan.FromMinutes(config.Rules.MaximumPriceAgeMinutes))
-            return new(retainer,view.World,null,[],status+"Open Compare Prices for Metallic Silver Dye to record a complete market comparison. Prices and buyout alerts held until then.");
-        var quote=config.Silver.Price(observed.Offers,config.OwnRetainers,true);
-        if(quote==null)return new(retainer,view.World,null,[],status+"Market identities are incomplete; strategy held.");
-        SilverAlerts(quote,observed.At);
-        var reference=new MarketReference(view.World,quote.Price,null,observed.At,"Silver strategy: complete observed comparison; live recheck required",true);
+        SilverStrategy.Quote? quote;
+        MarketReference reference;
+        if(observedMarkets.TryGetValue(SilverStrategy.ItemId,out var observed)&&observed.Complete&&observed.World==view.World&&
+            observed.At<=DateTimeOffset.UtcNow&&DateTimeOffset.UtcNow-observed.At<=TimeSpan.FromMinutes(config.Rules.MaximumPriceAgeMinutes)&&
+            !view.Evidence.AllaganPrices.Any(q=>q.World==view.World&&q.ItemId==SilverStrategy.ItemId&&!q.Hq&&q.Observed>observed.At&&q.Observed<=DateTimeOffset.UtcNow))
+        {
+            quote=config.Silver.Price(observed.Offers,config.OwnRetainers,true);
+            if(quote==null)return new(retainer,view.World,null,[],status+"Market identities are incomplete; strategy held.");
+            SilverAlerts(quote,observed.At);
+            reference=new(view.World,quote.Price,null,observed.At,"Silver strategy: complete observed comparison; shared live comparison before execution",true);
+        }
+        else
+        {
+            var cached=CachedRepricing.Decide(view.Evidence.AllaganPrices,view.World,SilverStrategy.ItemId,false,QualityMode.Separate,
+                1,config.Pricing,config.Silver.MinimumPrice,DateTimeOffset.UtcNow,config.Rules.SummaryRefreshHours,config.Silver);
+            if(!cached.Known||cached.Target==null||cached.Quote==null)
+                return new(retainer,view.World,null,[],status+cached.Reason+". No cache-based price proposal available.");
+            var reset=cached.Quote.UnitPrice<config.Silver.MinimumPrice+config.Silver.Undercut;
+            quote=new(cached.Target.Value,[],reset);
+            reference=new(view.World,quote.Price,null,cached.Quote.Observed,
+                "Allagan Market silver estimate; competitor identities and higher-priced alternatives require one shared comparison",true);
+            if(reset)StrategyReviewEntries=[new(view.Character,"Silver strategy cached competitor",SilverStrategy.ItemId,0,false,"BuyoutAlert",
+                $"Allagan Market records {cached.Quote.UnitPrice:N0} gil per dye below the strategy threshold. Provisional reset {quote.Price:N0}; higher qualifying competitors, quantities and buyout totals are unknown. Manual purchase only.",
+                cached.Quote.UnitPrice,World:view.World,Retainer:retainer,PriceSource:cached.Quote.Source,PriceObserved:cached.Quote.Observed)];
+        }
         List<RepriceProposal> reprices=[];List<ListingProposal> proposals=[];List<string> held=[];
         foreach(var listing in listings.Where(s=>config.Features.Repricing&&config.Silver.Matches(retainer,s.ItemId)&&!s.Hq))
         {

@@ -16,8 +16,11 @@ class SilverWiring(unittest.TestCase):
   for check in ['config.Silver.Matches(retainer,stock.ItemId)','config.Rules.Keep.Contains','config.Rules.QuantityReserves','config.Rules.IgnoredCategories','view.Evidence.Gearsets.Contains','UpstreamProtection.Apply']:
    self.assertIn(check,block)
   self.assertIn('config.ExecutionEnabled&&!executionFault',source)
- def test_only_native_comparison_supports_strategy_preview(self):
+ def test_cache_preview_is_provisional_and_live_comparison_is_identified(self):
   source=(ROOT/'Services/MarketQueue.Silver.cs').read_text()
-  self.assertIn('!observed.Complete',source)
-  self.assertIn('observed.World!=view.World',source)
+  self.assertIn('observed.Complete',source)
+  self.assertIn('CachedRepricing.Decide',source)
+  self.assertIn('Allagan Market silver estimate',source)
+  self.assertIn('config.Silver.Price(observed.Offers,config.OwnRetainers,true)',source)
+  self.assertIn('observed.World==view.World',source)
   self.assertNotIn('Universalis',source)

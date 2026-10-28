@@ -114,6 +114,7 @@ public sealed partial class Plugin
                 entries.Add(new(player.ContentId,$"Retainer {name}",0,0,false,"WouldWithdrawGil","Configured 100% withdrawal; actual amount and player gil capacity checked by AutoRetainer. Blocked in log-only mode.",Retainer:retainer));
             marketPreview=market.PreviewMarket();
             entries.AddRange(market.StrategyReviewEntries);
+            entries.AddRange(market.CacheReviewEntries);
             if(marketPreview.Plan is {} plan)
             {
                 foreach(var listing in plan.Listings)

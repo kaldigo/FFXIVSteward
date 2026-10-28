@@ -7,6 +7,27 @@ public sealed unsafe partial class MarketQueue
 {
     private sealed record ObservedMarket(uint World,int Request,DateTimeOffset At,List<Offering> Offers,bool Complete=false);
     private readonly Dictionary<uint,ObservedMarket> observedMarkets=[];
+    private readonly Dictionary<uint,ObservedMarket> passComparisons=[];
+    public IReadOnlyList<ReviewEntry> CacheReviewEntries {get;private set;}=[];
+    private CachedPriceDecision CachedReprice(Stock stock,ulong retainer)
+    {
+        var before=(uint)InventoryManager.Instance()->GetRetainerMarketPrice((short)stock.Slot);
+        var silver=config.Silver.Matches(retainer,stock.ItemId)?config.Silver:null;
+        var rule=view.Facts(stock.ItemId) is {} facts?MarketRule(facts,stock,retainer):null;
+        return CachedRepricing.Decide(view.Evidence.AllaganPrices,view.World,stock.ItemId,stock.Hq,
+            silver==null?config.Rules.Quality:QualityMode.Separate,before,config.Pricing,rule?.MinimumUnit??1,
+            DateTimeOffset.UtcNow,config.Rules.SummaryRefreshHours,silver);
+    }
+    private void RecordCacheChecks(ulong retainer,IEnumerable<Stock> listings)
+    {
+        CacheReviewEntries=listings.Where(s=>config.Features.Repricing&&(!config.Silver.Owns(retainer)||config.Silver.Matches(retainer,s.ItemId)&&!s.Hq)).Select(s=>
+        {
+            var cached=CachedReprice(s,retainer);
+            return new ReviewEntry(view.Character,$"Retainer {retainer}, cache check slot {s.Slot}",s.ItemId,s.Quantity,s.Hq,
+                cached.NeedsComparison?"RepriceComparisonNeeded":"RepriceComparisonSkipped",cached.Reason,
+                cached.Target,World:view.World,Retainer:retainer,PriceSource:cached.Quote?.Source,PriceObserved:cached.Quote?.Observed);
+        }).ToArray();
+    }
     private uint observationWorld;
     private DateTimeOffset observationWorldSince;
     public sealed record RepriceProposal(Stock Source,uint Before,uint After,MarketReference Reference,string? RuleName=null);
@@ -108,10 +129,11 @@ public sealed unsafe partial class MarketQueue
     }
     public MarketPreview PreviewMarket()
     {
-        StrategyReviewEntries=[];
+        StrategyReviewEntries=[];CacheReviewEntries=[];
         if(!MarketSnapshot(out var retainer,out var listings))
             return new(0,view.World,null,[],"Open your retainer's selling list to load its actual free slots. Log-only does not open game menus or request in-game searches. Universalis may fetch price estimates in the background.");
         if(!config.SalesEnabledFor(retainer))return new(retainer,view.World,null,[],"Sale automation is excluded for this retainer.");
+        RecordCacheChecks(retainer,listings);
         if(config.Silver.Owns(retainer))return PreviewSilver(retainer,listings);
         ObserveListingWindows(retainer,listings);
         if(!marketPreferencesReady())return new(retainer,view.World,null,[],"Market preferences unavailable; listing proposals held.");
@@ -125,7 +147,12 @@ public sealed unsafe partial class MarketQueue
         foreach(var listing in config.Features.Repricing?listings:[])
         {
             var decision=marketJudge(listing,retainer,false);if(ReturnReason(listing,retainer,false)!=null||decision.Rule==null||decision.Outcome is not (Outcome.Market or Outcome.Dispose))continue;
-            var reference=PreviewReference(listing.ItemId,listing.Hq);if(reference?.Competitor is not uint competitor)continue;
+            var cached=CachedReprice(listing,retainer);
+            if(cached.Known&&!cached.Target.HasValue)continue;
+            var reference=cached.Quote is {Own:false} q&&cached.Known?
+                new MarketReference(view.World,q.UnitPrice,OwnMinimum(listing.ItemId,listing.Hq),q.Observed,q.Source+" cache; provisional, shared comparison before execution",true):
+                PreviewReference(listing.ItemId,listing.Hq);
+            if(reference?.Competitor is not uint competitor)continue;
             var before=(uint)InventoryManager.Instance()->GetRetainerMarketPrice((short)listing.Slot);
             if(before==0||before<=competitor||reference.OwnMinimum is uint own&&own<=competitor)continue;
             var target=Pricing.Undercut(competitor,config.Pricing,decision.Rule?.MinimumUnit??1);
