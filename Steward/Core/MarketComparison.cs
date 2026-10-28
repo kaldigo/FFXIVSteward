@@ -2,19 +2,20 @@ namespace Steward.Core;
 
 public static class MarketComparison
 {
-    // A newly completed native search is authoritative. Packet request IDs are not
-    // used here: the packet exposes a ushort while the native page counter is a byte.
-    public static string? NativeRejection(uint item,int beforeRequest,uint nativeItem,int request,bool waiting,
-        uint count,IReadOnlyList<Offering> rows,DateTimeOffset opened,DateTimeOffset now)
+    public sealed record SearchResponse(long Sequence,uint Item,byte Expected,int Status,DateTimeOffset At);
+    public static string? ResponseRejection(uint item,long before,SearchResponse? response,uint nativeItem,
+        uint count,IReadOnlyList<Offering> rows,IReadOnlyList<Offering> packets,DateTimeOffset opened,DateTimeOffset now)
     {
-        if(item==0||nativeItem%1000000!=item)return "native search is for another item";
-        if(beforeRequest<0||request==beforeRequest)return "new native request has not arrived";
-        if(waiting)return "native search is still loading";
-        if(opened>now||now-opened>TimeSpan.FromSeconds(10))return "search observation expired";
-        if(count>100||rows.Count!=count)return "native result count is incomplete or invalid";
+        if(response==null||response.Sequence<=before||response.At<opened)return "new search response has not arrived";
+        if(response.Status!=0)return $"server rejected search (status 0x{response.Status:X8})";
+        if(item==0||response.Item%1000000!=item||nativeItem%1000000!=item)return "search response is for another item";
+        if(opened>now||response.At>now||now-opened>TimeSpan.FromSeconds(10))return "search observation expired";
+        if(response.Expected>100||count!=response.Expected||rows.Count!=count||packets.Count!=count)
+            return $"incomplete search: expected {response.Expected}, native {count}/{rows.Count}, received {packets.Count}";
         if(rows.Any(r=>r.ItemId!=item||r.ListingId==0||r.RetainerId==0||r.Quantity==0||r.UnitPrice is 0 or >999999999))
             return "native result has invalid item, seller, quantity or price";
         if(rows.Select(r=>r.ListingId).Distinct().Count()!=rows.Count)return "native result has duplicate listing IDs";
+        if(!rows.OrderBy(r=>r.ListingId).SequenceEqual(packets.OrderBy(r=>r.ListingId)))return "network listings do not match native results";
         return null;
     }
     public static uint? EmptyMarketAverage(Evidence evidence,uint item,bool hq,QualityMode quality,uint world,DateTimeOffset now,int refreshHours)

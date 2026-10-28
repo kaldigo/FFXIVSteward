@@ -53,7 +53,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private long nextPostprocessRelease;
     private readonly Dictionary<string,long> recentDecisions=[];
     public Plugin(IDalamudPluginInterface pi,ICommandManager commands,IFramework framework,IPlayerState player,
-        IObjectTable objects,IDataManager data,IGameGui gui,IMarketBoard board,IPluginLog log,IChatGui chat,INotificationManager notifications,ITextureProvider textures,IAddonLifecycle lifecycle,ISigScanner sigScanner)
+        IObjectTable objects,IDataManager data,IGameGui gui,IMarketBoard board,IPluginLog log,IChatGui chat,INotificationManager notifications,ITextureProvider textures,IAddonLifecycle lifecycle,ISigScanner sigScanner,IGameInteropProvider interop)
     {
         this.textures=textures;
         this.pi=pi;this.commands=commands;this.framework=framework;this.player=player;this.objects=objects;this.log=log;this.chat=chat;this.notifications=notifications;
@@ -92,7 +92,7 @@ public sealed partial class Plugin : IDalamudPlugin
         dungeonSources=new(pi,data,config,Save);
         historyPath=Path.Combine(pi.GetPluginConfigDirectory(),"history.jsonl");
         reviewJournal=new(historyPath);
-        market=new(pi,board,view,config,new(gui),JudgeLive,Record,RefreshProtection,()=>imports.MarketPreferencesReady,HoldExecution,BeginOperation,CompleteOperation,ProtectCollection,Alert,Judge,Save,JudgeMarket,new NativeDresserStore(sigScanner,config));
+        market=new(pi,board,view,config,new(gui),JudgeLive,Record,RefreshProtection,()=>imports.MarketPreferencesReady,HoldExecution,BeginOperation,CompleteOperation,ProtectCollection,Alert,Judge,Save,JudgeMarket,new NativeDresserStore(sigScanner,config),interop);
         dresserTrace=new(lifecycle,gui,Record,id=>$"item={id}, player quantity={view.Items.Where(s=>s.ItemId==id).Sum(s=>(long)s.Quantity)}, live dresser={view.Evidence.DresserKnown}, dresser owned={view.Evidence.Dresser.Contains(id)}, prisms={view.Items.Where(s=>s.ItemId==21800).Sum(s=>(long)s.Quantity)}");
         pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.StrategyRetainer").RegisterFunc(r=>config.ExecutionEnabled&&!executionFault&&config.Connected&&attached==player.ContentId&&player.IsLoaded&&config.Features.AnyMarket&&config.Silver.Owns(r));
         pi.GetIpcProvider<string,string>(Endpoint).RegisterFunc(Evaluate);

@@ -11,10 +11,10 @@ class CacheRepricing(unittest.TestCase):
   text=(ROOT/'Services/MarketQueue.cs').read_text()
   self.assertIn('Queue.Begin();passComparisons.Clear();',text)
   capture=text.split('if(rejection==null)')[1]
-  self.assertIn('MarketComparison.NativeRejection',text)
+  self.assertIn('MarketComparison.ResponseRejection',text)
   self.assertIn('beforeRequest=proxy->CurrentRequestId;',text)
   self.assertIn('var row=proxy->Listings[i];',text)
-  self.assertIn('if(count<=100&&!proxy->WaitingForListings)',text)
+  self.assertIn('if(count<=100)',text)
   self.assertIn('if(ui.Get("ItemSearchResult")==null)',text)
   self.assertIn('passComparisons[expected.ItemId]=new(expectedWorld',capture)
   self.assertEqual(text.count('!TryComparison(out var result)'),2)
@@ -24,6 +24,8 @@ class CacheRepricing(unittest.TestCase):
   reuse=text.split('if(passComparisons.TryGetValue')[1].split('offers.Clear()')[0]
   self.assertIn('phase=2;return StepResult.Waiting;',reuse)
   self.assertNotIn('ui.Click',reuse)
+  self.assertNotIn('if(proxy->WaitingForListings)',text)
+  self.assertIn('beforeResponse=Volatile.Read(ref searchResponse)?.Sequence??0',text)
   self.assertIn('MarketSubmission.CanCommit',text)
   self.assertIn('!config.ExecutionEnabled',text)
  def test_native_button_payload_is_not_null(self):

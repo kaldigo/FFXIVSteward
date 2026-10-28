@@ -1,3 +1,7 @@
+## 0.1.0.60
+
+Remove the unreliable WaitingForListings gate that prevented Compare Prices from opening. Observe the game's search response status and expected result count, then require matching complete native and network listings before pricing. Missing, failed, stale or partial responses remain holds; empty-market pricing requires an explicit successful zero-result response. Preserve per-stack protections, comparison reuse and own-retainer filtering.
+
 ## 0.1.0.59
 
 Read live price comparisons from the completed native search result list, tied to a newly observed request, instead of requiring equality between network packet and native request counters. Preserve result completeness, item/seller identity, own-price protection and final submission checks. Supply initialized button-event data for addon listeners and log detailed native state when a comparison is held. Add regression coverage for stale, partial, malformed, empty and wrapped-request results. In-game listing acceptance remains to be tested.

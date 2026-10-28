@@ -33,8 +33,8 @@ public sealed unsafe partial class MarketQueue : IDisposable
     private uint comparisonItem;
     private DateTimeOffset comparisonOpened;
     public OperationQueue Queue { get; }
-    public MarketQueue(IDalamudPluginInterface pi,IMarketBoard market,InventoryView view,Configuration config,NativeUi ui,Func<Stock,Decision> judge,Action<string> history,Action refreshProtection,Func<bool> marketPreferencesReady,Action<string> fault,Action<string> begin,Action complete,Action<uint> protectCollection,Action<string> notify,Func<Stock,Decision> previewJudge,Action save,Func<Stock,ulong,bool,Decision> marketJudge,NativeDresserStore dresserStore)
-    {this.dresserStore=dresserStore;this.marketJudge=marketJudge;this.save=save;this.pi=pi;this.market=market;this.view=view;this.config=config;this.ui=ui;this.judge=judge;this.history=history;this.refreshProtection=refreshProtection;this.marketPreferencesReady=marketPreferencesReady;this.fault=fault;this.protectCollection=protectCollection;this.notify=notify;this.previewJudge=previewJudge;Queue=new(begin,complete,reason=>{history("Skipped item; continuing run: "+reason);notify("Skipped item: "+reason);});market.OfferingsReceived+=Received;}
+    public MarketQueue(IDalamudPluginInterface pi,IMarketBoard market,InventoryView view,Configuration config,NativeUi ui,Func<Stock,Decision> judge,Action<string> history,Action refreshProtection,Func<bool> marketPreferencesReady,Action<string> fault,Action<string> begin,Action complete,Action<uint> protectCollection,Action<string> notify,Func<Stock,Decision> previewJudge,Action save,Func<Stock,ulong,bool,Decision> marketJudge,NativeDresserStore dresserStore,IGameInteropProvider interop)
+    {this.dresserStore=dresserStore;this.marketJudge=marketJudge;this.save=save;this.pi=pi;this.market=market;this.view=view;this.config=config;this.ui=ui;this.judge=judge;this.history=history;this.refreshProtection=refreshProtection;this.marketPreferencesReady=marketPreferencesReady;this.fault=fault;this.protectCollection=protectCollection;this.notify=notify;this.previewJudge=previewJudge;Queue=new(begin,complete,reason=>{history("Skipped item; continuing run: "+reason);notify("Skipped item: "+reason);});market.OfferingsReceived+=Received;InitializeSearchResponses(interop);}
     public void ReplanPending(){Queue.ReplanPending();CheckFault();if(!Queue.Running)ReleaseManualCoordination();}
     private void CheckFault(){if(Queue.Status.StartsWith("Stopped:",StringComparison.Ordinal))fault(Queue.Status);}
     private bool AcquireManualCoordination()
@@ -131,7 +131,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
         var opened=DateTimeOffset.MinValue;var sent=DateTimeOffset.MinValue;
         uint? target=null;uint? beforePrice=null;var quantity=0;var locked=false;
         HashSet<ushort> occupiedBefore=[];
-        var beforeRequest=-1;var comparisonHeld="search not started";
+        long beforeResponse=0;var beforeRequest=-1;var comparisonHeld="search not started";
         (DateTimeOffset At,int Request,List<Offering> Offers)? comparison=null;
         bool TryComparison(out (DateTimeOffset At,int Request,List<Offering> Offers) result)
         {
@@ -146,7 +146,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
             if(ui.Get("ItemSearchResult")==null){comparisonHeld="result window is not ready";return false;}
             var request=(int)proxy->CurrentRequestId;var count=proxy->ListingCount;
             List<Offering> rows=[];
-            if(count<=100&&!proxy->WaitingForListings)
+            if(count<=100)
             {
                 for(var i=0;i<count;i++)
                 {
@@ -155,9 +155,11 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 }
             }
             var now=DateTimeOffset.UtcNow;
-            var rejection=MarketComparison.NativeRejection(expected.ItemId,beforeRequest,proxy->SearchItemId,request,
-                proxy->WaitingForListings,count,rows,opened,now);
-            comparisonHeld=$"{rejection}; native item={proxy->SearchItemId}, request={beforeRequest}->{request}, waiting={proxy->WaitingForListings}, rows={rows.Count}/{count}";
+            var response=Volatile.Read(ref searchResponse);
+            var received=offers.TryGetValue(expected.ItemId,out var packetRows)?packetRows.Offers:[];
+            var rejection=MarketComparison.ResponseRejection(expected.ItemId,beforeResponse,response,proxy->SearchItemId,
+                count,rows,received,opened,now);
+            comparisonHeld=$"{rejection}; native item={proxy->SearchItemId}, request={beforeRequest}->{request}, flag={proxy->WaitingForListings}, native rows={rows.Count}/{count}, packet rows={received.Count}, response={response}";
             if(rejection==null)
             {
                 result=(now,request,rows);
@@ -218,14 +220,9 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 }
                 var proxy=FFXIVClientStructs.FFXIV.Client.UI.Info.InfoProxyItemSearch.Instance();
                 if(proxy==null)return Finish();
-                if(proxy->WaitingForListings)
-                {
-                    if(DateTimeOffset.UtcNow-opened>TimeSpan.FromSeconds(5))
-                    {history($"Held market item {expected.ItemId}: previous native search is still loading; no comparison submitted.");return Finish();}
-                    return StepResult.Waiting;
-                }
+                if(searchResponseHook==null){history("Market comparisons unavailable: response observer could not be initialized");return Finish();}
                 offers.Clear();opened=DateTimeOffset.UtcNow;comparisonItem=expected.ItemId;comparisonOpened=opened;
-                beforeRequest=proxy->CurrentRequestId;
+                beforeRequest=proxy->CurrentRequestId;beforeResponse=Volatile.Read(ref searchResponse)?.Sequence??0;
                 if(!ui.Click("RetainerSell",4))return StepResult.Failed;phase=2;return StepResult.Waiting;
             }
             if(phase==2)
@@ -369,7 +366,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
         }
         catch(Exception ex){nextControlRelease=Environment.TickCount64+1000;Queue.Stop("Stopped: AutoRetainer control release failed: "+ex.Message);CheckFault();}
     }
-    public void Dispose(){try{Stop();}finally{market.OfferingsReceived-=Received;}}
+    public void Dispose(){try{Stop();}finally{market.OfferingsReceived-=Received;searchResponseHook?.Dispose();}}
     public void ReturnToRetainerMenu()
     {ui.Close("ItemSearchResult");ui.Close("RetainerSell");ui.Close("RetainerSellList");var agent=AgentRetainer.Instance();if(agent!=null)agent->Hide();}
     public void WithdrawForOtherActions(ulong character,bool overflowOnly=false,bool collectionOnly=false,bool disposalOnly=false)
