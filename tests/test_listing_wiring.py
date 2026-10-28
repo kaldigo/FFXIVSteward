@@ -4,6 +4,22 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 
 class ListingWiring(unittest.TestCase):
+    def test_sale_value_dispatch_requires_readback_not_callback_return(self):
+        ui=(ROOT/'Steward/Services/NativeUi.cs').read_text(encoding='utf-8')
+        dispatch=ui.split('public bool SetRetainerSaleValue')[1].split('public int DresserCategory')[0]
+        self.assertIn('callbackResult=addon->FireCallback(2,data,true);',dispatch)
+        self.assertIn('return true;',dispatch)
+        self.assertNotIn('return callbackResult',dispatch)
+        live=(ROOT/'Steward/Services/MarketQueue.cs').read_text(encoding='utf-8')
+        self.assertIn('ui.SetRetainerSaleValue(2',live)
+        self.assertIn('ui.SetRetainerSaleValue(3',live)
+        self.assertIn('agent->SellItemUnitPrice!=target',live)
+        self.assertIn('dialog->AskingPrice->Value!=target',live)
+        self.assertIn('price/quantity readback did not match dispatched values',live)
+        self.assertLess(live.index('MarketSubmission.CanCommit'),live.index('confirmAttempted=true;'))
+        self.assertLess(live.index('confirmAttempted=true;'),live.index('ui.Click("RetainerSell",21)'))
+        self.assertIn('Market action rejected:',live)
+
     def test_dynamic_pass_replaces_upfront_slot_allocation(self):
         source=(ROOT/'Steward/Services/MarketQueue.cs').read_text(encoding='utf-8')
         start=source.split('private void StartCore')[1].split('private void Enqueue(')[0]

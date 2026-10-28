@@ -128,7 +128,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
     {
         var phase=0;var expectedWorld=view.World;var finished=false;var successful=false;
         StepResult Finish(bool success=false){finished=true;successful=success;return StepResult.Completed;}
-        var opened=DateTimeOffset.MinValue;var sent=DateTimeOffset.MinValue;
+        var opened=DateTimeOffset.MinValue;var sent=DateTimeOffset.MinValue;var valuesSet=DateTimeOffset.MinValue;var confirmAttempted=false;
         uint? target=null;uint? beforePrice=null;var quantity=0;var locked=false;
         HashSet<ushort> occupiedBefore=[];
         long beforeResponse=0;var beforeRequest=-1;var comparisonHeld="search not started";
@@ -171,17 +171,26 @@ public sealed unsafe partial class MarketQueue : IDisposable
             }
             return false;
         }
+        StepResult Fail(string reason)
+        {
+            var agent=AgentRetainer.Instance();
+            var dialog=(FFXIVClientStructs.FFXIV.Client.UI.AddonRetainerSell*)ui.Get("RetainerSell");
+            var agentState=agent==null?"absent":$"source={(uint)agent->SellItemInventoryType}:{agent->SellItemInventorySlot}, addon={agent->RetainerSellAddonId}, price={agent->SellItemUnitPrice}, quantity={agent->SellItemQuantity}";
+            var dialogState=dialog==null?"absent":$"id={dialog->Id}, price={(dialog->AskingPrice==null?-1:dialog->AskingPrice->Value)}, quantity={(dialog->Quantity==null?-1:dialog->Quantity->Value)}";
+            history($"Market action rejected: item={expected.ItemId}, phase={phase}, confirm attempted={confirmAttempted}, reason={reason}; expected={expected}; live={InventoryView.ReadSlot(expected.Container,expected.Slot)}; planned={quantity} at {target}; agent={agentState}; dialog={dialogState}");
+            throw new InvalidOperationException($"Market item {expected.ItemId}, phase {phase}: {reason}");
+        }
         Queue.Add(new((reprice?"Reprice ":"List ")+expected.ItemId,()=>
         {
-            if(reprice?!config.Features.Repricing:!config.Features.NewListings)return StepResult.Failed;
+            if(reprice?!config.Features.Repricing:!config.Features.NewListings)return Fail("listing or repricing feature disabled");
             var rm=RetainerManager.Instance();
-            if(!config.ExecutionEnabled || !config.SalesEnabledFor(retainer) || view.World==0 || view.World!=expectedWorld || rm==null || rm->LastSelectedRetainerId!=retainer)return StepResult.Failed;
-            if(coordinated && !pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsHandoff").InvokeFunc(view.Character))return StepResult.Failed;
+            if(!config.ExecutionEnabled || !config.SalesEnabledFor(retainer) || view.World==0 || view.World!=expectedWorld || rm==null || rm->LastSelectedRetainerId!=retainer)return Fail("execution, world or selected retainer changed");
+            if(coordinated && !pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsHandoff").InvokeFunc(view.Character))return Fail("AutoRetainer handoff lost");
             var live=InventoryView.ReadSlot(expected.Container,expected.Slot);
-            if(!coordinated && (manualControl==0 || !pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsControl").InvokeFunc(manualControl)))return StepResult.Failed;
-            if(phase<4 && live!=expected)return StepResult.Failed;
+            if(!coordinated && (manualControl==0 || !pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsControl").InvokeFunc(manualControl)))return Fail("manual control lost");
+            if(phase<4 && live!=expected)return Fail("source fingerprint changed");
             var decision=phase<4?marketJudge(expected,retainer,true):new Decision(Outcome.Wait,"Awaiting acknowledgement of an already submitted action");
-            if(phase<4 && !marketPreferencesReady())return StepResult.Failed;
+            if(phase<4 && !marketPreferencesReady())return Fail("market preferences unavailable");
             var priceOnlyWait=decision is {Outcome:Outcome.Wait,Reason:"No fresh competing price; disposal is blocked"};
             var facts=phase<4?view.Facts(expected.ItemId):null;
             var saleRule=facts==null?null:MarketRule(facts,expected,retainer);
@@ -189,16 +198,16 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 facts==null||!ListingPlanner.CanConsider(facts,expected,decision,saleRule)))return Finish();
             if(phase==0)
             {
-                if(ui.Get("RetainerSellList")==null || ui.Get("RetainerSell")!=null)return StepResult.Failed;
+                if(ui.Get("RetainerSellList")==null || ui.Get("RetainerSell")!=null)return Fail("selling windows not in expected initial state");
                 if(!reprice&&!InventoryView.CanListStock(expected))return Finish();
                 if(pi.InstalledPlugins.Any(p=>p.InternalName.Equals("Marketbuddy",StringComparison.OrdinalIgnoreCase)&&p.IsLoaded))
                 {
-                    if(!pi.GetIpcSubscriber<string,bool>("Marketbuddy.Lock").InvokeFunc("Steward"))return StepResult.Failed;
+                    if(!pi.GetIpcSubscriber<string,bool>("Marketbuddy.Lock").InvokeFunc("Steward"))return Fail("Market Buddy lock unavailable");
                     locked=true;
                 }
                 beforePrice=reprice?(uint)InventoryManager.Instance()->GetRetainerMarketPrice((short)expected.Slot):null;
                 if(reprice&&config.Silver.Matches(retainer,expected.ItemId)&&beforePrice==0)return Finish();
-                if(!MarketSnapshot(out var selected,out var before)||selected!=retainer)return StepResult.Failed;
+                if(!MarketSnapshot(out var selected,out var before)||selected!=retainer)return Fail("initial market snapshot unavailable");
                 if(!reprice&&!quoteOnly&&before.Count>=20)return Finish();
                 occupiedBefore=before.Select(s=>s.Slot).ToHashSet();
                 opened=DateTimeOffset.UtcNow;
@@ -223,7 +232,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 if(searchResponseHook==null){history("Market comparisons unavailable: response observer could not be initialized");return Finish();}
                 offers.Clear();opened=DateTimeOffset.UtcNow;comparisonItem=expected.ItemId;comparisonOpened=opened;
                 beforeRequest=proxy->CurrentRequestId;beforeResponse=Volatile.Read(ref searchResponse)?.Sequence??0;
-                if(!ui.Click("RetainerSell",4))return StepResult.Failed;phase=2;return StepResult.Waiting;
+                if(!ui.Click("RetainerSell",4))return Fail("Compare Prices button unavailable");phase=2;return StepResult.Waiting;
             }
             if(phase==2)
             {
@@ -264,11 +273,18 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     if(decision.Rule!=null&&(ulong)target.Value*(uint)quantity<decision.Rule.ListingMinimumTotal)return Finish();
                 }
                 var agent=AgentRetainer.Instance();
-                if(agent==null||agent->SellItemInventoryType!=(InventoryType)expected.Container||agent->SellItemInventorySlot!=expected.Slot)return StepResult.Failed;
+                if(agent==null||agent->SellItemInventoryType!=(InventoryType)expected.Container||agent->SellItemInventorySlot!=expected.Slot)return Fail("selling agent source differs from selected source");
                 if(quoteOnly)return Finish(true);
                 ui.Close("ItemSearchResult");
-                if(!ui.Callback("RetainerSell",2,(int)target.Value))return StepResult.Failed;
-                if(!reprice && !ui.Callback("RetainerSell",3,quantity))return StepResult.Failed;
+                if(!ui.SetRetainerSaleValue(2,(int)target.Value,out var priceReturn))return Fail("price callback could not be dispatched");
+                bool? quantityReturn=null;
+                if(!reprice)
+                {
+                    if(!ui.SetRetainerSaleValue(3,quantity,out var resultReturn))return Fail("quantity callback could not be dispatched");
+                    quantityReturn=resultReturn;
+                }
+                valuesSet=DateTimeOffset.UtcNow;
+                history($"Listing values dispatched: item={expected.ItemId}, quantity={quantity}, price={target}, price callback={priceReturn}, quantity callback={quantityReturn}; awaiting readback");
                 phase=3;return StepResult.Waiting;
             }
             if(phase==3)
@@ -277,48 +293,54 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 var dialog=(FFXIVClientStructs.FFXIV.Client.UI.AddonRetainerSell*)ui.Get("RetainerSell");
                 if(agent==null || dialog==null || agent->RetainerSellAddonId!=dialog->Id ||
                     agent->SellItemInventoryType!=(InventoryType)expected.Container || agent->SellItemInventorySlot!=expected.Slot ||
-                    dialog->AskingPrice==null || dialog->Quantity==null || target==null)return StepResult.Failed;
+                    dialog->AskingPrice==null || dialog->Quantity==null || target==null)return Fail("selling dialog ownership or source mismatch");
                 if(agent->SellItemUnitPrice!=target || agent->SellItemQuantity!=quantity ||
-                    dialog->AskingPrice->Value!=target || dialog->Quantity->Value!=quantity)return StepResult.Waiting;
-                if(reprice && (uint)InventoryManager.Instance()->GetRetainerMarketPrice((short)expected.Slot)!=beforePrice)return StepResult.Failed;
-                if(!TryComparison(out var result))return StepResult.Failed;
+                    dialog->AskingPrice->Value!=target || dialog->Quantity->Value!=quantity)
+                {
+                    if(DateTimeOffset.UtcNow-valuesSet>TimeSpan.FromSeconds(3))return Fail("price/quantity readback did not match dispatched values");
+                    return StepResult.Waiting;
+                }
+                if(reprice && (uint)InventoryManager.Instance()->GetRetainerMarketPrice((short)expected.Slot)!=beforePrice)return Fail("existing listing price changed");
+                if(!TryComparison(out var result))return Fail("verified comparison expired");
                 uint? latest;
                 if(config.Silver.Matches(retainer,expected.ItemId))
                 {
                     var choice=SilverChoice(expected,retainer,reprice,result.Offers,true);
-                    if(!choice.Eligible||choice.Quantity!=quantity)return StepResult.Failed;
+                    if(!choice.Eligible||choice.Quantity!=quantity)return Fail("silver quota or price plan changed");
                     latest=choice.UnitPrice;decision=decision with{Outcome=Outcome.Market,Rule=config.Silver.Rule(),UnitPrice=latest};
-                    if(!reprice&&(!MarketSnapshot(out var selected,out var currentListings,false)||selected!=retainer||!occupiedBefore.SetEquals(currentListings.Select(s=>s.Slot))))return StepResult.Failed;
+                    if(!reprice&&(!MarketSnapshot(out var selected,out var currentListings,false)||selected!=retainer||!occupiedBefore.SetEquals(currentListings.Select(s=>s.Slot))))return Fail("silver market occupancy changed");
                 }
                 else if(!reprice)
                 {
                     facts=view.Facts(expected.ItemId);saleRule=facts==null?null:MarketRule(facts,expected,retainer);
-                    if(facts==null)return StepResult.Failed;
+                    if(facts==null)return Fail("item facts unavailable");
                     var choice=ListingPlanner.Next(new(facts,expected,decision,saleRule,ReferenceFromOffers(expected.ItemId,expected.Hq,result.At,result.Offers)),
                         config.Pricing,view.World,config.Rules.MaximumPriceAgeMinutes,DateTimeOffset.UtcNow);
-                    if(!choice.Eligible||choice.Quantity!=quantity)return StepResult.Failed;
+                    if(!choice.Eligible||choice.Quantity!=quantity)return Fail("listing price or quantity plan changed");
                     latest=choice.UnitPrice;decision=decision with{Outcome=Outcome.Market,Reason="Validated live listing plan",Rule=saleRule,UnitPrice=latest};
-                    if(!MarketSnapshot(out var selected,out var currentListings,false)||selected!=retainer||!occupiedBefore.SetEquals(currentListings.Select(s=>s.Slot)))return StepResult.Failed;
+                    if(!MarketSnapshot(out var selected,out var currentListings,false)||selected!=retainer||!occupiedBefore.SetEquals(currentListings.Select(s=>s.Slot)))return Fail("market occupancy changed");
                 }
                 else latest=Pricing.Target(expected.ItemId,expected.Hq,beforePrice,result.Offers,config.OwnRetainers,config.Rules.Quality,config.Pricing,decision.Rule?.ListingMinimumUnit??1);
                 var maximum=decision.Rule?.MaximumStack??9999;
                 if(config.Pricing.UseMaxStackSize&&!config.Silver.Matches(retainer,expected.ItemId))maximum=Math.Min(maximum,config.Pricing.MaximumStackSize);
                 if(latest!=target || !MarketSubmission.CanCommit(expected,InventoryView.ReadSlot(expected.Container,expected.Slot),decision,reprice,
-                    target.Value,(uint)quantity,dialog->AskingPrice->Value,dialog->Quantity->Value,maximum))return StepResult.Failed;
-                if(!reprice&&!InventoryView.CanListStock(expected))return StepResult.Failed;
-                if(!ui.Click("RetainerSell",21))return StepResult.Failed;
+                    target.Value,(uint)quantity,dialog->AskingPrice->Value,dialog->Quantity->Value,maximum))return Fail("final source, displayed values or rule checks failed");
+                if(!reprice&&!InventoryView.CanListStock(expected))return Fail("source no longer listable");
+                confirmAttempted=true;
+                history($"Submitting market listing: item={expected.ItemId}, quantity={quantity}, price={target}, reprice={reprice}; native values and protection checks passed");
+                if(!ui.Click("RetainerSell",21))return Fail("confirm button unavailable");
                 sent=DateTimeOffset.UtcNow;phase=4;return StepResult.Waiting;
             }
             if(ui.Visible("RetainerSell") || !InventoryView.Loaded((uint)InventoryType.RetainerMarket))return StepResult.Waiting;
             if(reprice)
             {
-                if(live!=expected)return StepResult.Failed;
+                if(live!=expected)return Fail("repriced source changed");
                 if((uint)InventoryManager.Instance()->GetRetainerMarketPrice((short)expected.Slot)!=target)return StepResult.Waiting;
             }
             else
             {
                 if(live!=null && live.ItemId==expected.ItemId && live.Quantity==expected.Quantity)return StepResult.Waiting;
-                if(!StockTransition.Removed(expected,live,(uint)quantity,InventoryView.Loaded(expected.Container)))return StepResult.Failed;
+                if(!StockTransition.Removed(expected,live,(uint)quantity,InventoryView.Loaded(expected.Container)))return Fail("source removal acknowledgement mismatch");
                 List<Stock> listed=[];InventoryView.Read(InventoryType.RetainerMarket,listed);
                 if(listed.Count!=occupiedBefore.Count+1||!occupiedBefore.IsSubsetOf(listed.Select(s=>s.Slot)))return StepResult.Waiting;
                 if(!listed.Any(s=>!occupiedBefore.Contains(s.Slot)&&s.ItemId==expected.ItemId&&s.Hq==expected.Hq&&s.Quantity==quantity&&

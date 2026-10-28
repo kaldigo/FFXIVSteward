@@ -46,6 +46,19 @@ public sealed unsafe class NativeUi(IGameGui gui)
     }
     public bool Callback(string name,params int[] values)
         =>CallbackCore(name,true,values);
+    public bool SetRetainerSaleValue(int field,int value,out bool callbackResult)
+    {
+        callbackResult=false;
+        if(field is not (2 or 3)||value<=0)return false;
+        var addon=Get("RetainerSell");if(addon==null)return false;
+        var data=stackalloc AtkValue[2];
+        data[0]=new(){Type=AtkValueType.Int,Int=field};
+        data[1]=new(){Type=AtkValueType.Int,Int=value};
+        callbackResult=addon->FireCallback(2,data,true);
+        // Dispatch is not acknowledgement. The caller must read back both the
+        // agent and numeric controls before allowing the final sell click.
+        return true;
+    }
     public int DresserCategory()
     {
         var addon=(AddonMiragePrismPrismBoxCrystallize*)Get("MiragePrismPrismBoxCrystallize");

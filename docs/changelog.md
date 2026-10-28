@@ -1,3 +1,7 @@
+## 0.1.0.61
+
+Dispatch retainer price and quantity updates without treating the callback return as acknowledgement. Require matching agent and displayed numeric values before final submission, with a bounded readback wait. Add specific listing failure reasons and state diagnostics, plus distinct dispatch, submit and confirmed-listing records so unconfirmed actions are distinguishable in the logs.
+
 ## 0.1.0.60
 
 Remove the unreliable WaitingForListings gate that prevented Compare Prices from opening. Observe the game's search response status and expected result count, then require matching complete native and network listings before pricing. Missing, failed, stale or partial responses remain holds; empty-market pricing requires an explicit successful zero-result response. Preserve per-stack protections, comparison reuse and own-retainer filtering.
