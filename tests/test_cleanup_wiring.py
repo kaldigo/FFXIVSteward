@@ -45,7 +45,8 @@ class CleanupWiring(unittest.TestCase):
   self.assertIn('DresserRestored?.Invoke(view.Character)',ack)
   plugin=(ROOT/'Plugin.cs').read_text()
   self.assertIn('market.DresserRestored+=storageRun.Restored;',plugin)
-  self.assertIn('postCleanupEntrustPass=false;storageRun.End();',plugin)
+  self.assertIn('Post-dresser native entrust pass finished',plugin)
+  self.assertIn('FinishStorageRun();',plugin)
   storage=(ROOT/'Plugin.Storage.cs').read_text().split('private void TryPostCleanupEntrust()')[1].split('private readonly StorageRun')[0]
   for gate in ['!storageRun.EntrustPending','!storageRun.Allows','executionFault','AutoDutyCoordination.OwnsTravel','market.CloseDresserForStorage()']:
    self.assertIn(gate,storage)

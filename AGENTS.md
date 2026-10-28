@@ -73,3 +73,5 @@ Non-equipment duty and quest evidence fills gaps only after verified recipe/fish
 Reviewed permanent gil suppliers are explicit shop IDs, with live no-festival/no-quest/no-achievement, observed stock state and positive-price checks. Do not treat every GilShop entry as currently available or interpret the ordinary state value globally.
 
 Post-dresser storage uses the native entrust-only route and existing AutoRetainer plans. Only confirmed restorations in an authorised run request a follow-up. Consume the request when accepted, never loop on leftovers/unique conflicts. Collection-ownership uncertainty blocks disposal, not reversible native entrust; retain all inventory-specific exclusions and final submission gates.
+
+Preserve exact dresser ownership verified at a complete, idle native close for the current login, invalidating it on reopen, uncertainty, logout, character change and reload. Never promote disk cache ownership to disposal permission. Log proof provenance. Finish the owned AutoRetainer scheduler handoff after dresser and storage work, including zero-restoration passes.

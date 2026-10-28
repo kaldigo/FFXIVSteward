@@ -28,12 +28,24 @@ public sealed partial class Plugin
         else Alert("Dresser cleanup finished; follow-up storage is waiting for AutoRetainer and a reachable summoning bell. Items remain safe in inventory.");
     }
     private readonly StorageRun storageRun=new();
+    private bool finishingStorageRun;
+    private void FinishStorageRun()
+    {
+        finishingStorageRun=true;
+        if(!storageRun.Allows(player.ContentId,config.ExecutionEnabled)||executionFault||market.Queue.Running||ownsPostprocess)return;
+        if(pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.FinishStorage").InvokeFunc(player.ContentId))
+        {
+            storageRun.End();finishingStorageRun=false;
+            Record("Storage run completed: dresser closed, native entrust finished or unnecessary, AutoRetainer handoff acknowledged");
+        }
+    }
     private void BeginStorageRun(bool authorized)
     {
         if(AutoDutyCoordination.OwnsTravel(pi)){storageRun.End();return;}
         if(authorized&&!storageRun.Allows(player.ContentId,config.ExecutionEnabled))
         {
             cleanupVisited=false;
+            finishingStorageRun=false;
             nextPostCleanupEntrust=0;
             nextCollectionAttempt=nextDresserAttempt=nextOverflowAttempt=nextAutomaticWork=0;
         }
@@ -92,6 +104,7 @@ public sealed partial class Plugin
         if(AutoDutyCoordination.OwnsTravel(pi)){storageRun.End();return true;}
         if(!storageRun.Allows(player.ContentId,config.ExecutionEnabled))return false;
         if(!player.IsLoaded||attached!=player.ContentId||!config.Connected||!config.ExecutionEnabled||executionFault||market.Queue.Running||ownsPostprocess||overflowPass||collectionPass)return false;
+        if(finishingStorageRun){FinishStorageRun();return true;}
         // Once collection is finished, retry only the requested storage pass; closing
         // the dresser must not turn lost live ownership into another dresser visit.
         if(storageRun.EntrustPending&&nextPostCleanupEntrust>0){TryPostCleanupEntrust();return true;}

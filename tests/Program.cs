@@ -3,6 +3,20 @@ using Steward.Core;
 var total=0;
 void Check(bool condition,string name) { total++; if(!condition) throw new Exception(name); }
 {
+    var proof=new SessionCollection();
+    Check(proof.Read(12)==null,"Disk caches cannot create same-login collection proof");
+    Dictionary<uint,int> native=new(){[18311]=1,[18310]=1,[18283]=1};
+    proof.Seal(12,native,true,false);native.Clear();
+    Check(proof.Read(12)?.Count==3,"Verified close captures independent exact copy counts");
+    Check(proof.Read(13)==null,"Collection proof is character scoped");
+    proof.Read(12)!.Clear();Check(proof.Read(12)?.Count==3,"Readers cannot mutate retained proof");
+    proof.Invalidate();Check(proof.Read(12)==null,"Opening dresser or logout invalidates proof before edits");
+    proof.Seal(12,new Dictionary<uint,int>(),true,false);
+    Check(proof.Read(12)?.Count==0,"Removing last copy replaces previous ownership with observed empty contents");
+    proof.Seal(12,new Dictionary<uint,int>{{18311,1}},false,false);Check(proof.Read(12)==null,"Unavailable native read never seals old cached contents");
+    proof.Seal(12,new Dictionary<uint,int>{{18311,1}},true,true);Check(proof.Read(12)==null,"Uncertain or pending operation cannot authorize surplus disposal");
+}
+{
     foreach(var reason in new[]{"Cached collection copy is unverified; preserve until collection is observed","Live dresser or armoire ownership is unavailable","Special or difficult-to-replace non-equipment reward; preserve all copies"})
         Check(StoragePolicy.EntrustCandidate(new(Outcome.Keep,reason),true),"Safe storage does not require disposal ownership proof: "+reason);
     foreach(var reason in new[]{"AutoRetainer protection is unavailable","Explicit AutoRetainer protection","Unlearned or unverified unlock item: keep available to use"})
@@ -126,6 +140,21 @@ var e=new Evidence{ReferencesReady=true,GearsetsReady=true,DresserKnown=true,Arm
 var item=new ItemFacts(42,"Test",true,3,90,false,true,SourceKind.Special,1);
 var stock=new Stock(42,false,1,0,0);
 Decision Judge() => Rules.Judge(item,stock,settings,e,1,now);
+{
+    var shisui=new ItemFacts(18311,"Shisui Zori of Scouting",true,2,63,false,false,SourceKind.NormalDungeon,38);
+    var surplus=new Stock(18311,false,1,0,1);
+    var rules=new RuleSettings();rules.CollectionKeep.Add(18311);
+    var proof=new Evidence{ReferencesReady=true,GearsetsReady=true,ArmoireKnown=true,CachedDresserKnown=true,CachedDresser=[18311]};
+    Decision Surplus()=>Rules.Judge(shisui,surplus,rules,proof,1,now);
+    Check(Surplus().Outcome==Outcome.Keep,"Persisted Shisui ownership alone cannot permit disposal");
+    var session=new SessionCollection();session.Seal(12,new Dictionary<uint,int>{{18311,1}},true,false);
+    proof.DresserCopyCounts=session.Read(12)!;proof.Dresser=proof.DresserCopyCounts.Keys.ToHashSet();proof.DresserKnown=true;proof.SessionDresserObservedAt=session.ObservedAt;
+    Check(Surplus().Outcome==Outcome.Dispose,"Exact same-login retained Shisui ownership releases surplus to normal disposal");
+    proof.Gearsets.Add(18311);Check(Surplus().Outcome==Outcome.Keep,"Session proof never overrides gearset protection");proof.Gearsets.Clear();
+    Check(StoragePolicy.WithoutDresserCopy(proof,18311,1,Surplus).Outcome==Outcome.CollectDresser,"Required last dresser copy remains protected with session evidence");
+    proof.Dresser.Clear();proof.DresserCopyCounts.Clear();Check(Surplus().Outcome==Outcome.CollectDresser,"Observed removal restores collection protection for the remaining copy");
+    proof.DresserKnown=false;Check(Surplus().Outcome==Outcome.Keep,"Reopening without a complete replacement read holds surplus again");
+}
 {
     var blue=item with{Source=SourceKind.Ordinary,ArmoireEligible=false};
     var proof=new Evidence{ReferencesReady=true,GearsetsReady=true,DresserKnown=true,ArmoireKnown=true};

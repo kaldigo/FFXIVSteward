@@ -26,6 +26,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private readonly ExternalImports imports;
     private readonly MarketQueue market;
     private readonly DresserTrace dresserTrace;
+    private readonly CollectionSessionObserver collectionSession;
     private readonly TrackedInventories tracked;
     private readonly InventoryMemory inventoryMemory;
     private readonly DungeonSources dungeonSources;
@@ -94,6 +95,10 @@ public sealed partial class Plugin : IDalamudPlugin
         reviewJournal=new(historyPath);
         market=new(pi,board,view,config,new(gui),JudgeLive,Record,RefreshProtection,()=>imports.MarketPreferencesReady,HoldExecution,BeginOperation,CompleteOperation,ProtectCollection,Alert,Judge,Save,JudgeMarket,new NativeDresserStore(sigScanner,config),interop);
         market.DresserRestored+=storageRun.Restored;
+        var collectionUi=new NativeUi(gui);
+        collectionSession=new(lifecycle,view,()=>player.IsLoaded?player.ContentId:0,
+            ()=>executionFault||config.PendingOperation!=null||market.Queue.Running||market.Queue.HasUnverifiedAction||
+                collectionUi.Visible("SelectYesno")||collectionUi.Visible("MiragePrismPrismSetConvertC")||collectionUi.Visible("InputNumeric"),Record);
         dresserTrace=new(lifecycle,gui,Record,id=>$"item={id}, player quantity={view.Items.Where(s=>s.ItemId==id).Sum(s=>(long)s.Quantity)}, live dresser={view.Evidence.DresserKnown}, dresser owned={view.Evidence.Dresser.Contains(id)}, prisms={view.Items.Where(s=>s.ItemId==21800).Sum(s=>(long)s.Quantity)}");
         pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.StrategyRetainer").RegisterFunc(r=>config.ExecutionEnabled&&!executionFault&&config.Connected&&attached==player.ContentId&&player.IsLoaded&&config.Features.AnyMarket&&config.Silver.Owns(r));
         pi.GetIpcProvider<string,string>(Endpoint).RegisterFunc(Evaluate);
@@ -227,6 +232,7 @@ public sealed partial class Plugin : IDalamudPlugin
     }
     private void HoldExecution(string reason)
     {
+        view.SessionDresser.Invalidate();
         if(executionFault && config.ExecutionReviewRequired)return;
         executionFault=config.ExecutionReviewRequired=true;
 
@@ -303,7 +309,7 @@ public sealed partial class Plugin : IDalamudPlugin
         {
             PumpReviewLog();
             if(dresserTrace.Active) dresserTrace.Tick(CanTraceDresser());
-            if(!player.IsLoaded){StopQueue();return;}
+            if(!player.IsLoaded){view.SessionDresser.Invalidate();StopQueue();return;}
             if(attached!=0 && attached!=player.ContentId){Stop();attached=0;}
             if(Environment.TickCount64>=nextRefresh)
             {
@@ -364,7 +370,7 @@ public sealed partial class Plugin : IDalamudPlugin
                 var busy=pi.GetIpcSubscriber<bool>("AutoRetainer.PluginState.IsBusy").InvokeFunc();
                 if(!busy)
                 {
-                    if(postCleanupEntrustPass){postCleanupEntrustPass=false;storageRun.End();Record("Post-dresser native entrust pass finished; items without an eligible destination remain in inventory");}
+                    if(postCleanupEntrustPass){postCleanupEntrustPass=false;Record("Post-dresser native entrust pass finished; items without an eligible destination remain in inventory");FinishStorageRun();}
                     dungeonSources.Tick();
                     if(!cleanupActive&&storageRun.Allows(player.ContentId,config.ExecutionEnabled)&&!executionFault)
                     {
@@ -374,7 +380,7 @@ public sealed partial class Plugin : IDalamudPlugin
                             if(!market.Queue.Running)market.DepositOpenDresser();
                             if(!market.Queue.Running)market.CleanupDresser();
                             if(!market.Queue.Running&&!StorageWorkRemaining())TryPostCleanupEntrust();
-                            if(!market.Queue.Running&&!StorageWorkRemaining()&&!storageRun.EntrustPending&&!postCleanupEntrustPass&&market.CloseDresserForStorage())storageRun.End();
+                            if(!market.Queue.Running&&!StorageWorkRemaining()&&!storageRun.EntrustPending&&!postCleanupEntrustPass&&market.CloseDresserForStorage())FinishStorageRun();
                         }
                     }
                 }
@@ -465,7 +471,7 @@ public sealed partial class Plugin : IDalamudPlugin
         try{dresserTrace.Dispose();StopQueue();market.Dispose();}
         finally
         {
-            universalis.Dispose();inventoryMemory.Dispose();reviewJournal.Dispose();
+            collectionSession.Dispose();universalis.Dispose();inventoryMemory.Dispose();reviewJournal.Dispose();
             pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.StrategyRetainer").UnregisterFunc();
             pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.CollectionNeeded").UnregisterFunc();
             pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.CleanupAllowed").UnregisterFunc();

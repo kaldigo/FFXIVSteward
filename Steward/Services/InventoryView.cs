@@ -23,6 +23,7 @@ public sealed unsafe class InventoryView
     private readonly Dictionary<uint,ItemFacts> itemMetadata=[];
     private readonly IReadOnlyDictionary<uint,SourceKind> acquisitionSources=AcquisitionSources.Load();
     public Evidence Evidence { get; } = new();
+    public SessionCollection SessionDresser { get; } = new();
     public List<Stock> Items { get; } = [];
     public HashSet<uint> NativeReferences { get; private set; } = [];
     public bool NativeReferencesKnown { get; private set; }
@@ -165,12 +166,14 @@ public sealed unsafe class InventoryView
     public void Refresh(ulong character)
     {
         Evidence.InvalidateLive();
+        Evidence.SessionDresserObservedAt=null;
         Evidence.DresserFreeSlots=null;
         Evidence.RelistingHolds.Clear(); // Legacy sale returns never grant collection/disposal protection.
         Evidence.PendingCollection=CollectionHolds.ForCharacter(config.PendingCollection,character);
         NativeReferencesKnown=false;
         if(Character!=character)
         {
+            SessionDresser.Invalidate();
             Character=character;Evidence.Dresser.Clear();Evidence.Armoire.Clear();Evidence.Prices.Clear();Evidence.PublicOwnPrices.Clear();Evidence.References.Clear();
             Evidence.DresserKnown=Evidence.ArmoireKnown=Evidence.GearsetsReady=Evidence.ReferencesReady=false;
             NativeReferencesKnown=false;NativeReferences.Clear();Retainers.Clear();
@@ -209,6 +212,11 @@ public sealed unsafe class InventoryView
                 else AddCollected(id);
             }
             Evidence.Dresser=collected;Evidence.DresserCopyCounts=copies;Evidence.DresserKnown=true;
+        }
+        else if(SessionDresser.Read(character) is {} sessionCopies)
+        {
+            Evidence.Dresser=sessionCopies.Keys.ToHashSet();Evidence.DresserCopyCounts=sessionCopies;Evidence.DresserKnown=true;
+            Evidence.SessionDresserObservedAt=SessionDresser.ObservedAt;
         }
         if(mm!=null && mm->GlamourPlatesLoaded)
         {

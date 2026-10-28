@@ -35,7 +35,7 @@ public sealed record CollectionCopyEvidence(
         matches.AddRange(GlamourProtection.Describe(GlamourProtection.Match(item,rules,evidence)));
         if(NonEquipmentProtection.Reason(item) is string acquisitionHold)matches.Add(acquisitionHold);
         if(!item.Equipment&&!rules.AllowsNonEquipmentDisposal(item))matches.Add("Non-equipment disposal hold");
-        return new(observedAt,"Live game collection observation; cached retainer source stacks remain unverified",
+        return new(observedAt,evidence.SessionDresserObservedAt is {} sessionAt?$"Dresser verified at close in this login ({sessionAt:O}); cached retainer source stacks remain unverified":"Live game collection observation; cached retainer source stacks remain unverified",
             evidence.DresserKnown,evidence.ArmoireKnown,copies,armoire,item.ArmoireEligible,removals,after,confirmed,valid,
             omitted,nativeKnown?nativeReference:null,evidence.GlamaholicKnown?evidence.GlamaholicReferences.Contains(item.Id):null,
             evidence.GearsetsReady,evidence.GearsetsReady?evidence.Gearsets.Contains(item.Id):null,evidence.ReferencesReady,

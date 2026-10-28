@@ -78,6 +78,7 @@ public sealed class Evidence
     public HashSet<uint> Gearsets { get; set; } = [];
     public bool GearsetsReady { get; set; }
     public bool DresserKnown { get; set; }
+    public DateTimeOffset? SessionDresserObservedAt { get; set; }
     public bool ArmoireKnown { get; set; }
     public bool CachedDresserKnown { get; set; }
     public bool CachedArmoireKnown { get; set; }

@@ -1,3 +1,7 @@
+## 0.1.0.68
+
+Preserve exact dresser ownership verified at a complete, idle native close for the current login, invalidating it on reopen, uncertainty, logout, character change and reload. Never promote disk cache ownership to disposal permission. Log proof provenance. Finish the owned AutoRetainer scheduler handoff after dresser and storage work, including zero-restoration passes.
+
 ## 0.1.0.67
 
 Allow safe native entrusting when collection ownership is cached or unavailable, retaining inventory exclusions, gearsets, explicit protections and disposal checks. After confirmed dresser restoration, request one native AutoRetainer storage pass once collection work finishes; never repeat for unique conflicts. Requires the matching AutoRetainer update for the follow-up route.
