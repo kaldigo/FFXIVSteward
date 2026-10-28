@@ -19,7 +19,8 @@ static class DisposalEvidenceChecks
             var held=Judge();check(held.Outcome==Outcome.Keep,name+" is not implicitly disposable");
             foreach(var action in new[]{"Vendor","Desynth","Gc","Retrieve","Discard"})
                 check(!ActionPolicy.Allows(action,held.Outcome,true,true,false),name+" cannot reach "+action);
-            rules.NonEquipmentDisposal.Add(id);check(Judge().Outcome==Outcome.Dispose,"Exact explicit opt-in permits "+name);
+            rules.NonEquipmentDisposal.Add(id);check(Judge().Outcome==Outcome.Keep,"Item opt-in cannot override special reward protection for "+name);
+            item=item with{Source=SourceKind.Ordinary};check(Judge().Outcome==Outcome.Dispose,"Verified ordinary acquisition still respects explicit permission");
             rules.Keep.Add(id);check(Judge().Outcome==Outcome.Keep,"Explicit keep beats disposal opt-in");rules.Keep.Clear();
             rules.Ignored.Add(id);check(Judge().Outcome==Outcome.Ignore,"Exclusion beats disposal opt-in");rules.Ignored.Clear();
             item=item with{Marketable=true};check(Judge().Outcome==Outcome.Wait,"Opt-in never bypasses unavailable valuation");

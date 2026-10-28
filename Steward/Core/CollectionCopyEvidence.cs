@@ -33,6 +33,7 @@ public sealed record CollectionCopyEvidence(
         if(rules.Glamour.NativePlates&&nativeKnown&&nativeReference)matches.Add("Native glamour plate");
         if(rules.Glamour.Glamaholic&&evidence.GlamaholicKnown&&evidence.GlamaholicReferences.Contains(item.Id))matches.Add("Glamaholic");
         matches.AddRange(GlamourProtection.Describe(GlamourProtection.Match(item,rules,evidence)));
+        if(NonEquipmentProtection.Reason(item) is string acquisitionHold)matches.Add(acquisitionHold);
         if(!item.Equipment&&!rules.AllowsNonEquipmentDisposal(item))matches.Add("Non-equipment disposal hold");
         return new(observedAt,"Live game collection observation; cached retainer source stacks remain unverified",
             evidence.DresserKnown,evidence.ArmoireKnown,copies,armoire,item.ArmoireEligible,removals,after,confirmed,valid,

@@ -1,5 +1,7 @@
 # Steward
 
+Non-equipment disposal permissions never override acquisition protection. Unknown sources hold disposal even after rejected sale rules; verified special, alliance, savage and high-end rewards preserve every copy and also block automatic sales. These holds are independent of glamour filters and never create a dresser destination. Known repeatable sources still require explicit disposal permission and all other gates. Review evidence must expose the source hold. Unknown-source tradeable items may still meet an explicit sale rule; this does not authorize disposal.
+
 During the current in-game testing workflow, publish completed, tested fixes and verify the release/feed without requiring another user request to publish. The user explicitly authorized this ongoing workflow. Do not change live saved settings or clear execution holds as part of publication.
 
 Retainer price/quantity callbacks are dispatch only; their bool return is not acknowledgement. Read back agent and displayed values before the final sell click. Market failures must report the failed gate, phase, source and native values; log dispatch, confirm attempt and successful acknowledgement separately. Never clear uncertain action holds automatically.

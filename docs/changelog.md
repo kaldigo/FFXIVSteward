@@ -1,3 +1,7 @@
+## 0.1.0.63
+
+Protect non-equipment with unknown acquisition from disposal, independently of item/category permissions. Preserve special and difficult-to-replace non-equipment rewards from disposal and automatic sales, including duplicates; glamour-filter settings cannot disable these holds. Show the acquisition hold in review evidence and clarify category permissions. Known repeatable items retain ordinary sale and disposal rules. No live settings or execution holds are changed. Automated protection tests pass; verify updated proposals in log-only before enabling disposal.
+
 ## 0.1.0.62
 
 Pace fresh in-game market searches with a three-second gap after requests/responses, shared across items and retainer passes. Detect rate-limit status 0x70000003 immediately and retry the same item up to twice after a five-second cooldown. Preserve complete-result validation and per-stack submission checks; cached comparisons for additional stacks bypass the search delay. Bound retry time and keep rate-limited items held rather than treating failures as empty markets.
