@@ -410,6 +410,12 @@ public sealed unsafe partial class MarketQueue : IDisposable
             var proposal=WithoutThisCopy(false);
             if(!StoragePolicy.Restore(proposal.Outcome,config.CleanDresser,facts.ArmoireEligible && !view.Evidence.Armoire.Contains(id)))
             {retained.Add($"{facts.Name} [{id}]: {proposal.Outcome}, {proposal.Reason}");return;}
+            if(view.IsUnique(id)&&InventoryView.CarriesItem(id)==true)
+            {
+                retained.Add($"{facts.Name} [{id}]: unique copy already carried or equipped");
+                notify($"Dresser cleanup skipped {facts.Name}: a unique copy is already in your inventory, armoury or equipped.");
+                return;
+            }
             planned++;
             var sent=false;var attempted=false;long before=0;var beforeCopies=0;
             var retry=new DresserRestoreRetry();
@@ -431,8 +437,13 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     slot=DresserRestoration.Find(live->PrismBoxItemIds,raw,slot);
                     if(slot<0)throw new InvalidOperationException($"Dresser source is {(slot==-2?"ambiguous after positions changed":"no longer present")}: item={id}, raw={raw}");
                     if(InventoryView.FreeBagSlots()<1){notify("Dresser cleanup paused: make one inventory slot available.");return StepResult.Completed;}
-                    if(view.IsUnique(id)&&view.Items.Any(s=>s.ItemId==id))
-                    {notify($"Dresser cleanup held for {facts.Name}: a unique copy is already carried.");return StepResult.Completed;}
+                    if(view.IsUnique(id))
+                    {
+                        var carried=InventoryView.CarriesItem(id);
+                        if(carried==null)return StepResult.Waiting;
+                        if(carried==true)
+                        {notify($"Dresser cleanup skipped {facts.Name}: a unique copy is already in your inventory, armoury or equipped.");return StepResult.Completed;}
+                    }
                     if(facts.ArmoireEligible && !view.Evidence.Armoire.Contains(id))protectCollection(id);
                     if(!InventoryView.PlayerLoaded())return StepResult.Waiting;
                     before=view.Items.Where(s=>s.ItemId==id).Sum(s=>(long)s.Quantity);

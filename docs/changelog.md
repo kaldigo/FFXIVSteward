@@ -1,3 +1,7 @@
+## 0.1.0.55
+
+Dresser cleanup skips unique items already carried in bags, armoury or equipped, warns the player and continues. Recheck live ownership before restoration and wait when inventory is unavailable. Close the dresser after automatic storage work finishes; do not close pending confirmations or active operations.
+
 ## 0.1.0.54
 
 Require AutoRetainer standalone capability 5 and explain disconnected behaviour. Permit clean disconnect with saved collection holds retained for reconnection, while keeping uncertain-transaction holds. Skaenwyda remains excluded from storage and ordinary sales, with native ventures and gil enabled in AutoRetainer. Requires AutoRetainer 4.6.3.23.

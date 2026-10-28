@@ -218,6 +218,15 @@ public sealed unsafe class InventoryView
         var container=manager->GetInventoryContainer((InventoryType)type);return container!=null&&container->IsLoaded;
     }
     public static bool PlayerLoaded()=>InventoryTypes().Where(t=>t!=InventoryType.ArmoryWaist).All(t=>Loaded((uint)t));
+    public static bool? CarriesItem(uint id)
+    {
+        // Unique ownership includes equipped gear; never interpret an unloaded container as empty.
+        var types=InventoryTypes().Where(t=>t!=InventoryType.ArmoryWaist).Append(InventoryType.EquippedItems).ToArray();
+        if(types.Any(t=>!Loaded((uint)t)))return null;
+        List<Stock> carried=[];
+        foreach(var type in types)Read(type,carried);
+        return carried.Any(s=>s.ItemId==id%1000000);
+    }
     public static bool CanListStock(Stock stock)
     {
         if(ReadSlot(stock.Container,stock.Slot)!=stock)return false;

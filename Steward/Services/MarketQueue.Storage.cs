@@ -5,12 +5,12 @@ namespace Steward.Services;
 
 public sealed unsafe partial class MarketQueue
 {
-    public bool DresserOpen=>ui.Get("MiragePrismPrismBoxCrystallize")!=null;
+    public bool DresserOpen=>ui.Get("MiragePrismPrismBox")!=null||ui.Get("MiragePrismPrismBoxCrystallize")!=null;
     public bool CloseDresserForStorage()
     {
         if(!config.ExecutionEnabled)return false;
-        if(ui.Visible("SelectYesno")||ui.Visible("InputNumeric")||ui.Visible("RetainerSell")||ui.Visible("MiragePrismPrismSetConvert"))return false;
-        ui.Close("MiragePrismPrismBoxCrystallize");ui.Close("MiragePrismPrismBox");return true;
+        if(Queue.Running||ui.Visible("SelectYesno")||ui.Visible("ContextMenu")||ui.Visible("InputNumeric")||ui.Visible("RetainerSell")||ui.Visible("MiragePrismPrismSetConvert")||ui.Visible("MiragePrismPrismSetConvertC"))return false;
+        ui.Close("MiragePrismPrismBoxCrystallize");ui.Close("MiragePrismPrismBox");return !DresserOpen;
     }
     public sealed record CleanupCandidate(uint ItemId,string Name,string Action,string Reason,int Quantity=1);
     public IReadOnlyList<CleanupCandidate> DresserCleanupCandidates()

@@ -370,7 +370,7 @@ public sealed partial class Plugin : IDalamudPlugin
                         {
                             if(!market.Queue.Running)market.DepositOpenDresser();
                             if(!market.Queue.Running)market.CleanupDresser();
-                            if(!market.Queue.Running&&!StorageWorkRemaining())storageRun.End();
+                            if(!market.Queue.Running&&!StorageWorkRemaining()&&market.CloseDresserForStorage())storageRun.End();
                         }
                     }
                 }
