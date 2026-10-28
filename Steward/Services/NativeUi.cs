@@ -30,7 +30,10 @@ public sealed unsafe class NativeUi(IGameGui gui)
         var evt=button->OwnerNode->AtkResNode.AtkEventManager.Event;
         if(evt==null)return false;
         // Use the button's registered native event, as ECommons' ClickAddonButton does.
-        addon->ReceiveEvent(evt->State.EventType,(int)evt->Param,evt);
+        // Addon listeners (including Allagan Market) read the event-data argument.
+        // Supply an initialized payload rather than the optional null pointer.
+        AtkEventData data=default;
+        addon->ReceiveEvent(evt->State.EventType,(int)evt->Param,evt,&data);
         return true;
     }
     public bool CancelOwnedConfirmation(ushort owner)

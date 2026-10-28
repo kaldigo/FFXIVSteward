@@ -1,3 +1,7 @@
+## 0.1.0.59
+
+Read live price comparisons from the completed native search result list, tied to a newly observed request, instead of requiring equality between network packet and native request counters. Preserve result completeness, item/seller identity, own-price protection and final submission checks. Supply initialized button-event data for addon listeners and log detailed native state when a comparison is held. Add regression coverage for stale, partial, malformed, empty and wrapped-request results. In-game listing acceptance remains to be tested.
+
 ## 0.1.0.58
 
 Add an optional lower-priority tier to sale rules, with presets of 20,000 gil for general items and 500 gil each / 2,500 per stack for materials. Normal-priority stock fills slots first, including before lower-value split remainders. Eligible lower-tier items remain protected for sale; activity requirements and other protections still apply. Use the lower floors consistently for listing, repricing and existing-listing checks. Lower-priority stock cannot rotate out normal-priority listings. Existing rules remain unchanged until the tier is enabled.

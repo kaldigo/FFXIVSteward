@@ -131,6 +131,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
         var opened=DateTimeOffset.MinValue;var sent=DateTimeOffset.MinValue;
         uint? target=null;uint? beforePrice=null;var quantity=0;var locked=false;
         HashSet<ushort> occupiedBefore=[];
+        var beforeRequest=-1;var comparisonHeld="search not started";
         (DateTimeOffset At,int Request,List<Offering> Offers)? comparison=null;
         bool TryComparison(out (DateTimeOffset At,int Request,List<Offering> Offers) result)
         {
@@ -139,10 +140,31 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 result=shared;
                 return view.World==expectedWorld&&shared.At<=DateTimeOffset.UtcNow&&DateTimeOffset.UtcNow-shared.At<=TimeSpan.FromMinutes(2);
             }
-            if(offers.TryGetValue(expected.ItemId,out result)&&ComparisonReady(expected.ItemId,opened,result))
+            result=default;
+            var proxy=FFXIVClientStructs.FFXIV.Client.UI.Info.InfoProxyItemSearch.Instance();
+            if(proxy==null){comparisonHeld="native search unavailable";return false;}
+            if(ui.Get("ItemSearchResult")==null){comparisonHeld="result window is not ready";return false;}
+            var request=(int)proxy->CurrentRequestId;var count=proxy->ListingCount;
+            List<Offering> rows=[];
+            if(count<=100&&!proxy->WaitingForListings)
             {
+                for(var i=0;i<count;i++)
+                {
+                    var row=proxy->Listings[i];
+                    rows.Add(new(row.ItemId%1000000,row.IsHqItem,row.UnitPrice,row.Quantity,row.RetainerId,row.ListingId));
+                }
+            }
+            var now=DateTimeOffset.UtcNow;
+            var rejection=MarketComparison.NativeRejection(expected.ItemId,beforeRequest,proxy->SearchItemId,request,
+                proxy->WaitingForListings,count,rows,opened,now);
+            comparisonHeld=$"{rejection}; native item={proxy->SearchItemId}, request={beforeRequest}->{request}, waiting={proxy->WaitingForListings}, rows={rows.Count}/{count}";
+            if(rejection==null)
+            {
+                result=(now,request,rows);
                 comparison=result;
                 passComparisons[expected.ItemId]=new(expectedWorld,result.Request,result.At,result.Offers.ToList(),true);
+                observedMarkets[expected.ItemId]=passComparisons[expected.ItemId];
+                history($"Comparison accepted: item={expected.ItemId}, native request={beforeRequest}->{request}, rows={count}, elapsed={(now-opened).TotalMilliseconds:F0}ms");
                 return true;
             }
             return false;
@@ -194,7 +216,16 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     history($"Reusing verified comparison for item {expected.ItemId}, listing slot {expected.Slot}");
                     phase=2;return StepResult.Waiting;
                 }
+                var proxy=FFXIVClientStructs.FFXIV.Client.UI.Info.InfoProxyItemSearch.Instance();
+                if(proxy==null)return Finish();
+                if(proxy->WaitingForListings)
+                {
+                    if(DateTimeOffset.UtcNow-opened>TimeSpan.FromSeconds(5))
+                    {history($"Held market item {expected.ItemId}: previous native search is still loading; no comparison submitted.");return Finish();}
+                    return StepResult.Waiting;
+                }
                 offers.Clear();opened=DateTimeOffset.UtcNow;comparisonItem=expected.ItemId;comparisonOpened=opened;
+                beforeRequest=proxy->CurrentRequestId;
                 if(!ui.Click("RetainerSell",4))return StepResult.Failed;phase=2;return StepResult.Waiting;
             }
             if(phase==2)
@@ -202,7 +233,10 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 if(!TryComparison(out var result))
                 {
                     if(DateTimeOffset.UtcNow-opened>TimeSpan.FromSeconds(10))
-                    {history("Held market item "+expected.ItemId+": complete fresh competition unavailable; trying other source stacks.");return Finish();}
+                    {
+                        var packet=offers.TryGetValue(expected.ItemId,out var captured)?$"packet request={captured.Request}, rows={captured.Offers.Count}":"no captured packet for item";
+                        history($"Held market item {expected.ItemId}: {comparisonHeld}; {packet}; trying other source stacks.");return Finish();
+                    }
                     return StepResult.Waiting;
                 }
                 RecordGameQuotes(expected.ItemId,result);

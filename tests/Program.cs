@@ -417,3 +417,5 @@ Console.WriteLine("Allagan cached repricing checks passed.");
 
 LowPriorityChecks.Run(Check);
 Console.WriteLine("Lower-priority sale tier checks passed.");
+NativeComparisonChecks.Run(Check);
+Console.WriteLine("Native market comparison checks passed.");
