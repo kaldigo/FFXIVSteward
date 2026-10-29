@@ -25,8 +25,12 @@ public static class StoragePolicy
         var matches=GlamourProtection.Match(item,rules,evidence);
         if(matches is GlamourMatch.None or GlamourMatch.Unknown)return false;
         if(armoire)
-            return !evidence.ArmoireKnown || item.ArmoireEligible&&!evidence.Armoire.Contains(item.Id);
+            return item.ArmoireEligible&&!(evidence.ArmoireKnown?evidence.Armoire.Contains(item.Id):
+                evidence.CachedArmoireKnown&&evidence.CachedArmoire.Contains(item.Id));
         if(!item.Equipment||item.ArmoireEligible)return false;
+        // A saved positive copy can avoid travel, never authorize disposal or removal.
+        if(!evidence.DresserKnown&&evidence.CachedDresserKnown&&evidence.CachedDresser.Contains(item.Id))return false;
+        if(!evidence.ArmoireKnown&&evidence.CachedArmoireKnown&&evidence.CachedArmoire.Contains(item.Id))return false;
         return !evidence.DresserKnown || !evidence.Dresser.Contains(item.Id)&&!evidence.Armoire.Contains(item.Id)&&
             Available(evidence.DresserFreeSlots,rules.DresserEmptySlots)>0;
     }

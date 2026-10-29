@@ -106,7 +106,7 @@ public sealed partial class Plugin
         if(ImGui.CollapsingHeader("Glamour collection",ImGuiTreeNodeFlags.DefaultOpen))
         {
             DrawCollectionFeatureControls();
-            Setting("Clean the glamour dresser",config.CleanDresser,v=>config.CleanDresser=v,"Restore unneeded items. Moving dresser pieces to the armoire also requires armoire storage to be enabled.");
+            Setting("Clean the glamour dresser",config.CleanDresser,v=>config.CleanDresser=v,"Restore unneeded items when the dresser is open for collection or you request a dresser run. This does not add a dresser trip to venture or entrust runs. Armoire migration also requires armoire storage.");
         }
         if(ImGui.CollapsingHeader("Storage and disposal",ImGuiTreeNodeFlags.DefaultOpen))
         {

@@ -11,7 +11,6 @@ public sealed partial class Plugin
     private bool collectionPass;
     private long nextCollectionAttempt;
     private long nextDresserAttempt;
-    private bool cleanupVisited;
     private bool postCleanupEntrustPass;
     private long nextPostCleanupEntrust;
     private void TryPostCleanupEntrust()
@@ -44,7 +43,6 @@ public sealed partial class Plugin
         if(AutoDutyCoordination.OwnsTravel(pi)){storageRun.End();return;}
         if(authorized&&!storageRun.Allows(player.ContentId,config.ExecutionEnabled))
         {
-            cleanupVisited=false;
             finishingStorageRun=false;
             nextPostCleanupEntrust=0;
             nextCollectionAttempt=nextDresserAttempt=nextOverflowAttempt=nextAutomaticWork=0;
@@ -127,9 +125,8 @@ public sealed partial class Plugin
             if(!market.CloseDresserForStorage())return false;
             if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,"Armoire"))return true;
         }
-        if(market.DresserOpen)cleanupVisited=true;
         if(!market.DresserOpen&&Environment.TickCount64>=nextDresserAttempt&&
-            (config.Features.DresserCollection&&NeedsCollectionVisit(false)||config.CleanDresser&&!cleanupVisited))
+            (config.Features.DresserCollection&&NeedsCollectionVisit(false)))
         {
             if(config.Features.DresserCollection&&!market.DresserPreparationReady())
             {status=market.DresserPreparationStatus!;return true;}
@@ -144,7 +141,6 @@ public sealed partial class Plugin
     private bool StorageWorkRemaining()=>
         config.Features.ArmoireStorage&&NeedsCollectionVisit(true)||
         config.Features.DresserCollection&&NeedsCollectionVisit(false)||
-        config.CleanDresser&&!cleanupVisited||
         config.Features.OverflowStorage&&view.Items.Any(s=>Judge(s).Outcome==Outcome.StoreRetainer);
     private bool NeedsCollectionVisit(bool armoire)=>view.Items.Concat(tracked.Items
         .Where(row=>view.Retainers.Contains(row.Owner)&&config.Storage.RetainerEnabled(row.Owner)).Select(row=>row.Stock))
@@ -181,7 +177,8 @@ public sealed partial class Plugin
         if(ImGui.SliderInt("Leave empty dresser slots",ref reserve,0,800)){config.Rules.DresserEmptySlots=reserve;SavePolicy();}
         ImGui.TextWrapped("Armoire items do not use this allowance. Protected dresser overflow goes to retainers and remains protected until collection is confirmed.");
         var cleanup=config.CleanDresser;
-        if(ImGui.Checkbox("Clean dresser using all protection rules",ref cleanup)){config.CleanDresser=cleanup;cleanupVisited=false;SavePolicy();}
+        if(ImGui.Checkbox("Clean dresser using all protection rules",ref cleanup)){config.CleanDresser=cleanup;SavePolicy();}
+        ImGui.TextWrapped("Cleanup runs when visiting for collection or when you request a dresser run; it does not add a trip to venture or entrust runs.");
         ImGui.TextWrapped("Cleanup restores items that no rule needs and moves eligible pieces to the armoire. Required last copies, unknown sources, exclusions, gear sets and AutoRetainer protections are preserved.");
         if(ImGui.Button("Preview dresser cleanup"))
         {

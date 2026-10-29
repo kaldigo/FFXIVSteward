@@ -445,7 +445,7 @@ public sealed partial class Plugin : IDalamudPlugin
         CancelCleanup();
         storageRun.End();
         if(market.Queue.HasUnverifiedAction && !executionFault)HoldExecution("An active operation was cancelled; its last game action may still complete");
-        openingInventory=withdrawing=openingMarket=false;overflowPass=collectionPass=false;cleanupVisited=false;postCleanupEntrustPass=false;nextPostCleanupEntrust=0;
+        openingInventory=withdrawing=openingMarket=false;overflowPass=collectionPass=false;postCleanupEntrustPass=false;nextPostCleanupEntrust=0;
         try{market.Stop();}finally{FinishPostprocess();}
     }
     private void Stop(){try{StopQueue();}finally{Save();}Record("Current Steward run stopped; enabled features wait for the next authorised AutoRetainer run");}

@@ -10,7 +10,15 @@ static class StorageChecks
         var routeItem=new ItemFacts(14799,"Chestwrap",true,2,60,false,false,SourceKind.Special,35);
         var routeStock=new Stock(14799,false,1,0,15);
         check(StoragePolicy.NeedsCollectionVisit(routeItem,routeStock,routeRules,routeEvidence,false),"Missing live dresser observations request a visit");
-        check(StoragePolicy.NeedsCollectionVisit(routeItem,routeStock,routeRules,routeEvidence,true),"Unknown armoire ownership requests observation before collection");
+        check(!StoragePolicy.NeedsCollectionVisit(routeItem,routeStock,routeRules,routeEvidence,true),"Non-armoire gear never requests an armoire observation trip");
+        routeEvidence.CachedDresserKnown=true;routeEvidence.CachedDresser.Add(routeItem.Id);
+        check(!StoragePolicy.NeedsCollectionVisit(routeItem,routeStock,routeRules,routeEvidence,false),"Cached collected copy suppresses inspection-only dresser travel");
+        check(Rules.Judge(routeItem,routeStock,routeRules,routeEvidence,1,now).Outcome!=Outcome.Dispose,"Cached copy avoiding travel does not permit disposal");
+        routeEvidence.CachedDresser.Clear();
+        check(StoragePolicy.NeedsCollectionVisit(routeItem,routeStock,routeRules,routeEvidence,false),"Missing collection piece still requests dresser travel");
+        routeEvidence.CachedDresser.Add(routeItem.Id);routeEvidence.DresserKnown=true;routeEvidence.DresserFreeSlots=21;
+        check(StoragePolicy.NeedsCollectionVisit(routeItem,routeStock,routeRules,routeEvidence,false),"Live missing copy overrides old positive cache for travel");
+        routeEvidence.CachedDresser.Clear();routeEvidence.DresserKnown=false;
         check(Rules.Judge(routeItem,routeStock,routeRules,routeEvidence,1,now).Outcome==Outcome.Wait,"A route request never grants a deposit or disposal without live ownership");
         routeEvidence.Gearsets.Add(14799);
         check(!StoragePolicy.NeedsCollectionVisit(routeItem,routeStock,routeRules,routeEvidence,false),"Gearset items do not trigger storage visits");

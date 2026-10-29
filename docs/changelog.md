@@ -1,3 +1,7 @@
+## 0.1.0.73
+
+Do not add a dresser inspection trip solely because cleanup is enabled. Cleanup still runs during a collection visit or an explicitly requested dresser run. Collection travel uses cached positive ownership to avoid revisiting already-collected items, without relaxing live disposal/removal checks. Non-armoire items no longer trigger armoire trips to refresh missing observations.
+
 ## 0.1.0.72
 
 Replace listing-withdrawal menu callbacks with FFXIVClientStructs' native return-to-retainer-inventory binding. Preserve exact source, selected retainer, capacity, rule/protection and control checks. Native return codes do not count as completion: wait for listing removal and matching retainer quantity growth, holding uncertain submissions without retry. Keep Market Buddy coordination and log the native result and destination evidence.
