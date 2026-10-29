@@ -48,4 +48,4 @@ class CacheRepricing(unittest.TestCase):
   self.assertIn('response.Item%1000000==expected.ItemId',text)
   self.assertIn('response.Status==MarketSearchPacing.RateLimited',text)
   self.assertIn('searchPacing.Sent(opened)',text)
-  self.assertIn('},45000));',text)
+  self.assertIn('},45000,CanSkip:()=>!confirmAttempted',text)

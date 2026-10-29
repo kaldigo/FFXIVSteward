@@ -3,6 +3,20 @@ using Steward.Core;
 var total=0;
 void Check(bool condition,string name) { total++; if(!condition) throw new Exception(name); }
 {
+    var submitted=false;var next=false;var skipped=false;var journal=false;
+    var q=new OperationQueue(_=>journal=true,()=>journal=false);
+    q.Add(new("Market check failed before submission",()=>StepResult.Failed,CanSkip:()=>!submitted,OnSkipped:()=>
+    {skipped=true;q.Add(new("Next eligible listing",()=>{next=true;return StepResult.Completed;}));}));
+    q.Advance(0);q.Advance(1);
+    Check(skipped&&next&&!journal&&!q.Running,"Recoverable market failure advances listing pass after clearing only its unsubmitted journal");
+    q.Begin();skipped=false;
+    q.Add(new("Uncertain withdrawal",()=>{submitted=true;return StepResult.Failed;},CanSkip:()=>!submitted,OnSkipped:()=>skipped=true));
+    q.Advance(2);Check(!skipped&&journal&&q.Status.StartsWith("Stopped:"),"Possible submitted withdrawal retains hold and never invokes continuation");
+    q=new OperationQueue();skipped=false;
+    q.Add(new("Queued item",()=>StepResult.Failed,CanSkip:()=>true,OnSkipped:()=>skipped=true));q.Stop("Cancelled");
+    Check(!skipped,"Cancellation does not schedule a fresh listing pass");
+}
+{
     var proof=new SessionCollection();
     Check(proof.Read(12)==null,"Disk caches cannot create same-login collection proof");
     Dictionary<uint,int> native=new(){[18311]=1,[18310]=1,[18283]=1};

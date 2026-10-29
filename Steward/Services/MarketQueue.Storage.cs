@@ -88,6 +88,6 @@ public sealed unsafe partial class MarketQueue
             },TimeoutMs:12000,CanSkip:()=>!attempted));
         }
         Queue.Add(new("Overflow storage summary",()=>
-        {if(completed>0)notify($"Stored {completed} protected glamour item(s) with {label}; they remain protected while waiting for collection.");return StepResult.Completed;}));
+        {if(completed>0)notify($"Stored {completed} protected glamour item(s) with {label}; they remain protected while waiting for collection.");return StepResult.Completed;},CanSkip:()=>true));
     }
 }

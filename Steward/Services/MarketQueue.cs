@@ -384,7 +384,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     throw new InvalidOperationException("Market Buddy did not confirm release of Steward's lock");
             }
             if(finished)completed?.Invoke(expected,successful);
-        },45000));
+        },45000,CanSkip:()=>!confirmAttempted,OnSkipped:()=>completed?.Invoke(expected,false)));
     }
     public void Advance(long now)
     {

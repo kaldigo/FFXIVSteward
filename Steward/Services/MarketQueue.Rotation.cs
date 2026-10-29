@@ -72,19 +72,26 @@ public sealed unsafe partial class MarketQueue
     private void EnqueueRotation(RotationProposal proposal,ulong retainer,bool coordinated,ListingPass pass,bool ruleReturn=false)
     {
         var phase=0;var character=view.Character;var world=view.World;var source=proposal.Source;
-        var beforeQuantity=0ul;var row=-1;ushort menuId=0;var acknowledged=false;var locked=false;var replan=false;
+        var beforeQuantity=0ul;var row=-1;ushort menuId=0;var acknowledged=false;var locked=false;var replan=false;var submitted=false;
         bool Owns()=>coordinated?pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsHandoff").InvokeFunc(character):
             manualControl==character&&pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsControl").InvokeFunc(character);
+        StepResult Fail(string reason)
+        {
+            var native=AgentRetainer.Instance();
+            var agentState=native==null?"absent":$"rows={native->SellListEntryCount}, context row={native->ContextMenuIndex}, sell addon={native->RetainerSellListAddonId}";
+            history($"Market return rejected: item={source.ItemId}, retainer={retainer}, phase={phase}, submitted={submitted}, reason={reason}; expected={source}; live={InventoryView.ReadSlot(source.Container,source.Slot)}; bag quantity={BagQuantity(source)}; agent={agentState}; {ui.Describe("RetainerSellList")}; {ui.Describe("ContextMenu")}");
+            return StepResult.Failed;
+        }
         Queue.Add(new((ruleReturn?"Return listing outside sale rules ":"Rotate aged listing ")+source.ItemId,()=>
         {
-            if(!config.ExecutionEnabled||config.ExecutionReviewRequired||!config.SalesEnabledFor(retainer)||view.Character!=character||view.World!=world||!Owns())return StepResult.Failed;
-            if(ruleReturn?!config.Features.ListingReturns:!config.Features.Rotation||!config.Features.NewListings)return StepResult.Failed;
+            if(!config.ExecutionEnabled||config.ExecutionReviewRequired||!config.SalesEnabledFor(retainer)||view.Character!=character||view.World!=world||!Owns())return Fail("execution, character, world, retainer scope or control lease changed");
+            if(ruleReturn?!config.Features.ListingReturns:!config.Features.Rotation||!config.Features.NewListings)return Fail("listing-return or rotation feature disabled");
             refreshProtection();
-            if(!MarketSnapshot(out var selected,out var listings)||selected!=retainer||!InventoryView.PlayerLoaded())return StepResult.Failed;
+            if(!MarketSnapshot(out var selected,out var listings)||selected!=retainer||!InventoryView.PlayerLoaded())return Fail("market snapshot or player inventory not ready");
             if(phase<2)
             {
                 if(!ruleReturn&&listings.Count<20){replan=true;return StepResult.Completed;}
-                if(InventoryView.ReadSlot(source.Container,source.Slot)!=source)return StepResult.Failed;
+                if(InventoryView.ReadSlot(source.Container,source.Slot)!=source)return Fail("listing source changed before submission");
                 if(InventoryView.FreeBagSlots()<(ruleReturn?1:2))return StepResult.Completed;
                 if(ruleReturn)
                 {
@@ -93,56 +100,60 @@ public sealed unsafe partial class MarketQueue
                 else
                 {
                 var decision=marketJudge(source,retainer,true);
-                if(decision.Outcome is not (Outcome.Market or Outcome.Dispose))return StepResult.Failed;
+                if(decision.Outcome is not (Outcome.Market or Outcome.Dispose))return Fail("rotation protection decision changed");
                 var item=view.Facts(source.ItemId);var rule=item==null?null:config.Rules.Sales.FirstOrDefault(r=>r.Matches(item,source,retainer));
-                if(!ListingWindows.Expired(config.ListingWindows.Age(character,world,retainer,source),rule?.MaximumListingDays,DateTimeOffset.UtcNow))return StepResult.Failed;
-                if(InventoryView.ReadSlot(proposal.Replacement.Container,proposal.Replacement.Slot)!=proposal.Replacement)return StepResult.Failed;
+                if(!ListingWindows.Expired(config.ListingWindows.Age(character,world,retainer,source),rule?.MaximumListingDays,DateTimeOffset.UtcNow))return Fail("listing age no longer qualifies for rotation");
+                if(InventoryView.ReadSlot(proposal.Replacement.Container,proposal.Replacement.Slot)!=proposal.Replacement)return Fail("replacement source changed");
                 var proof=observedMarkets.GetValueOrDefault(proposal.Replacement.ItemId);
                 var now=DateTimeOffset.UtcNow;
-                if(proof==null||!proof.Complete||proof.World!=world||proof.At>now||now-proof.At>TimeSpan.FromSeconds(30))return StepResult.Failed;
+                if(proof==null||!proof.Complete||proof.World!=world||proof.At>now||now-proof.At>TimeSpan.FromSeconds(30))return Fail("fresh replacement comparison unavailable");
                 var replacement=SaleInput(proposal.Replacement,true);
-                if(replacement==null)return StepResult.Failed;
+                if(replacement==null)return Fail("replacement sale input unavailable");
                 var choice=ListingPlanner.Next(replacement,config.Pricing,world,config.Rules.MaximumPriceAgeMinutes,DateTimeOffset.UtcNow);
-                if(!choice.Eligible)return StepResult.Failed;
+                if(!choice.Eligible)return Fail("replacement no longer eligible");
                 if(ListingPlanner.Priority(replacement,choice)>(rule?.Priority(decision.UnitPrice,source.Quantity)??0))return StepResult.Completed;
                 if(config.Rules.PreferFasterSales&&!SaleTurnover.Improves(TurnoverDays(source,source.Quantity),TurnoverDays(proposal.Replacement,choice.Quantity)))return StepResult.Completed;
                 }
             }
             var agent=AgentRetainer.Instance();var sale=ui.Get("RetainerSellList");
-            if(agent==null||sale==null||agent->RetainerSellListAddonId!=sale->Id)return StepResult.Failed;
+            if(agent==null||sale==null||agent->RetainerSellListAddonId!=sale->Id)return Fail("retainer selling agent or addon identity not ready");
             if(phase==0)
             {
-                if(ui.Visible("ContextMenu")||ui.Visible("SelectYesno")||ui.Visible("InputNumeric"))return StepResult.Failed;
-                if(config.ImportMarketBuddy){if(!pi.GetIpcSubscriber<string,bool>("Marketbuddy.Lock").InvokeFunc("Steward"))return StepResult.Failed;locked=true;}
-                if(agent->SellListEntryCount<1||agent->SellListEntryCount>20)return StepResult.Failed;
+                if(ui.Visible("ContextMenu")||ui.Visible("SelectYesno")||ui.Visible("InputNumeric"))return Fail("another context or confirmation window is open");
+                if(config.ImportMarketBuddy){if(!pi.GetIpcSubscriber<string,bool>("Marketbuddy.Lock").InvokeFunc("Steward"))return Fail("Market Buddy lock unavailable");locked=true;}
+                if(agent->SellListEntryCount<1||agent->SellListEntryCount>20)return Fail("native selling-list row count invalid");
                 for(var i=0;i<agent->SellListEntryCount;i++)
-                {var entry=agent->SellListEntries[i];if(entry.InventorySlot==source.Slot&&entry.ItemId%1000000==source.ItemId&&entry.Quantity==source.Quantity){if(row!=-1)return StepResult.Failed;row=i;}}
-                if(row<0)return StepResult.Failed;
-                if(!ui.Callback("RetainerSellList",0,row,1))return StepResult.Failed;
-                phase=1;return StepResult.Waiting;
+                {var entry=agent->SellListEntries[i];if(entry.InventorySlot==source.Slot&&entry.ItemId%1000000==source.ItemId&&entry.Quantity==source.Quantity){if(row!=-1)return Fail("multiple native rows match source");row=i;}}
+                if(row<0)return Fail("no native row matches source");
+                phase=1; // Opening a menu does not submit a withdrawal. Verify its appearance next.
+                var opened=ui.Callback("RetainerSellList",0,row,1);
+                history($"Market return menu dispatched: item={source.ItemId}, row={row}, callback={opened}, reason={ReturnReason(source,retainer,false)??"aged listing rotation"}");
+                return StepResult.Waiting;
             }
             if(phase==1)
             {
                 var menu=ui.Get("ContextMenu");if(menu==null)return StepResult.Waiting;
-                if(agent->ContextMenuIndex!=row||!ConfirmationOwnership.Matches(sale->Id,menu->ParentId,menu->HostId))return StepResult.Failed;
-                if(menu->AtkValuesCount<9||menu->AtkValues[0].Type!=AtkValueType.UInt)return StepResult.Failed;
-                var count=menu->AtkValues[0].UInt;if(count>32||8+count>menu->AtkValuesCount)return StepResult.Failed;
+                if(agent->ContextMenuIndex!=row||!ConfirmationOwnership.Matches(sale->Id,menu->ParentId,menu->HostId))return Fail("context menu owner or row does not match selected listing");
+                if(menu->AtkValuesCount<9||menu->AtkValues[0].Type!=AtkValueType.UInt)return Fail("context menu header unavailable");
+                var count=menu->AtkValues[0].UInt;if(count>32||8+count>menu->AtkValuesCount)return Fail("context menu entry count invalid");
                 var choice=-1;
                 for(var i=0;i<count;i++)
                 {
                     var value=menu->AtkValues[8+i];
                     if(value.Type is not (AtkValueType.String or AtkValueType.ManagedString)||value.String.Value==null)continue;
-                    if(Marshal.PtrToStringUTF8((nint)value.String.Value)==view.ReturnListingLabel){if(choice!=-1)return StepResult.Failed;choice=i;}
+                    if(Marshal.PtrToStringUTF8((nint)value.String.Value)==view.ReturnListingLabel){if(choice!=-1)return Fail("multiple matching return entries");choice=i;}
                 }
-                if(choice<0)return StepResult.Failed;
-                if(InventoryView.ReadSlot(source.Container,source.Slot)!=source||!Owns())return StepResult.Failed;
+                if(choice<0)return Fail("return-to-inventory menu entry not found");
+                if(InventoryView.ReadSlot(source.Container,source.Slot)!=source||!Owns())return Fail("source or control lease changed before return");
                 menuId=menu->Id;beforeQuantity=BagQuantity(source);
                 var finalDecision=marketJudge(source,retainer,true);
                 if(ruleReturn&&ReturnReason(source,retainer,true)==null)return StepResult.Completed;
-                if(!ruleReturn&&finalDecision.Outcome is not (Outcome.Market or Outcome.Dispose))return StepResult.Failed;
+                if(!ruleReturn&&finalDecision.Outcome is not (Outcome.Market or Outcome.Dispose))return Fail("rotation protection changed at submission");
                 config.ListingWindows.QueueReturn(character,world,retainer,source,DateTimeOffset.UtcNow,save);
-                if(!ui.Callback("ContextMenu",0,choice,0,0,0))return StepResult.Failed;
-                phase=2;return StepResult.Waiting;
+                submitted=true;phase=2; // Arm before native dispatch; its bool is not an acknowledgement.
+                var returned=ui.Callback("ContextMenu",0,choice,0,0,0);
+                history($"Market return submitted: item={source.ItemId}, row={row}, choice={choice}, quantity={source.Quantity}, before bag quantity={beforeQuantity}, callback={returned}");
+                return StepResult.Waiting;
             }
             if(!StockTransition.Removed(source,InventoryView.ReadSlot(source.Container,source.Slot),source.Quantity,InventoryView.Loaded(source.Container)))return StepResult.Waiting;
             if(listings.Count>19||BagQuantity(source)!=beforeQuantity+source.Quantity)return StepResult.Waiting;
@@ -150,6 +161,8 @@ public sealed unsafe partial class MarketQueue
             return StepResult.Completed;
         },()=>
         {
+            if(phase>0&&!acknowledged)
+                history($"Market return ended without acknowledgement: item={source.ItemId}, phase={phase}, submitted={submitted}, expected={source}, live={InventoryView.ReadSlot(source.Container,source.Slot)}, before bag quantity={beforeQuantity}, bag quantity={BagQuantity(source)}");
             try
             {
                 if(phase>0&&Owns())
@@ -166,6 +179,6 @@ public sealed unsafe partial class MarketQueue
             if(acknowledged&&!ruleReturn)Enqueue(proposal.Replacement,retainer,false,coordinated,(stock,success)=>
             {if(!success)pass.Rejected(stock);if(config.ExecutionEnabled&&!config.ExecutionReviewRequired)EnqueueListingPump(retainer,coordinated,pass);});
             else if(replan)EnqueueListingPump(retainer,coordinated,pass);
-        },15000));
+        },15000,CanSkip:()=>!submitted));
     }
 }

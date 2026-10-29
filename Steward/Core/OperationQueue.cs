@@ -1,7 +1,7 @@
 namespace Steward.Core;
 
 public enum StepResult { Waiting, Completed, Failed }
-public sealed record Operation(string Name, Func<StepResult> Tick, Action? Finally = null, int TimeoutMs = 15000, Func<bool>? CanSkip=null);
+public sealed record Operation(string Name, Func<StepResult> Tick, Action? Finally = null, int TimeoutMs = 15000, Func<bool>? CanSkip=null,Action? OnSkipped=null);
 public sealed class OperationQueue(Action<string>? beforeStart=null,Action? acknowledged=null,Action<string>? skipped=null)
 {
     private readonly Queue<Operation> queue=[];
@@ -58,6 +58,7 @@ public sealed class OperationQueue(Action<string>? beforeStart=null,Action? ackn
         var done=current;var epoch=generation;current=null;
         done.Finally?.Invoke();if(generation!=epoch)return true;
         acknowledged?.Invoke();if(generation!=epoch)return true;
+        done.OnSkipped?.Invoke();if(generation!=epoch)return true;
         Skipped++;Status=queue.Count==0?"Completed with skipped items":"Skipped: "+reason;
         skipped?.Invoke(reason);return true;
     }

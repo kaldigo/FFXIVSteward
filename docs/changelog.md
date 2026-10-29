@@ -1,3 +1,7 @@
+## 0.1.0.69
+
+Treat listing-return callbacks as dispatch, checking the resulting context menu and exact listing removal plus inventory growth for acknowledgement. Skip known failures before withdrawal submission without a character-wide hold; retain holds after any possible submission. Log the precise failed gate, phase, source, native row/menu identity and quantities. Apply recoverable skips to listing/repricing checks and comparison timeouts too; mark the failed source rejected and continue filling slots. Cancellation never starts fresh work. Existing sale/protection rules are unchanged.
+
 ## 0.1.0.68
 
 Preserve exact dresser ownership verified at a complete, idle native close for the current login, invalidating it on reopen, uncertainty, logout, character change and reload. Never promote disk cache ownership to disposal permission. Log proof provenance. Finish the owned AutoRetainer scheduler handoff after dresser and storage work, including zero-restoration passes.

@@ -199,6 +199,6 @@ public sealed unsafe partial class MarketQueue
             Enqueue(next,retainer,false,coordinated,(source,success)=>
             {if(!success)pass.Rejected(source);if(config.ExecutionEnabled&&!config.ExecutionReviewRequired)EnqueueListingPump(retainer,coordinated,pass);});
             return StepResult.Completed;
-        }));
+        },CanSkip:()=>true));
     }
 }
