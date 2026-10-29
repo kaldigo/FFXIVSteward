@@ -34,13 +34,11 @@ public sealed unsafe class InventoryView
     public HashSet<ulong> Retainers { get; } = [];
     public Dictionary<ulong,string> RetainerNames { get; } = [];
     public uint World { get; set; }
-    public string ReturnListingLabel { get; }
     public IReadOnlyDictionary<uint,string> Categories { get; }
     public IReadOnlyDictionary<uint,(uint Icon,byte Major,byte Minor)> CategoryDetails { get; }
     public InventoryView(IDataManager data,Configuration config,InventoryMemory memory)
     {
         this.data=data;this.config=config;this.memory=memory;
-        ReturnListingLabel=data.GetExcelSheet<Sheets.Addon>().GetRow(6954).Text.ToString();
         CategoryDetails=data.GetExcelSheet<Sheets.ItemUICategory>().ToDictionary(r=>r.RowId,r=>((uint)Math.Max(0,r.Icon),r.OrderMajor,r.OrderMinor));
         Categories=data.GetExcelSheet<Sheets.ItemUICategory>().Where(r=>!string.IsNullOrWhiteSpace(r.Name.ToString())).ToDictionary(r=>r.RowId,r=>r.Name.ToString());
         cabinet=data.GetExcelSheet<Sheets.Cabinet>().Where(r=>r.Item.RowId!=0).Select(r=>(r.RowId,r.Item.RowId)).ToArray();

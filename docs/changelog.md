@@ -1,3 +1,7 @@
+## 0.1.0.72
+
+Replace listing-withdrawal menu callbacks with FFXIVClientStructs' native return-to-retainer-inventory binding. Preserve exact source, selected retainer, capacity, rule/protection and control checks. Native return codes do not count as completion: wait for listing removal and matching retainer quantity growth, holding uncertain submissions without retry. Keep Market Buddy coordination and log the native result and destination evidence.
+
 ## 0.1.0.71
 
 Withdraw listings to retainer inventory using the localized Return to Retainer Inventory entry. Wait for menu contents, decode formatted text, require a unique enabled entry, and log actual entries on failure. Verify destination capacity and exact retainer quantity growth together with source removal; player bag growth is no longer used. Keep all ownership, protection and uncertain-submission checks.

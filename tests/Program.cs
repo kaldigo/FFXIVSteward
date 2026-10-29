@@ -502,11 +502,6 @@ pacing.Observe(new(2,43,0,MarketSearchPacing.RateLimited,now.AddSeconds(20)));
 Check(pacing.NextSearch==now.AddSeconds(9),"Same receipt does not perpetually extend backoff");
 Console.WriteLine("Market search pacing checks passed.");
 
-Check(MarketReturnMenu.Find([],"Return to Inventory")==-1,"Empty menu never selects an entry");
-Check(MarketReturnMenu.Find([new(0,"Adjust Price",true),new(1,"Return to Inventory",true)],"Return to Inventory")==1,"Return selects exact matching enabled row");
-Check(MarketReturnMenu.Find([new(1,"Return to Retainer Inventory",true)],"Return to Inventory")==-1,"Different destination never matches");
-Check(MarketReturnMenu.Find([new(1,"Return to Inventory",false)],"Return to Inventory")==-1,"Disabled return never selects");
-Check(MarketReturnMenu.Find([new(1,"Return to Inventory",true),new(2,"Return to Inventory",false)],"Return to Inventory")==-1,"Duplicate labels remain ambiguous");
 var updatedSilver=new SilverStrategy{Retainer=33777197238509254,MinimumPrice=44001};
 updatedSilver.ApplyRequestedFloorUpdate();
 Check(updatedSilver.MinimumPrice==40001&&updatedSilver.ResetPrice==45000&&updatedSilver.Undercut==5,"Requested floor update preserves reset and undercut");
@@ -516,4 +511,10 @@ var otherSilver=new SilverStrategy{Retainer=777,MinimumPrice=44001};otherSilver.
 Check(otherSilver.MinimumPrice==44001,"Other retainer configuration unchanged");
 Check(new SilverStrategy().MinimumPrice==40001,"New strategy uses updated floor");
 
-Check(MarketReturnMenu.Find([new(0,"Return to Inventory",true),new(1,"Return to Retainer Inventory",true)],"Return to Retainer Inventory")==1,"Return targets retainer inventory, not player bags");
+Check(MarketReturnReceipt.Arrived(0,8,8),"Returned stack arrives in empty retainer stock");
+Check(MarketReturnReceipt.Arrived(1,31,30),"Return merges with existing retainer stock");
+Check(!MarketReturnReceipt.Arrived(1,1,30),"Native acceptance with delayed inventory is not acknowledgement");
+Check(!MarketReturnReceipt.Arrived(1,30,30),"Partial arrival is not acknowledged");
+Check(!MarketReturnReceipt.Arrived(5,4,1),"Quantity decrease never acknowledges arrival");
+Check(!MarketReturnReceipt.Arrived(0,8,0),"Zero quantity cannot acknowledge a return");
+Check(!MarketReturnReceipt.Arrived(ulong.MaxValue,0,1),"Overflow cannot fabricate receipt");

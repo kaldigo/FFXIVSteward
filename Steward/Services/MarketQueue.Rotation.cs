@@ -1,7 +1,5 @@
-using Dalamud.Memory;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
-using FFXIVClientStructs.FFXIV.Component.GUI;
 using Steward.Core;
 
 namespace Steward.Services;
@@ -84,16 +82,9 @@ public sealed unsafe partial class MarketQueue
     private void EnqueueRotation(RotationProposal proposal,ulong retainer,bool coordinated,ListingPass pass,bool ruleReturn=false)
     {
         var phase=0;var character=view.Character;var world=view.World;var source=proposal.Source;
-        var menuOpenedAt=DateTimeOffset.MinValue;var menuEvidence="not observed";
         var beforeQuantity=0ul;var row=-1;var acknowledged=false;var locked=false;var replan=false;var submitted=false;
         bool Owns()=>coordinated?pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsHandoff").InvokeFunc(character):
             manualControl==character&&pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsControl").InvokeFunc(character);
-        bool OwnsMenu(AtkUnitBase* sale,AtkUnitBase* menu,AgentRetainer* agent)
-        {
-            var context=AgentContext.Instance();
-            return sale!=null&&menu!=null&&agent!=null&&context!=null&&agent->RetainerSellListAddonId==sale->Id&&
-                MarketContextOwnership.Matches(sale->Id,context->OwnerAddon,menu->ParentId,menu->HostId,row,agent->ContextMenuIndex);
-        }
         StepResult Fail(string reason)
         {
             var native=AgentRetainer.Instance();
@@ -145,71 +136,33 @@ public sealed unsafe partial class MarketQueue
                 for(var i=0;i<agent->SellListEntryCount;i++)
                 {var entry=agent->SellListEntries[i];if(entry.InventorySlot==source.Slot&&entry.ItemId%1000000==source.ItemId&&entry.Quantity==source.Quantity){if(row!=-1)return Fail("multiple native rows match source");row=i;}}
                 if(row<0)return Fail("no native row matches source");
-                menuOpenedAt=DateTimeOffset.UtcNow;
-                phase=1; // Opening a menu does not submit a withdrawal. Verify its appearance next.
-                var opened=ui.Callback("RetainerSellList",0,row,1);
-                history($"Market return menu dispatched: item={source.ItemId}, row={row}, callback={opened}, reason={ReturnReason(source,retainer,false)??"aged listing rotation"}");
-                return StepResult.Waiting;
-            }
-            if(phase==1)
-            {
-                var menu=ui.Get("ContextMenu");if(menu==null)return StepResult.Waiting;
-                if(!OwnsMenu(sale,menu,agent))return Fail("context menu owner or row does not match selected listing");
-                // ContextMenu can be visible before its rows have finished populating.
-                // Read SeString text and enabled list renderers, as ECommons' context-menu helper does.
-                if(DateTimeOffset.UtcNow-menuOpenedAt<TimeSpan.FromMilliseconds(250))return StepResult.Waiting;
-                var entries=new List<MarketReturnMenu.Entry>();
-                var details=new List<string>();
-                var count=menu->AtkValuesCount>0&&menu->AtkValues[0].Type==AtkValueType.UInt?menu->AtkValues[0].UInt:0;
-                var list=menu->GetComponentListById(2);
-                if(count is >0 and <=32&&8+count<=menu->AtkValuesCount&&list!=null)
-                {
-                    for(var i=0;i<count;i++)
-                    {
-                        var value=menu->AtkValues[8+i];
-                        var renderer=i<list->GetItemCount()?list->GetItemRenderer(i):null;
-                        var enabled=renderer!=null&&renderer->IsEnabled;
-                        var text=(value.Type is AtkValueType.String or AtkValueType.ManagedString)&&value.String.Value!=null
-                            ?MemoryHelper.ReadSeStringNullTerminated((nint)value.String.Value).TextValue:"";
-                        entries.Add(new(i,text,enabled));
-                        details.Add($"{i}: type={value.Type}, enabled={enabled}, text={System.Text.Json.JsonSerializer.Serialize(text)}");
-                    }
-                }
-                menuEvidence=$"expected={System.Text.Json.JsonSerializer.Serialize(view.ReturnListingLabel)}, count={count}; "+string.Join(" | ",details);
-                var choice=MarketReturnMenu.Find(entries,view.ReturnListingLabel);
-                if(choice<0)
-                {
-                    if(DateTimeOffset.UtcNow-menuOpenedAt<TimeSpan.FromSeconds(3))return StepResult.Waiting;
-                    return Fail("no unique enabled return-to-retainer-inventory entry after menu wait; "+menuEvidence);
-                }
                 if(InventoryView.ReadSlot(source.Container,source.Slot)!=source||!Owns())return Fail("source or control lease changed before return");
                 if(ReturnRetainerFreeSlots()<1)return Fail("retainer inventory unavailable or full before return");
                 beforeQuantity=RetainerQuantity(source);
                 var finalDecision=marketJudge(source,retainer,true);
                 if(ruleReturn&&ReturnReason(source,retainer,true)==null)return StepResult.Completed;
                 if(!ruleReturn&&finalDecision.Outcome is not (Outcome.Market or Outcome.Dispose))return Fail("rotation protection changed at submission");
+                var manager=InventoryManager.Instance();
+                if(source.Container!=(uint)InventoryType.RetainerMarket||manager==null||
+                    (nint)InventoryManager.Addresses.MoveFromRetainerMarketToRetainerInventory.Value==0)
+                    return Fail("native return-to-retainer binding or market source unavailable");
                 config.ListingWindows.QueueReturn(character,world,retainer,source,DateTimeOffset.UtcNow,save);
-                submitted=true;phase=2; // Arm before native dispatch; its bool is not an acknowledgement.
-                var returned=ui.Callback("ContextMenu",0,choice,0);
-                history($"Market return submitted: item={source.ItemId}, row={row}, choice={choice}, quantity={source.Quantity}, before retainer quantity={beforeQuantity}, callback={returned}");
+                submitted=true;phase=2; // Arm before the native call; its return code is not inventory acknowledgement.
+                var result=manager->MoveFromRetainerMarketToRetainerInventory(InventoryType.RetainerMarket,source.Slot,source.Quantity);
+                history($"Native market return submitted: item={source.ItemId}, retainer={retainer}, slot={source.Slot}, quantity={source.Quantity}, before retainer quantity={beforeQuantity}, result={result}; awaiting source removal and retainer arrival");
                 return StepResult.Waiting;
             }
             if(InventoryView.RetainerTypes().Any(t=>!InventoryView.Loaded((uint)t)))return StepResult.Waiting;
             if(!StockTransition.Removed(source,InventoryView.ReadSlot(source.Container,source.Slot),source.Quantity,InventoryView.Loaded(source.Container)))return StepResult.Waiting;
-            if(listings.Count>19||RetainerQuantity(source)!=beforeQuantity+source.Quantity)return StepResult.Waiting;
-            acknowledged=true;history($"Confirmed return of {source.ItemId} x{source.Quantity} from the market to retainer inventory; normal sale, collection and disposal rules apply.");
+            if(listings.Count>19||!MarketReturnReceipt.Arrived(beforeQuantity,RetainerQuantity(source),source.Quantity))return StepResult.Waiting;
+            acknowledged=true;history($"Confirmed return of {source.ItemId} x{source.Quantity} from the market to retainer {retainer} inventory; quantity {beforeQuantity} -> {RetainerQuantity(source)}; normal sale, collection and disposal rules apply.");
             return StepResult.Completed;
         },()=>
         {
-            if(phase>0&&!acknowledged)
-                history($"Market return ended without acknowledgement: item={source.ItemId}, phase={phase}, submitted={submitted}, expected={source}, live={InventoryView.ReadSlot(source.Container,source.Slot)}, before retainer quantity={beforeQuantity}, retainer quantity={RetainerQuantity(source)}");
             try
             {
-                if(phase>0&&Owns())
-                {
-                    var menu=ui.Get("ContextMenu");var sale=ui.Get("RetainerSellList");var agent=AgentRetainer.Instance();
-                    if(OwnsMenu(sale,menu,agent))ui.Close("ContextMenu");
-                }
+                if(phase>0&&!acknowledged)
+                    history($"Market return ended without acknowledgement: item={source.ItemId}, phase={phase}, submitted={submitted}, expected={source}, live={InventoryView.ReadSlot(source.Container,source.Slot)}, before retainer quantity={beforeQuantity}, retainer quantity={RetainerQuantity(source)}");
             }
             finally
             {
