@@ -72,13 +72,20 @@ public sealed unsafe partial class MarketQueue
     private void EnqueueRotation(RotationProposal proposal,ulong retainer,bool coordinated,ListingPass pass,bool ruleReturn=false)
     {
         var phase=0;var character=view.Character;var world=view.World;var source=proposal.Source;
-        var beforeQuantity=0ul;var row=-1;ushort menuId=0;var acknowledged=false;var locked=false;var replan=false;var submitted=false;
+        var beforeQuantity=0ul;var row=-1;var acknowledged=false;var locked=false;var replan=false;var submitted=false;
         bool Owns()=>coordinated?pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsHandoff").InvokeFunc(character):
             manualControl==character&&pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsControl").InvokeFunc(character);
+        bool OwnsMenu(AtkUnitBase* sale,AtkUnitBase* menu,AgentRetainer* agent)
+        {
+            var context=AgentContext.Instance();
+            return sale!=null&&menu!=null&&agent!=null&&context!=null&&agent->RetainerSellListAddonId==sale->Id&&
+                MarketContextOwnership.Matches(sale->Id,context->OwnerAddon,menu->ParentId,menu->HostId,row,agent->ContextMenuIndex);
+        }
         StepResult Fail(string reason)
         {
             var native=AgentRetainer.Instance();
-            var agentState=native==null?"absent":$"rows={native->SellListEntryCount}, context row={native->ContextMenuIndex}, sell addon={native->RetainerSellListAddonId}";
+            var context=AgentContext.Instance();
+            var agentState=native==null?"absent":$"rows={native->SellListEntryCount}, context row={native->ContextMenuIndex}, sell addon={native->RetainerSellListAddonId}, context owner={(context==null?0:context->OwnerAddon)}";
             history($"Market return rejected: item={source.ItemId}, retainer={retainer}, phase={phase}, submitted={submitted}, reason={reason}; expected={source}; live={InventoryView.ReadSlot(source.Container,source.Slot)}; bag quantity={BagQuantity(source)}; agent={agentState}; {ui.Describe("RetainerSellList")}; {ui.Describe("ContextMenu")}");
             return StepResult.Failed;
         }
@@ -133,7 +140,7 @@ public sealed unsafe partial class MarketQueue
             if(phase==1)
             {
                 var menu=ui.Get("ContextMenu");if(menu==null)return StepResult.Waiting;
-                if(agent->ContextMenuIndex!=row||!ConfirmationOwnership.Matches(sale->Id,menu->ParentId,menu->HostId))return Fail("context menu owner or row does not match selected listing");
+                if(!OwnsMenu(sale,menu,agent))return Fail("context menu owner or row does not match selected listing");
                 if(menu->AtkValuesCount<9||menu->AtkValues[0].Type!=AtkValueType.UInt)return Fail("context menu header unavailable");
                 var count=menu->AtkValues[0].UInt;if(count>32||8+count>menu->AtkValuesCount)return Fail("context menu entry count invalid");
                 var choice=-1;
@@ -145,13 +152,13 @@ public sealed unsafe partial class MarketQueue
                 }
                 if(choice<0)return Fail("return-to-inventory menu entry not found");
                 if(InventoryView.ReadSlot(source.Container,source.Slot)!=source||!Owns())return Fail("source or control lease changed before return");
-                menuId=menu->Id;beforeQuantity=BagQuantity(source);
+                beforeQuantity=BagQuantity(source);
                 var finalDecision=marketJudge(source,retainer,true);
                 if(ruleReturn&&ReturnReason(source,retainer,true)==null)return StepResult.Completed;
                 if(!ruleReturn&&finalDecision.Outcome is not (Outcome.Market or Outcome.Dispose))return Fail("rotation protection changed at submission");
                 config.ListingWindows.QueueReturn(character,world,retainer,source,DateTimeOffset.UtcNow,save);
                 submitted=true;phase=2; // Arm before native dispatch; its bool is not an acknowledgement.
-                var returned=ui.Callback("ContextMenu",0,choice,0,0,0);
+                var returned=ui.Callback("ContextMenu",0,choice,0);
                 history($"Market return submitted: item={source.ItemId}, row={row}, choice={choice}, quantity={source.Quantity}, before bag quantity={beforeQuantity}, callback={returned}");
                 return StepResult.Waiting;
             }
@@ -168,8 +175,7 @@ public sealed unsafe partial class MarketQueue
                 if(phase>0&&Owns())
                 {
                     var menu=ui.Get("ContextMenu");var sale=ui.Get("RetainerSellList");var agent=AgentRetainer.Instance();
-                    if(menu!=null&&sale!=null&&agent!=null&&agent->ContextMenuIndex==row&&
-                        (menuId==menu->Id||ConfirmationOwnership.Matches(sale->Id,menu->ParentId,menu->HostId)))ui.Close("ContextMenu");
+                    if(OwnsMenu(sale,menu,agent))ui.Close("ContextMenu");
                 }
             }
             finally

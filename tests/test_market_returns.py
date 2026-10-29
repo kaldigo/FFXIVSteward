@@ -14,7 +14,8 @@ class MarketReturns(unittest.TestCase):
   ack=s.index('acknowledged=true;')
   self.assertLess(s.index('StockTransition.Removed(source,'),ack)
   self.assertLess(s.index('BagQuantity(source)!=beforeQuantity+source.Quantity'),ack)
-  self.assertIn('ConfirmationOwnership.Matches(sale->Id,menu->ParentId,menu->HostId)',s)
+  self.assertIn('MarketContextOwnership.Matches(sale->Id,context->OwnerAddon',s)
+  self.assertIn('if(OwnsMenu(sale,menu,agent))ui.Close("ContextMenu")',s)
   self.assertLess(s.index('QueueReturn(character'),s.index('submitted=true;phase=2'))
 
  def test_listing_failures_continue_without_restarting_cancelled_work(self):

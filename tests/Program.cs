@@ -2,6 +2,13 @@ using Steward.Core;
 
 var total=0;
 void Check(bool condition,string name) { total++; if(!condition) throw new Exception(name); }
+Check(MarketContextOwnership.Matches(129,129,0,0,0,0),"Native context owner validates observed top-level menu without parent/host");
+Check(MarketContextOwnership.Matches(129,129,0,0,14,14),"Native context owner validates later market row");
+Check(!MarketContextOwnership.Matches(129,130,129,129,0,0),"Contradictory native owner cannot be overridden by stale addon linkage");
+Check(!MarketContextOwnership.Matches(129,129,0,0,1,0),"Correct owner but wrong listing row is rejected");
+Check(!MarketContextOwnership.Matches(129,0,0,0,0,0),"No ownership evidence remains a hold");
+Check(!MarketContextOwnership.Matches(0,0,0,0,0,0),"Missing selling addon cannot own a menu");
+Check(!MarketContextOwnership.Matches(129,129,0,0,-1,-1),"Unselected row cannot own a menu");
 {
     var submitted=false;var next=false;var skipped=false;var journal=false;
     var q=new OperationQueue(_=>journal=true,()=>journal=false);
