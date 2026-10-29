@@ -293,7 +293,7 @@ Check(released==4&&!queue.Running&&queue.Status.Contains("cleanup failure"),"One
     Check(storage.Block(new ItemFacts(2,"Crystal",false,1,1,true,false,SourceKind.Ordinary,59),new Evidence{GearsetsReady=true},1,4)!=null,"Crystal category excluded before routing");
 }
 {
-    var strategy=new SilverStrategy{Enabled=true,Retainer=777};
+    var strategy=new SilverStrategy{Enabled=true,Retainer=777,MinimumPrice=44001};
     Check(strategy.Matches(777,13116)&&!strategy.Matches(778,13116)&&!strategy.Matches(777,42),"Strategy requires exact retainer and dye");
     var rows=new List<Stock>();uint consumed=0;
     while(strategy.NextQuantity(rows,300-consumed) is uint n&&n>0){rows.Add(new(13116,false,n,12002,(ushort)rows.Count));consumed+=n;}
@@ -501,3 +501,19 @@ Check(pacing.NextSearch==now.AddSeconds(9),"Old response cannot shorten cooldown
 pacing.Observe(new(2,43,0,MarketSearchPacing.RateLimited,now.AddSeconds(20)));
 Check(pacing.NextSearch==now.AddSeconds(9),"Same receipt does not perpetually extend backoff");
 Console.WriteLine("Market search pacing checks passed.");
+
+Check(MarketReturnMenu.Find([],"Return to Inventory")==-1,"Empty menu never selects an entry");
+Check(MarketReturnMenu.Find([new(0,"Adjust Price",true),new(1,"Return to Inventory",true)],"Return to Inventory")==1,"Return selects exact matching enabled row");
+Check(MarketReturnMenu.Find([new(1,"Return to Retainer Inventory",true)],"Return to Inventory")==-1,"Different destination never matches");
+Check(MarketReturnMenu.Find([new(1,"Return to Inventory",false)],"Return to Inventory")==-1,"Disabled return never selects");
+Check(MarketReturnMenu.Find([new(1,"Return to Inventory",true),new(2,"Return to Inventory",false)],"Return to Inventory")==-1,"Duplicate labels remain ambiguous");
+var updatedSilver=new SilverStrategy{Retainer=33777197238509254,MinimumPrice=44001};
+updatedSilver.ApplyRequestedFloorUpdate();
+Check(updatedSilver.MinimumPrice==40001&&updatedSilver.ResetPrice==45000&&updatedSilver.Undercut==5,"Requested floor update preserves reset and undercut");
+updatedSilver.MinimumPrice=43000;updatedSilver.ApplyRequestedFloorUpdate();
+Check(updatedSilver.MinimumPrice==43000,"Floor migration never overwrites subsequent user edits");
+var otherSilver=new SilverStrategy{Retainer=777,MinimumPrice=44001};otherSilver.ApplyRequestedFloorUpdate();
+Check(otherSilver.MinimumPrice==44001,"Other retainer configuration unchanged");
+Check(new SilverStrategy().MinimumPrice==40001,"New strategy uses updated floor");
+
+Check(MarketReturnMenu.Find([new(0,"Return to Inventory",true),new(1,"Return to Retainer Inventory",true)],"Return to Retainer Inventory")==1,"Return targets retainer inventory, not player bags");

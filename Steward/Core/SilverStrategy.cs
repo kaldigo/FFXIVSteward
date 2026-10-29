@@ -5,9 +5,17 @@ public sealed class SilverStrategy
     public const uint ItemId=13116;
     public bool Enabled {get;set;}
     public ulong Retainer {get;set;}
-    public uint MinimumPrice {get;set;}=44001;
+    public uint MinimumPrice {get;set;}=40001;
     public uint ResetPrice {get;set;}=45000;
     public uint Undercut {get;set;}=5;
+    public int FloorUpdateRevision {get;set;}
+    public void ApplyRequestedFloorUpdate()
+    {
+        if(FloorUpdateRevision>=1)return;
+        // User-requested update for this dedicated strategy only; preserve custom floors.
+        if(Retainer==33777197238509254&&MinimumPrice==44001)MinimumPrice=40001;
+        FloorUpdateRevision=1;
+    }
     public bool Valid=>Retainer!=0&&MinimumPrice>0&&ResetPrice>=MinimumPrice&&ResetPrice<=999999999&&Undercut is >0 and <=1000&&MinimumPrice<=999999999-Undercut;
     public bool Owns(ulong retainer)=>Enabled&&Valid&&retainer==Retainer;
     public bool Matches(ulong retainer,uint item)=>Owns(retainer)&&item==ItemId;

@@ -13,7 +13,7 @@ class MarketReturns(unittest.TestCase):
   s=(ROOT/'Services/MarketQueue.Rotation.cs').read_text(encoding='utf-8')
   ack=s.index('acknowledged=true;')
   self.assertLess(s.index('StockTransition.Removed(source,'),ack)
-  self.assertLess(s.index('BagQuantity(source)!=beforeQuantity+source.Quantity'),ack)
+  self.assertLess(s.index('RetainerQuantity(source)!=beforeQuantity+source.Quantity'),ack)
   self.assertIn('MarketContextOwnership.Matches(sale->Id,context->OwnerAddon',s)
   self.assertIn('if(OwnsMenu(sale,menu,agent))ui.Close("ContextMenu")',s)
   self.assertLess(s.index('QueueReturn(character'),s.index('submitted=true;phase=2'))
@@ -25,3 +25,16 @@ class MarketReturns(unittest.TestCase):
   skip=q.split('private bool TrySkip')[1].split('public void ReplanPending')[0]
   self.assertLess(skip.index('acknowledged?.Invoke()'),skip.index('done.OnSkipped?.Invoke()'))
   self.assertNotIn('OnSkipped',q.split('public void Stop')[1])
+
+ def test_returns_use_retainer_destination_and_wait_for_enabled_decoded_menu(self):
+  s=(ROOT/'Services/MarketQueue.Rotation.cs').read_text(encoding='utf-8')
+  view=(ROOT/'Services/InventoryView.cs').read_text(encoding='utf-8')
+  self.assertIn('GetRow(6954).Text',view)
+  self.assertNotIn('FreeBagSlots',s)
+  self.assertIn('foreach(var type in InventoryView.RetainerTypes())InventoryView.Read(type,contents)',s)
+  self.assertIn('MemoryHelper.ReadSeStringNullTerminated',s)
+  self.assertIn('renderer->IsEnabled',s)
+  self.assertIn('TimeSpan.FromSeconds(3)',s)
+  self.assertIn('MarketReturnMenu.Find(entries,view.ReturnListingLabel)',s)
+  self.assertIn('System.Text.Json.JsonSerializer.Serialize(text)',s)
+  self.assertLess(s.index('retainer inventory unavailable or full before return'),s.index('submitted=true;phase=2'))

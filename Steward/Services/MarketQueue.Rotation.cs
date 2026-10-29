@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+using Dalamud.Memory;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using FFXIVClientStructs.FFXIV.Component.GUI;
@@ -38,7 +38,7 @@ public sealed unsafe partial class MarketQueue
     private RotationProposal? FindRotation(ulong retainer,List<Stock> listings)
     {
         if(config.Silver.Owns(retainer))return null;
-        if(!config.Features.NewListings||!config.Features.Rotation||InventoryView.FreeBagSlots()<2||listings.Count!=20||!view.Evidence.ReferencesReady||!view.Evidence.GearsetsReady||!marketPreferencesReady())return null;
+        if(!config.Features.NewListings||!config.Features.Rotation||ReturnRetainerFreeSlots()<1||listings.Count!=20||!view.Evidence.ReferencesReady||!view.Evidence.GearsetsReady||!marketPreferencesReady())return null;
         var now=DateTimeOffset.UtcNow;
         foreach(var source in listings.OrderBy(s=>config.ListingWindows.Age(view.Character,view.World,retainer,s)?.Since??DateTimeOffset.MaxValue))
         {
@@ -63,15 +63,28 @@ public sealed unsafe partial class MarketQueue
         }
         return null;
     }
-    private static ulong BagQuantity(Stock stock)
+    private static int ReturnRetainerFreeSlots()
+    {
+        var manager=InventoryManager.Instance();if(manager==null)return 0;
+        var count=0;
+        foreach(var type in InventoryView.RetainerTypes())
+        {
+            var bag=manager->GetInventoryContainer(type);if(bag==null||!bag->IsLoaded)return 0;
+            for(var i=0;i<bag->Size;i++)
+            {var slot=bag->GetInventorySlot(i);if(slot!=null&&slot->ItemId==0)count++;}
+        }
+        return count;
+    }
+    private static ulong RetainerQuantity(Stock stock)
     {
         List<Stock> contents=[];
-        foreach(var type in new[]{InventoryType.Inventory1,InventoryType.Inventory2,InventoryType.Inventory3,InventoryType.Inventory4})InventoryView.Read(type,contents);
+        foreach(var type in InventoryView.RetainerTypes())InventoryView.Read(type,contents);
         return contents.Where(s=>s.ItemId==stock.ItemId&&s.Hq==stock.Hq).Aggregate(0ul,(sum,s)=>sum+s.Quantity);
     }
     private void EnqueueRotation(RotationProposal proposal,ulong retainer,bool coordinated,ListingPass pass,bool ruleReturn=false)
     {
         var phase=0;var character=view.Character;var world=view.World;var source=proposal.Source;
+        var menuOpenedAt=DateTimeOffset.MinValue;var menuEvidence="not observed";
         var beforeQuantity=0ul;var row=-1;var acknowledged=false;var locked=false;var replan=false;var submitted=false;
         bool Owns()=>coordinated?pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsHandoff").InvokeFunc(character):
             manualControl==character&&pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsControl").InvokeFunc(character);
@@ -86,7 +99,7 @@ public sealed unsafe partial class MarketQueue
             var native=AgentRetainer.Instance();
             var context=AgentContext.Instance();
             var agentState=native==null?"absent":$"rows={native->SellListEntryCount}, context row={native->ContextMenuIndex}, sell addon={native->RetainerSellListAddonId}, context owner={(context==null?0:context->OwnerAddon)}";
-            history($"Market return rejected: item={source.ItemId}, retainer={retainer}, phase={phase}, submitted={submitted}, reason={reason}; expected={source}; live={InventoryView.ReadSlot(source.Container,source.Slot)}; bag quantity={BagQuantity(source)}; agent={agentState}; {ui.Describe("RetainerSellList")}; {ui.Describe("ContextMenu")}");
+            history($"Market return rejected: item={source.ItemId}, retainer={retainer}, phase={phase}, submitted={submitted}, reason={reason}; expected={source}; live={InventoryView.ReadSlot(source.Container,source.Slot)}; retainer quantity={RetainerQuantity(source)}; agent={agentState}; {ui.Describe("RetainerSellList")}; {ui.Describe("ContextMenu")}");
             return StepResult.Failed;
         }
         Queue.Add(new((ruleReturn?"Return listing outside sale rules ":"Rotate aged listing ")+source.ItemId,()=>
@@ -99,7 +112,7 @@ public sealed unsafe partial class MarketQueue
             {
                 if(!ruleReturn&&listings.Count<20){replan=true;return StepResult.Completed;}
                 if(InventoryView.ReadSlot(source.Container,source.Slot)!=source)return Fail("listing source changed before submission");
-                if(InventoryView.FreeBagSlots()<(ruleReturn?1:2))return StepResult.Completed;
+                if(ReturnRetainerFreeSlots()<1)return Fail("retainer inventory unavailable or full");
                 if(ruleReturn)
                 {
                     if(ReturnReason(source,retainer,true)==null)return StepResult.Completed;
@@ -132,6 +145,7 @@ public sealed unsafe partial class MarketQueue
                 for(var i=0;i<agent->SellListEntryCount;i++)
                 {var entry=agent->SellListEntries[i];if(entry.InventorySlot==source.Slot&&entry.ItemId%1000000==source.ItemId&&entry.Quantity==source.Quantity){if(row!=-1)return Fail("multiple native rows match source");row=i;}}
                 if(row<0)return Fail("no native row matches source");
+                menuOpenedAt=DateTimeOffset.UtcNow;
                 phase=1; // Opening a menu does not submit a withdrawal. Verify its appearance next.
                 var opened=ui.Callback("RetainerSellList",0,row,1);
                 history($"Market return menu dispatched: item={source.ItemId}, row={row}, callback={opened}, reason={ReturnReason(source,retainer,false)??"aged listing rotation"}");
@@ -141,35 +155,54 @@ public sealed unsafe partial class MarketQueue
             {
                 var menu=ui.Get("ContextMenu");if(menu==null)return StepResult.Waiting;
                 if(!OwnsMenu(sale,menu,agent))return Fail("context menu owner or row does not match selected listing");
-                if(menu->AtkValuesCount<9||menu->AtkValues[0].Type!=AtkValueType.UInt)return Fail("context menu header unavailable");
-                var count=menu->AtkValues[0].UInt;if(count>32||8+count>menu->AtkValuesCount)return Fail("context menu entry count invalid");
-                var choice=-1;
-                for(var i=0;i<count;i++)
+                // ContextMenu can be visible before its rows have finished populating.
+                // Read SeString text and enabled list renderers, as ECommons' context-menu helper does.
+                if(DateTimeOffset.UtcNow-menuOpenedAt<TimeSpan.FromMilliseconds(250))return StepResult.Waiting;
+                var entries=new List<MarketReturnMenu.Entry>();
+                var details=new List<string>();
+                var count=menu->AtkValuesCount>0&&menu->AtkValues[0].Type==AtkValueType.UInt?menu->AtkValues[0].UInt:0;
+                var list=menu->GetComponentListById(2);
+                if(count is >0 and <=32&&8+count<=menu->AtkValuesCount&&list!=null)
                 {
-                    var value=menu->AtkValues[8+i];
-                    if(value.Type is not (AtkValueType.String or AtkValueType.ManagedString)||value.String.Value==null)continue;
-                    if(Marshal.PtrToStringUTF8((nint)value.String.Value)==view.ReturnListingLabel){if(choice!=-1)return Fail("multiple matching return entries");choice=i;}
+                    for(var i=0;i<count;i++)
+                    {
+                        var value=menu->AtkValues[8+i];
+                        var renderer=i<list->GetItemCount()?list->GetItemRenderer(i):null;
+                        var enabled=renderer!=null&&renderer->IsEnabled;
+                        var text=(value.Type is AtkValueType.String or AtkValueType.ManagedString)&&value.String.Value!=null
+                            ?MemoryHelper.ReadSeStringNullTerminated((nint)value.String.Value).TextValue:"";
+                        entries.Add(new(i,text,enabled));
+                        details.Add($"{i}: type={value.Type}, enabled={enabled}, text={System.Text.Json.JsonSerializer.Serialize(text)}");
+                    }
                 }
-                if(choice<0)return Fail("return-to-inventory menu entry not found");
+                menuEvidence=$"expected={System.Text.Json.JsonSerializer.Serialize(view.ReturnListingLabel)}, count={count}; "+string.Join(" | ",details);
+                var choice=MarketReturnMenu.Find(entries,view.ReturnListingLabel);
+                if(choice<0)
+                {
+                    if(DateTimeOffset.UtcNow-menuOpenedAt<TimeSpan.FromSeconds(3))return StepResult.Waiting;
+                    return Fail("no unique enabled return-to-retainer-inventory entry after menu wait; "+menuEvidence);
+                }
                 if(InventoryView.ReadSlot(source.Container,source.Slot)!=source||!Owns())return Fail("source or control lease changed before return");
-                beforeQuantity=BagQuantity(source);
+                if(ReturnRetainerFreeSlots()<1)return Fail("retainer inventory unavailable or full before return");
+                beforeQuantity=RetainerQuantity(source);
                 var finalDecision=marketJudge(source,retainer,true);
                 if(ruleReturn&&ReturnReason(source,retainer,true)==null)return StepResult.Completed;
                 if(!ruleReturn&&finalDecision.Outcome is not (Outcome.Market or Outcome.Dispose))return Fail("rotation protection changed at submission");
                 config.ListingWindows.QueueReturn(character,world,retainer,source,DateTimeOffset.UtcNow,save);
                 submitted=true;phase=2; // Arm before native dispatch; its bool is not an acknowledgement.
                 var returned=ui.Callback("ContextMenu",0,choice,0);
-                history($"Market return submitted: item={source.ItemId}, row={row}, choice={choice}, quantity={source.Quantity}, before bag quantity={beforeQuantity}, callback={returned}");
+                history($"Market return submitted: item={source.ItemId}, row={row}, choice={choice}, quantity={source.Quantity}, before retainer quantity={beforeQuantity}, callback={returned}");
                 return StepResult.Waiting;
             }
+            if(InventoryView.RetainerTypes().Any(t=>!InventoryView.Loaded((uint)t)))return StepResult.Waiting;
             if(!StockTransition.Removed(source,InventoryView.ReadSlot(source.Container,source.Slot),source.Quantity,InventoryView.Loaded(source.Container)))return StepResult.Waiting;
-            if(listings.Count>19||BagQuantity(source)!=beforeQuantity+source.Quantity)return StepResult.Waiting;
-            acknowledged=true;history($"Confirmed return of {source.ItemId} x{source.Quantity} from the market; normal sale, collection and disposal rules apply.");
+            if(listings.Count>19||RetainerQuantity(source)!=beforeQuantity+source.Quantity)return StepResult.Waiting;
+            acknowledged=true;history($"Confirmed return of {source.ItemId} x{source.Quantity} from the market to retainer inventory; normal sale, collection and disposal rules apply.");
             return StepResult.Completed;
         },()=>
         {
             if(phase>0&&!acknowledged)
-                history($"Market return ended without acknowledgement: item={source.ItemId}, phase={phase}, submitted={submitted}, expected={source}, live={InventoryView.ReadSlot(source.Container,source.Slot)}, before bag quantity={beforeQuantity}, bag quantity={BagQuantity(source)}");
+                history($"Market return ended without acknowledgement: item={source.ItemId}, phase={phase}, submitted={submitted}, expected={source}, live={InventoryView.ReadSlot(source.Container,source.Slot)}, before retainer quantity={beforeQuantity}, retainer quantity={RetainerQuantity(source)}");
             try
             {
                 if(phase>0&&Owns())

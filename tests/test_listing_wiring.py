@@ -78,7 +78,7 @@ class ListingWiring(unittest.TestCase):
         rotation=(ROOT/'Steward/Services/MarketQueue.Rotation.cs').read_text(encoding='utf-8')
         self.assertLess(rotation.index('QueueReturn('),rotation.index('ui.Callback("ContextMenu",0,choice'))
         self.assertIn('!config.ExecutionEnabled||config.ExecutionReviewRequired',rotation)
-        self.assertIn('BagQuantity(source)!=beforeQuantity+source.Quantity',rotation)
+        self.assertIn('RetainerQuantity(source)!=beforeQuantity+source.Quantity',rotation)
         self.assertIn('MarketContextOwnership.Matches',rotation)
         self.assertIn('if(acknowledged&&!ruleReturn)Enqueue(proposal.Replacement',rotation)
         self.assertIn('else if(replan)EnqueueListingPump',rotation)

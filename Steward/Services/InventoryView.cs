@@ -40,7 +40,7 @@ public sealed unsafe class InventoryView
     public InventoryView(IDataManager data,Configuration config,InventoryMemory memory)
     {
         this.data=data;this.config=config;this.memory=memory;
-        ReturnListingLabel=data.GetExcelSheet<Sheets.Addon>().GetRow(6947).Text.ToString();
+        ReturnListingLabel=data.GetExcelSheet<Sheets.Addon>().GetRow(6954).Text.ToString();
         CategoryDetails=data.GetExcelSheet<Sheets.ItemUICategory>().ToDictionary(r=>r.RowId,r=>((uint)Math.Max(0,r.Icon),r.OrderMajor,r.OrderMinor));
         Categories=data.GetExcelSheet<Sheets.ItemUICategory>().Where(r=>!string.IsNullOrWhiteSpace(r.Name.ToString())).ToDictionary(r=>r.RowId,r=>r.Name.ToString());
         cabinet=data.GetExcelSheet<Sheets.Cabinet>().Where(r=>r.Item.RowId!=0).Select(r=>(r.RowId,r.Item.RowId)).ToArray();

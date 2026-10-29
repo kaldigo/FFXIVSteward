@@ -1,3 +1,9 @@
+## 0.1.0.71
+
+Withdraw listings to retainer inventory using the localized Return to Retainer Inventory entry. Wait for menu contents, decode formatted text, require a unique enabled entry, and log actual entries on failure. Verify destination capacity and exact retainer quantity growth together with source removal; player bag growth is no longer used. Keep all ownership, protection and uncertain-submission checks.
+
+Lower the default experimental silver floor to 40,001 gil. Apply the requested one-time update to Skaenwyda's saved 44,001-gil floor on reload, preserving custom settings, the 45,000 reset and five-gil undercut.
+
 ## 0.1.0.70
 
 Validate listing context menus through the native context agent owner and exact selected listing row. Top-level menus with zero parent/host IDs no longer fail ownership solely for that reason. Use the same ownership check for closing the menu so skipped returns do not block later items. Retain source, scope, rule, submission and inventory acknowledgement protections.

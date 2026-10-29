@@ -76,6 +76,8 @@ Post-dresser storage uses the native entrust-only route and existing AutoRetaine
 
 Preserve exact dresser ownership verified at a complete, idle native close for the current login, invalidating it on reopen, uncertainty, logout, character change and reload. Never promote disk cache ownership to disposal permission. Log proof provenance. Finish the owned AutoRetainer scheduler handoff after dresser and storage work, including zero-restoration passes.
 
-Listing-return callbacks are dispatch only. Arm submitted before the withdrawal callback, never clear it from its bool result, and acknowledge exact source removal plus player quantity growth. Failures before withdrawal submission may skip after owned menu/lock cleanup; uncertain submitted returns remain review holds. Log exact failed gates and phases.
+Listing-return callbacks are dispatch only. Arm submitted before the withdrawal callback, never clear it from its bool result, and acknowledge exact source removal plus selected retainer inventory quantity growth. Failures before withdrawal submission may skip after owned menu/lock cleanup; uncertain submitted returns remain review holds. Log exact failed gates and phases.
 
 Market context menus may have zero parent/host IDs. Validate AgentContext.OwnerAddon against the selling addon, the retainer agent addon and the selected listing row; reject contradictory ownership. Use the same validation for selection and cleanup. Never accept a shared context menu merely from its persistent addon ID.
+
+Listing returns target Addon row 6954 (Return to Retainer Inventory), never the player-bag destination. Require loaded retainer inventory and capacity, decode menu SeStrings and check a unique enabled row after a bounded population wait. Log the actual menu entries on mismatch. Verify exact retainer quantity growth before acknowledgement.
