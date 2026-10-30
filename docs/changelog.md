@@ -1,3 +1,7 @@
+## 0.1.0.74
+
+Ordinary repricing now waits and rechecks missing or stale sale statistics within the same retainer visit, before opening a selling window. A shared 25-second budget bounds delays across the entire pass; fresh but unusable data and protection holds remain skips. Background fetching continues normally. Log deferred/resumed checks and explicit eligibility, price-floor, own-price and already-cheapest skip reasons with retainer and slot context. Experimental strategy behaviour is unchanged.
+
 ## 0.1.0.73
 
 Do not add a dresser inspection trip solely because cleanup is enabled. Cleanup still runs during a collection visit or an explicitly requested dresser run. Collection travel uses cached positive ownership to avoid revisiting already-collected items, without relaxing live disposal/removal checks. Non-armoire items no longer trigger armoire trips to refresh missing observations.

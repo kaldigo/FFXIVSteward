@@ -55,6 +55,19 @@ public static class Pricing
         return (uint)price;
     }
 
+    public static string NoRepriceReason(uint item,bool hq,uint? current,IEnumerable<Offering> offers,
+        IReadOnlySet<ulong> own,QualityMode quality,PricingSettings settings,uint floor)
+    {
+        var rows=offers.Where(p=>p.ItemId==item&&p.UnitPrice>0&&(quality==QualityMode.Combined||p.Hq==hq)).ToArray();
+        if(rows.Any(p=>p.RetainerId==0))return "Competitor ownership is unavailable";
+        var competitor=SelectCompetition(rows,own).Price;
+        if(competitor==null)return "No eligible competing listing";
+        var cheapestOwn=rows.Where(p=>own.Contains(p.RetainerId)).Select(p=>(uint?)p.UnitPrice).Min();
+        if(cheapestOwn.HasValue&&cheapestOwn<=competitor)return $"Own listing at {cheapestOwn} is already at or below competitor {competitor}; do not undercut ourselves";
+        if(current.HasValue&&current<=competitor)return $"Current price {current} is already at or below competitor {competitor}";
+        return $"Undercutting competitor {competitor} cannot meet unit floor {floor} or game price limits";
+    }
+
     public static uint? Target(uint item, bool hq, uint? ownCurrent, IEnumerable<Offering> offerings,
         IReadOnlySet<ulong> ownRetainers, QualityMode quality, PricingSettings settings, uint floor)
     {

@@ -518,3 +518,27 @@ Check(!MarketReturnReceipt.Arrived(1,30,30),"Partial arrival is not acknowledged
 Check(!MarketReturnReceipt.Arrived(5,4,1),"Quantity decrease never acknowledges arrival");
 Check(!MarketReturnReceipt.Arrived(0,8,0),"Zero quantity cannot acknowledge a return");
 Check(!MarketReturnReceipt.Arrived(ulong.MaxValue,0,1),"Overflow cannot fabricate receipt");
+
+var refreshBudget=new RepriceRefresh();
+var refreshHold=new Decision(Outcome.Wait,"Rule sales velocity is unknown; item held");
+var staleStat=new SaleStatistic(83,27741,false,1033,11,now.AddHours(-3),now.AddHours(-3),1671,true);
+Check(refreshBudget.Wait(refreshHold,true,[staleStat],2,now),"Stale statistics defer rather than silently drop repricing");
+Check(refreshBudget.Wait(refreshHold,true,[],2,now.AddSeconds(1)),"Missing data shares the same refresh budget");
+Check(!refreshBudget.Wait(refreshHold,true,[staleStat with{Fetched=now,ValueObserved=now}],2,now.AddSeconds(2)),"Completed fetch ends waiting even when rule remains held");
+Check(!refreshBudget.Wait(new(Outcome.Market,"Eligible"),true,[staleStat],2,now.AddSeconds(2)),"Refreshed eligible listing proceeds immediately");
+Check(!refreshBudget.Wait(new(Outcome.Keep,"Explicit AutoRetainer protection"),true,[],2,now.AddSeconds(3)),"Protection cannot be bypassed by refresh retry");
+Check(!refreshBudget.Wait(refreshHold,false,[],2,now.AddSeconds(3)),"Disabled Universalis does not delay retainer work");
+Check(!refreshBudget.Wait(refreshHold,true,[],2,now.AddSeconds(25)),"Refresh wait has bounded deadline");
+Check(!refreshBudget.Wait(refreshHold,true,[staleStat],2,now.AddSeconds(26)),"Next stale listing cannot restart the budget");
+var retryBudget=new RepriceRefresh();var retryReady=false;var submittedCount=0;
+var retryQueue=new OperationQueue();retryQueue.Begin();
+retryQueue.Add(new("Refresh then reprice",()=>{
+ var eligibility=retryReady?new Decision(Outcome.Market,"Eligible"):refreshHold;
+ if(retryBudget.Wait(eligibility,true,[staleStat],2,now))return StepResult.Waiting;
+ if(eligibility.Outcome==Outcome.Market)submittedCount++;
+ return StepResult.Completed;
+},CanSkip:()=>true));
+retryQueue.Advance(0);Check(retryQueue.Running&&submittedCount==0,"Deferred queue submits nothing before fresh eligibility");
+retryReady=true;retryQueue.Advance(500);Check(!retryQueue.Running&&submittedCount==1,"Same queued operation resumes after background refresh");
+Check(Pricing.NoRepriceReason(1,false,1000,[new(1,false,900,1,8)],new HashSet<ulong>(),QualityMode.Combined,new(){UndercutPrice=5},1000).Contains("unit floor"),"Below-floor skip diagnostic");
+Check(Pricing.NoRepriceReason(1,false,1000,[new(1,false,1100,1,8)],new HashSet<ulong>(),QualityMode.Combined,new(),500).Contains("Current price"),"Already-cheapest skip diagnostic");
