@@ -16,7 +16,7 @@ public sealed unsafe partial class MarketQueue
         var rule=view.Facts(stock.ItemId) is {} facts?MarketRule(facts,stock,retainer):null;
         return CachedRepricing.Decide(view.Evidence.AllaganPrices,view.World,stock.ItemId,stock.Hq,
             silver==null?config.Rules.Quality:QualityMode.Separate,before,config.Pricing,rule?.ListingMinimumUnit??1,
-            DateTimeOffset.UtcNow,config.Rules.SummaryRefreshHours,silver);
+            DateTimeOffset.UtcNow,config.Rules.AllaganCacheHours,silver);
     }
     private void RecordCacheChecks(ulong retainer,IEnumerable<Stock> listings)
     {

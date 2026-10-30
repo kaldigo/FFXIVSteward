@@ -50,7 +50,7 @@ public sealed unsafe partial class MarketQueue
         else
         {
             var cached=CachedRepricing.Decide(view.Evidence.AllaganPrices,view.World,SilverStrategy.ItemId,false,QualityMode.Separate,
-                1,config.Pricing,config.Silver.MinimumPrice,DateTimeOffset.UtcNow,config.Rules.SummaryRefreshHours,config.Silver);
+                1,config.Pricing,config.Silver.MinimumPrice,DateTimeOffset.UtcNow,config.Rules.AllaganCacheHours,config.Silver);
             if(!cached.Known||cached.Target==null||cached.Quote==null)
                 return new(retainer,view.World,null,[],status+cached.Reason+". No cache-based price proposal available.");
             var reset=cached.Quote.UnitPrice<config.Silver.MinimumPrice+config.Silver.Undercut;

@@ -1,3 +1,7 @@
+## 0.1.0.75
+
+Separate Allagan Market cache validity (default 24 hours, configurable on Sale rules / Price data) from the Universalis sale-summary refresh interval. Cached unchanged prices skip comparison; proposed changes still require verified native competition. Within one retainer pass, skip opening duplicate selling windows when a complete recent shared comparison already proves no permitted price change. Preserve live protection/source checks, own-retainer filtering, quality modes, floors and silver alerts. Logs identify cache age settings and pre-window skips.
+
 ## 0.1.0.74
 
 Ordinary repricing now waits and rechecks missing or stale sale statistics within the same retainer visit, before opening a selling window. A shared 25-second budget bounds delays across the entire pass; fresh but unusable data and protection holds remain skips. Background fetching continues normally. Log deferred/resumed checks and explicit eligibility, price-floor, own-price and already-cheapest skip reasons with retainer and slot context. Experimental strategy behaviour is unchanged.

@@ -542,3 +542,22 @@ retryQueue.Advance(0);Check(retryQueue.Running&&submittedCount==0,"Deferred queu
 retryReady=true;retryQueue.Advance(500);Check(!retryQueue.Running&&submittedCount==1,"Same queued operation resumes after background refresh");
 Check(Pricing.NoRepriceReason(1,false,1000,[new(1,false,900,1,8)],new HashSet<ulong>(),QualityMode.Combined,new(){UndercutPrice=5},1000).Contains("unit floor"),"Below-floor skip diagnostic");
 Check(Pricing.NoRepriceReason(1,false,1000,[new(1,false,1100,1,8)],new HashSet<ulong>(),QualityMode.Combined,new(),500).Contains("Current price"),"Already-cheapest skip diagnostic");
+
+var independentCacheRules=new RuleSettings();
+Check(independentCacheRules.AllaganCacheHours==24&&independentCacheRules.SummaryRefreshHours==2,"Allagan screening and Universalis refresh have independent defaults");
+independentCacheRules.SummaryRefreshHours=1;
+Check(independentCacheRules.AllaganCacheHours==24,"Changing Universalis refresh does not change Allagan validity");
+var oldAllagan=new Quote(27741,false,83,1663,now.AddHours(-4),"Allagan Market/0");
+Check(!CachedRepricing.Decide([oldAllagan],83,27741,false,QualityMode.Combined,1658,new(){UndercutPrice=5},500,now,24).NeedsComparison,"Unchanged listing uses four-hour Allagan quote within independent validity");
+Check(CachedRepricing.Decide([oldAllagan],83,27741,false,QualityMode.Combined,1700,new(){UndercutPrice=5},500,now,24).NeedsComparison,"Cached undercut still requires native verification");
+Check(CachedRepricing.Decide([oldAllagan with{Observed=now.AddHours(-25)}],83,27741,false,QualityMode.Combined,1658,new(),500,now,24).NeedsComparison,"Expired independent cache still requires comparison");
+var sharedStock=new Stock(27741,false,30,12002,11);
+Offering[] sharedRows=[new(27741,false,1663,10,55,1)];
+Check(SharedRepricing.NoChange(sharedStock,1658,sharedRows,new HashSet<ulong>(),QualityMode.Combined,new(){UndercutPrice=5},500,2500)!=null,"Unchanged duplicate skips selling window");
+Check(SharedRepricing.NoChange(sharedStock,1700,sharedRows,new HashSet<ulong>(),QualityMode.Combined,new(){UndercutPrice=5},500,2500)==null,"Higher-priced duplicate still needs repricing");
+Check(SharedRepricing.NoChange(sharedStock,1700,sharedRows,new HashSet<ulong>{55},QualityMode.Combined,new(){UndercutPrice=5},500,2500)!=null,"Own listing is never undercut by duplicate shortcut");
+Check(!SharedRepricing.Usable(true,83,84,now,now),"Shared comparison cannot cross worlds");
+Check(!SharedRepricing.Usable(false,83,83,now,now),"Incomplete comparison cannot skip window");
+Check(!SharedRepricing.Usable(true,83,83,now.AddSeconds(1),now),"Future comparison cannot skip window");
+Check(!SharedRepricing.Usable(true,83,83,now.AddMinutes(-3),now),"Shared comparison retains short two-minute limit");
+Check(SharedRepricing.Usable(true,83,83,now.AddSeconds(-30),now),"Recent complete same-world comparison can skip window");

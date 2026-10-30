@@ -120,7 +120,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
             else if(config.Features.Repricing)
             {
                 var cached=CachedReprice(listing,retainer);
-                history($"Reprice cache check: item={listing.ItemId}, slot={listing.Slot}, target={cached.Target}, {cached.Reason}");
+                history($"Reprice cache check: item={listing.ItemId}, slot={listing.Slot}, target={cached.Target}, cache observed={cached.Quote?.Observed:O}, validity={Math.Clamp(config.Rules.AllaganCacheHours,1,168)}h, {cached.Reason}");
                 if(cached.NeedsComparison)Enqueue(listing,retainer,true,coordinated);
                 else history($"Reprice skipped: item={listing.ItemId}, retainer={retainer}, slot={listing.Slot}; {cached.Reason}");
             }
@@ -227,6 +227,19 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 if(reprice&&config.Silver.Matches(retainer,expected.ItemId)&&beforePrice==0)return Finish(reason:"Existing strategy price unavailable");
                 if(!MarketSnapshot(out var selected,out var before)||selected!=retainer)return Fail("initial market snapshot unavailable");
                 if(!reprice&&!quoteOnly&&before.Count>=20)return Finish(reason:"All market slots occupied");
+                if(reprice&&beforePrice is >0&&passComparisons.TryGetValue(expected.ItemId,out var prior)&&
+                    SharedRepricing.Usable(prior.Complete,prior.World,expectedWorld,prior.At,DateTimeOffset.UtcNow))
+                {
+                    string? skipReason;
+                    if(config.Silver.Matches(retainer,expected.ItemId))
+                    {
+                        var silverChoice=SilverChoice(expected,retainer,true,prior.Offers,true);
+                        skipReason=silverChoice.Eligible&&silverChoice.UnitPrice==beforePrice?"Strategy price already matches shared comparison":null;
+                    }
+                    else skipReason=SharedRepricing.NoChange(expected,beforePrice.Value,prior.Offers,config.OwnRetainers,
+                        config.Rules.Quality,config.Pricing,saleRule?.ListingMinimumUnit??1,saleRule?.ListingMinimumTotal??1);
+                    if(skipReason!=null)return Finish(true,"Shared comparison; selling window not opened: "+skipReason);
+                }
                 occupiedBefore=before.Select(s=>s.Slot).ToHashSet();
                 opened=DateTimeOffset.UtcNow;
                 AgentRetainer.Instance()->OpenRetainerSell((InventoryType)expected.Container,expected.Slot);phase=1;return StepResult.Waiting;

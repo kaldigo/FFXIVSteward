@@ -49,3 +49,14 @@ class CacheRepricing(unittest.TestCase):
   self.assertIn('response.Status==MarketSearchPacing.RateLimited',text)
   self.assertIn('searchPacing.Sent(opened)',text)
   self.assertIn('},45000,CanSkip:()=>!confirmAttempted',text)
+
+ def test_separate_allagan_validity_and_preopen_duplicate_check(self):
+  listing=(ROOT/'Services/MarketQueue.Listing.cs').read_text()
+  silver=(ROOT/'Services/MarketQueue.Silver.cs').read_text()
+  self.assertIn('config.Rules.AllaganCacheHours',listing)
+  self.assertIn('config.Rules.AllaganCacheHours',silver)
+  s=(ROOT/'Services/MarketQueue.cs').read_text()
+  self.assertLess(s.index('SharedRepricing.NoChange'),s.index('AgentRetainer.Instance()->OpenRetainerSell'))
+  self.assertLess(s.index('source fingerprint changed'),s.index('SharedRepricing.NoChange'))
+  self.assertIn('SharedRepricing.Usable(prior.Complete,prior.World,expectedWorld',s)
+  self.assertIn('selling window not opened',s)

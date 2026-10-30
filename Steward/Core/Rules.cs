@@ -58,6 +58,7 @@ public sealed class RuleSettings
     public HashSet<uint> CommonGlamour { get; set; } = [];
     public List<SaleRule> Sales { get; set; } = [];
     public int MaximumPriceAgeMinutes { get; set; } = 30; // Native/imported listing evidence only.
+    public int AllaganCacheHours { get; set; } = 24; // Reprice screening only; never execution evidence.
     public int SummaryRefreshHours { get; set; } = 2;
     public int SummaryHistoryDays { get; set; } = 28;
     public QualityMode Quality { get; set; } = QualityMode.Separate;

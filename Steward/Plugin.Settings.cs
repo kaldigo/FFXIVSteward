@@ -266,11 +266,14 @@ public sealed partial class Plugin
         {
         Section("Price data");
         Setting("Use Universalis sale summaries",config.UseUniversalis,v=>config.UseUniversalis=v);
-        var hours=config.Rules.SummaryRefreshHours;if(ImGui.SliderInt("Price refresh interval (hours)",ref hours,1,2)){config.Rules.SummaryRefreshHours=hours;SavePolicy();}
+        var hours=config.Rules.SummaryRefreshHours;if(ImGui.SliderInt("Universalis refresh interval (hours)",ref hours,1,2)){config.Rules.SummaryRefreshHours=hours;SavePolicy();}
+        var allaganHours=config.Rules.AllaganCacheHours;
+        if(ImGui.SliderInt("Allagan Market cache validity (hours)",ref allaganHours,1,168)){config.Rules.AllaganCacheHours=allaganHours;SavePolicy();}
+        ImGui.TextWrapped("Reuse Allagan Market prices to skip unchanged listings. Older cache data can delay detecting an undercut until the cache updates or expires. Price changes still require a verified in-game comparison.");
         var days=config.Rules.SummaryHistoryDays;if(ImGui.InputInt("Sales history window (days)",ref days)){config.Rules.SummaryHistoryDays=Math.Clamp(days,7,90);SavePolicy();}
         var listingAge=config.Rules.MaximumPriceAgeMinutes;
         if(ImGui.InputInt("Observed listing price validity (minutes)",ref listingAge)){config.Rules.MaximumPriceAgeMinutes=Math.Clamp(listingAge,1,1440);SavePolicy();}
-        ImGui.TextWrapped("The listing-price validity applies to manually observed or imported offers. Prices prefetch on login and remain cached across restarts. Actual posting and repricing still check the game market.");
+        ImGui.TextWrapped("The listing-price validity applies to manually observed or imported offers. Prices prefetch on login and remain cached across restarts. Actual posting and price changes still require a verified game comparison; unchanged listings can be skipped from the Allagan cache.");
         ImGui.EndTabItem();
         }
         if(ImGui.BeginTabItem("Listing preview")){DrawSalePreview();ImGui.EndTabItem();}
