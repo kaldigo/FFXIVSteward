@@ -1,3 +1,7 @@
+## 0.1.0.76
+
+Add minimum selling price, reset price and undercut amount inputs to Experimental strategies. Draft edits apply together with Apply prices; Reset edits restores the active values. Validate price bounds and reset-versus-minimum before saving. Show active values and explain each control; strategy descriptions now reflect the configured reset instead of a fixed 45,000 gil. Applying prices replans pending work without starting automation or changing protections.
+
 ## 0.1.0.75
 
 Separate Allagan Market cache validity (default 24 hours, configurable on Sale rules / Price data) from the Universalis sale-summary refresh interval. Cached unchanged prices skip comparison; proposed changes still require verified native competition. Within one retainer pass, skip opening duplicate selling windows when a complete recent shared comparison already proves no permitted price change. Preserve live protection/source checks, own-retainer filtering, quality modes, floors and silver alerts. Logs identify cache age settings and pre-window skips.

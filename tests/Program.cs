@@ -561,3 +561,12 @@ Check(!SharedRepricing.Usable(false,83,83,now,now),"Incomplete comparison cannot
 Check(!SharedRepricing.Usable(true,83,83,now.AddSeconds(1),now),"Future comparison cannot skip window");
 Check(!SharedRepricing.Usable(true,83,83,now.AddMinutes(-3),now),"Shared comparison retains short two-minute limit");
 Check(SharedRepricing.Usable(true,83,83,now.AddSeconds(-30),now),"Recent complete same-world comparison can skip window");
+
+var priceEditorStrategy=new SilverStrategy{Enabled=true,Retainer=33777197238509254};
+Check(priceEditorStrategy.TrySetPrices(38000,42000,10)&&priceEditorStrategy.Valid,"Editable strategy prices apply together");
+Check(!priceEditorStrategy.TrySetPrices(45000,42000,5)&&priceEditorStrategy.MinimumPrice==38000&&priceEditorStrategy.ResetPrice==42000&&priceEditorStrategy.Undercut==10,"Invalid reset leaves every active price unchanged");
+Check(!priceEditorStrategy.TrySetPrices(-1,42000,5)&&!priceEditorStrategy.TrySetPrices(38000,42000,0)&&!priceEditorStrategy.TrySetPrices(38000,42000,1001),"Invalid minimum and undercut rejected");
+Check(!priceEditorStrategy.TrySetPrices(999999999,999999999,1),"Editor preserves native price limit");
+Check(priceEditorStrategy.TrySetPrices(44001,45000,5),"User may select previous floor intentionally");
+priceEditorStrategy.ApplyRequestedFloorUpdate();
+Check(priceEditorStrategy.MinimumPrice==44001,"User price edits are not overwritten by old floor migration");

@@ -16,6 +16,21 @@ public sealed class SilverStrategy
         if(Retainer==33777197238509254&&MinimumPrice==44001)MinimumPrice=40001;
         FloorUpdateRevision=1;
     }
+    public static string? PriceInputError(int minimum,int reset,int undercut)
+    {
+        if(minimum<1||minimum>999999999)return "Minimum price must be between 1 and 999,999,999 gil.";
+        if(reset<minimum||reset>999999999)return "Reset price must be at least the minimum and no more than 999,999,999 gil.";
+        if(undercut<1||undercut>1000)return "Undercut must be between 1 and 1,000 gil.";
+        if((long)minimum+undercut>999999999)return "Minimum plus undercut must fit within the game's price limit.";
+        return null;
+    }
+    public bool TrySetPrices(int minimum,int reset,int undercut)
+    {
+        if(PriceInputError(minimum,reset,undercut)!=null)return false;
+        MinimumPrice=(uint)minimum;ResetPrice=(uint)reset;Undercut=(uint)undercut;
+        FloorUpdateRevision=1;
+        return true;
+    }
     public bool Valid=>Retainer!=0&&MinimumPrice>0&&ResetPrice>=MinimumPrice&&ResetPrice<=999999999&&Undercut is >0 and <=1000&&MinimumPrice<=999999999-Undercut;
     public bool Owns(ulong retainer)=>Enabled&&Valid&&retainer==Retainer;
     public bool Matches(ulong retainer,uint item)=>Owns(retainer)&&item==ItemId;
