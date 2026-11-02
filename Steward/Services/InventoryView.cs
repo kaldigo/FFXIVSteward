@@ -34,6 +34,7 @@ public sealed unsafe class InventoryView
     public HashSet<ulong> Retainers { get; } = [];
     public Dictionary<ulong,string> RetainerNames { get; } = [];
     public uint World { get; set; }
+    public uint ItemStackLimit(uint id)=>data.GetExcelSheet<Sheets.Item>().GetRow(id).StackSize;
     public IReadOnlyDictionary<uint,string> Categories { get; }
     public IReadOnlyDictionary<uint,(uint Icon,byte Major,byte Minor)> CategoryDetails { get; }
     public InventoryView(IDataManager data,Configuration config,InventoryMemory memory)

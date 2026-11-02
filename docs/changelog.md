@@ -1,3 +1,7 @@
+## 0.1.0.77
+
+Add an editable stack mix to the experimental strategy: set dyes per stack and number of stacks, add/remove groups, and review total listings and dye count before applying. Validate the 20-listing cap, unique sizes and game item-stack limit. Existing configurations retain 10 stacks of 5, 5 of 2 and 5 singles. New listings use the configured quotas; existing listings are not withdrawn or resized merely because the mix changes. Includes the price controls from 0.1.0.76.
+
 ## 0.1.0.76
 
 Add minimum selling price, reset price and undercut amount inputs to Experimental strategies. Draft edits apply together with Apply prices; Reset edits restores the active values. Validate price bounds and reset-versus-minimum before saving. Show active values and explain each control; strategy descriptions now reflect the configured reset instead of a fixed 45,000 gil. Applying prices replans pending work without starting automation or changing protections.

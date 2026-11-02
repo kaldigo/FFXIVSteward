@@ -3,6 +3,7 @@ using Steward.Core;
 namespace Steward;
 public sealed partial class Plugin
 {
+    private List<SilverStack>? silverStackEdits;
     private bool silverPricesLoaded;
     private int silverMinimum,silverReset,silverUndercut;
     private void LoadSilverPrices()
@@ -24,7 +25,7 @@ public sealed partial class Plugin
         ImGui.BeginDisabled(!config.Silver.Valid);
         Setting("Enable silver-dye strategy",config.Silver.Enabled,v=>config.Silver.Enabled=v,"Adds a narrowly scoped market exception for this item and retainer. Log-only mode and inventory-review holds still apply.");
         ImGui.EndDisabled();
-        ImGui.TextWrapped("Target: ten stacks of 5, five stacks of 2, five singles (65 dyes). Refill missing quotas from your bags or this retainer. Other items are untouched. Differently sized dye listings are repriced but not resized or withdrawn; shortages are logged.");
+        ImGui.TextWrapped("Refill missing target stacks from your bags or this retainer. Other items are untouched. Existing dye listings are repriced but not resized or withdrawn when you change the split; the new mix fills free slots as items sell.");
         Section("Prices per dye");
         if(!silverPricesLoaded)LoadSilverPrices();
         ImGui.SetNextItemWidth(180);ImGui.InputInt("Minimum selling price (gil)",ref silverMinimum,100,1000);
@@ -45,6 +46,35 @@ public sealed partial class Plugin
         if(ImGui.Button("Reset edits"))LoadSilverPrices();
         ImGui.TextWrapped($"Active: minimum {config.Silver.MinimumPrice:N0} gil, reset {config.Silver.ResetPrice:N0} gil, undercut {config.Silver.Undercut:N0} gil per dye. Edits take effect after Apply prices; they do not start an automation run.");
         ImGui.TextWrapped($"Your own retainers never count as competition. Competitors too cheap to undercut above the minimum trigger a manual-buyout alert. If no qualifying competitor remains, reset to {config.Silver.ResetPrice:N0} gil. Missing or incomplete prices always hold. No purchases are automated.");
+        Section("Listing stack mix");
+        silverStackEdits??=[..config.Silver.Stacks];
+        if(ImGui.BeginTable("Silver stack targets",3,ImGuiTableFlags.SizingFixedFit))
+        {
+            ImGui.TableSetupColumn("Dyes per stack");ImGui.TableSetupColumn("Number of stacks");ImGui.TableSetupColumn("Actions");ImGui.TableHeadersRow();
+            for(var i=0;i<silverStackEdits.Count;i++)
+            {
+                ImGui.PushID(i);ImGui.TableNextRow();ImGui.TableNextColumn();
+                var quantity=(int)silverStackEdits[i].Quantity;var count=silverStackEdits[i].Count;
+                ImGui.SetNextItemWidth(150);ImGui.InputInt("##dyes",ref quantity,1,5);
+                ImGui.TableNextColumn();ImGui.SetNextItemWidth(150);ImGui.InputInt("##stacks",ref count,1,5);
+                silverStackEdits[i]=new((uint)Math.Max(0,quantity),count);
+                ImGui.TableNextColumn();var remove=ImGui.SmallButton("Remove");ImGui.PopID();
+                if(remove){silverStackEdits.RemoveAt(i);i--;}
+            }
+            ImGui.EndTable();
+        }
+        ImGui.BeginDisabled(silverStackEdits.Count>=20);
+        if(ImGui.Button("Add stack size"))silverStackEdits.Add(new(1,1));
+        ImGui.EndDisabled();
+        var stackError=SilverStrategy.StackInputError(silverStackEdits,view.ItemStackLimit(SilverStrategy.ItemId));
+        var stackChanged=!silverStackEdits.SequenceEqual(config.Silver.Stacks);
+        if(stackError!=null)ImGui.TextWrapped(stackError);
+        else ImGui.TextWrapped($"Proposed mix: {silverStackEdits.Sum(s=>s.Count)}/20 listings, {silverStackEdits.Sum(s=>(long)s.Quantity*s.Count):N0} dyes. Groups are filled in the order shown.");
+        ImGui.BeginDisabled(!stackChanged||stackError!=null);
+        if(ImGui.Button("Apply stack mix")&&config.Silver.TrySetStacks(silverStackEdits,view.ItemStackLimit(SilverStrategy.ItemId)))SavePolicy();
+        ImGui.EndDisabled();ImGui.SameLine();
+        if(ImGui.Button("Reset stack edits"))silverStackEdits=[..config.Silver.Stacks];
+        ImGui.TextWrapped("Active mix: "+string.Join(", ",config.Silver.Stacks.Select(s=>$"{s.Count} stacks of {s.Quantity}")));
         ImGui.TextWrapped("AutoRetainer checks the dedicated strategy during active bell processing, at most once every five minutes. It does not visit other worlds or monitor while offline. In log-only mode, open this retainer's selling page and Compare Prices for the dye to review proposals.");
     }
 }

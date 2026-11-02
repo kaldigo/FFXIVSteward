@@ -570,3 +570,19 @@ Check(!priceEditorStrategy.TrySetPrices(999999999,999999999,1),"Editor preserves
 Check(priceEditorStrategy.TrySetPrices(44001,45000,5),"User may select previous floor intentionally");
 priceEditorStrategy.ApplyRequestedFloorUpdate();
 Check(priceEditorStrategy.MinimumPrice==44001,"User price edits are not overwritten by old floor migration");
+
+var customMix=new SilverStrategy{Retainer=777};
+Check(customMix.TrySetStacks([new(10,2),new(3,4)],999),"Custom strategy stack split accepted");
+var customListings=new List<Stock>();uint customUsed=0;
+while(customMix.NextQuantity(customListings,100-customUsed) is uint nextSize&&nextSize>0){customListings.Add(new(13116,false,nextSize,12002,(ushort)customListings.Count));customUsed+=nextSize;}
+Check(customListings.Count==6&&customUsed==32&&customListings.Count(s=>s.Quantity==10)==2,"Custom split fills exactly the requested quotas");
+Check(!customMix.TrySetStacks([new(10,21)],999)&&customMix.Stacks.Count==2,"Overfull mix leaves active split unchanged");
+Check(!customMix.TrySetStacks([new(1,10),new(1,10)],999),"Duplicate stack-size rows rejected");
+Check(!customMix.TrySetStacks([new(1000,1)],999)&&!customMix.TrySetStacks([],999),"Item stack limit and nonempty mix enforced");
+Check(System.Text.Json.JsonSerializer.Deserialize<SilverStrategy>(System.Text.Json.JsonSerializer.Serialize(customMix))!.Stacks.SequenceEqual(customMix.Stacks),"Custom split survives saving and reloading");
+
+Check(System.Text.Json.JsonSerializer.Deserialize<SilverStrategy>("{}")!.Stacks.SequenceEqual(new SilverStrategy().Stacks),"Existing settings retain default stack mix");
+var occupiedMix=Enumerable.Range(0,20).Select(i=>new Stock(13116,false,5,12002,(ushort)i)).ToList();
+Check(customMix.NextQuantity(occupiedMix,999)==0,"Old-size listings still consume all market slots");
+occupiedMix.RemoveAt(19);
+Check(customMix.NextQuantity(occupiedMix,999)==10,"Free slot fills from new target mix without resizing old stacks");

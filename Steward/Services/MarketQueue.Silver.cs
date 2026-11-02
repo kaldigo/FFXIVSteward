@@ -24,17 +24,18 @@ public sealed unsafe partial class MarketQueue
     {
         if(!config.Silver.Matches(retainer,stock.ItemId)||stock.Hq||marketJudge(stock,retainer,false).Outcome!=Outcome.Market||
             !MarketSnapshot(out var selected,out var listings,false)||selected!=retainer)return new(0,0,"Strategy source/protection unavailable");
+        if(SilverStrategy.StackInputError(config.Silver.Stacks,view.ItemStackLimit(SilverStrategy.ItemId))!=null)return new(0,0,"Strategy stack sizes exceed the item stack limit");
         var quote=config.Silver.Price(offers,config.OwnRetainers,complete);
         if(quote==null)return new(0,0,"Complete identified competition required");
         SilverAlerts(quote,DateTimeOffset.UtcNow);
         var quantity=reprice?stock.Quantity:config.Silver.NextQuantity(listings,stock.Quantity);
-        return quantity==0?new(0,0,"Target mix is satisfied, no free slot or insufficient stock"):new(quote.Price,quantity,quote.Reset?"Reset strategy price":"Undercut qualifying competitor by five gil");
+        return quantity==0?new(0,0,"Target mix is satisfied, no free slot or insufficient stock"):new(quote.Price,quantity,quote.Reset?"Reset strategy price":$"Undercut qualifying competitor by {config.Silver.Undercut:N0} gil");
     }
     private MarketPreview PreviewSilver(ulong retainer,List<Stock> listings)
     {
         StrategyReviewEntries=[];
-        var mix=string.Join("; ",SilverStrategy.Mix.Select(m=>$"{listings.Count(s=>s.ItemId==SilverStrategy.ItemId&&!s.Hq&&s.Quantity==m.Quantity)}/{m.Count} stacks of {m.Quantity}"));
-        var wrong=listings.Count(s=>s.ItemId!=SilverStrategy.ItemId||s.Hq||!SilverStrategy.Mix.Any(m=>m.Quantity==s.Quantity));
+        var mix=string.Join("; ",config.Silver.Stacks.Select(m=>$"{listings.Count(s=>s.ItemId==SilverStrategy.ItemId&&!s.Hq&&s.Quantity==m.Quantity)}/{m.Count} stacks of {m.Quantity}"));
+        var wrong=listings.Count(s=>s.ItemId!=SilverStrategy.ItemId||s.Hq||!config.Silver.Stacks.Any(m=>m.Quantity==s.Quantity));
         var status=$"Silver strategy: {mix}. {wrong} unrelated or differently-sized listing(s). Other items are untouched; nonstandard dye stacks are repriced but never resized or withdrawn. ";
         SilverStrategy.Quote? quote;
         MarketReference reference;
@@ -85,6 +86,6 @@ public sealed unsafe partial class MarketQueue
             }
         }
         if(free.Count>0)held.Add("Remaining quotas require sufficient dye stock in player bags or this retainer. No other retainer is withdrawn from by this strategy.");
-        return new(retainer,view.World,new(proposals,held.Distinct().ToArray(),free.Count),reprices,status+$"Target {quote.Price:N0} gil each; {(quote.Reset?"reset price":"five-gil undercut")}. {proposals.Count} proposed refill(s). Normal rotation and withdrawals disabled.");
+        return new(retainer,view.World,new(proposals,held.Distinct().ToArray(),free.Count),reprices,status+$"Target {quote.Price:N0} gil each; {(quote.Reset?"reset price":$"{config.Silver.Undercut:N0}-gil undercut")}. {proposals.Count} proposed refill(s). Normal rotation and withdrawals disabled.");
     }
 }
