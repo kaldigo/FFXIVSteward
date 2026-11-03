@@ -112,6 +112,7 @@ public sealed partial class Plugin : IDalamudPlugin
         pi.GetIpcProvider<ulong,uint,bool>("Steward.InventoryPolicy.NonEquipmentDisposalSelected").RegisterFunc((character,id)=>
             player.IsLoaded&&character==player.ContentId&&attached==character&&config.Connected&&view.Facts(id) is {} item&&
             !config.Rules.IsIgnored(item)&&config.Rules.AllowsNonEquipmentDisposal(item));
+        pi.GetIpcSubscriber<object>("AutoRetainer.OnRetainerListTaskButtonsDraw").Subscribe(DrawManualBellActions);
         commands.AddHandler("/steward",new CommandInfo(Command){HelpMessage="Open Steward; /steward cleanup starts full disposal batches; /steward stop cancels Steward work."});
         pi.UiBuilder.Draw+=Draw;pi.UiBuilder.OpenMainUi+=Open;pi.UiBuilder.OpenConfigUi+=Open;
         framework.Update+=Update;
@@ -334,6 +335,7 @@ public sealed partial class Plugin : IDalamudPlugin
             UpdateAutomaticMarketPreview();
             ReviewTick();
             market.Advance(Environment.TickCount64);
+            UpdateManualBellAction();
             UpdateCleanup();
             if(market.Queue.Status.StartsWith("Stopped:",StringComparison.Ordinal) && !executionFault)
                 HoldExecution(market.Queue.Status);
@@ -377,8 +379,9 @@ public sealed partial class Plugin : IDalamudPlugin
                         var storageStarted=AutomaticStorageWork();
                         if(!storageStarted)
                         {
-                            if(!market.Queue.Running)market.DepositOpenDresser();
-                            if(!market.Queue.Running)market.CleanupDresser();
+                            if(!market.Queue.Running&&!storageRun.CleanupOnly)market.DepositOpenDresser();
+                            if(!market.Queue.Running&&!storageRun.StorageOnly)market.CleanupDresser();
+                            if(storageRun.CleanupOnly && !market.Queue.Running && market.DresserOpen)market.CloseDresserForStorage();
                             if(!market.Queue.Running&&!StorageWorkRemaining())TryPostCleanupEntrust();
                             if(!market.Queue.Running&&!StorageWorkRemaining()&&!storageRun.EntrustPending&&!postCleanupEntrustPass&&market.CloseDresserForStorage())FinishStorageRun();
                         }
@@ -442,6 +445,7 @@ public sealed partial class Plugin : IDalamudPlugin
     }
     private void StopQueue()
     {
+        pendingBellAction=null;
         CancelCleanup();
         storageRun.End();
         if(market.Queue.HasUnverifiedAction && !executionFault)HoldExecution("An active operation was cancelled; its last game action may still complete");
@@ -482,6 +486,7 @@ public sealed partial class Plugin : IDalamudPlugin
             pi.GetIpcProvider<ulong,string,object>("Steward.InventoryPolicy.Fault").UnregisterAction();
             pi.GetIpcSubscriber<string,object>("AutoRetainer.OnRetainerAdditionalTask").Unsubscribe(RequestPostprocess);
             pi.GetIpcSubscriber<string,string,object>("AutoRetainer.OnRetainerReadyForPostprocess").Unsubscribe(Postprocess);
+            pi.GetIpcSubscriber<object>("AutoRetainer.OnRetainerListTaskButtonsDraw").Unsubscribe(DrawManualBellActions);
             pi.UiBuilder.Draw-=Draw;pi.UiBuilder.OpenMainUi-=Open;pi.UiBuilder.OpenConfigUi-=Open;commands.RemoveHandler("/steward");Save();
         }
     }

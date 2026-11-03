@@ -1,3 +1,7 @@
+## 0.1.0.78
+
+Add Store glamours, Clean dresser and Dispose inventory to the retainer list. Each button runs its own enabled work after the manual bell interaction closes. Storage preserves existing dresser entries. Dresser cleanup uses protected restoration, armoire migration and follow-up entrust. Inventory disposal uses the existing batch-cleanup safeguards. Requires AutoRetainer 4.6.3.29 for these buttons.
+
 ## 0.1.0.77
 
 Add an editable stack mix to the experimental strategy: set dyes per stack and number of stacks, add/remove groups, and review total listings and dye count before applying. Validate the 20-listing cap, unique sizes and game item-stack limit. Existing configurations retain 10 stacks of 5, 5 of 2 and 5 singles. New listings use the configured quotas; existing listings are not withdrawn or resized merely because the mix changes. Includes the price controls from 0.1.0.76.

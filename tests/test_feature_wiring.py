@@ -3,7 +3,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]/'Steward'
 class FeatureWiring(unittest.TestCase):
     def test_dresser_preparation_precedes_travel_and_control(self):
-        travel=(ROOT/'Plugin.Storage.cs').read_text().split('if(!market.DresserOpen&&')[1]
+        travel=(ROOT/'Plugin.Storage.cs').read_text().split('if(!storageRun.CleanupOnly&&!market.DresserOpen&&')[1]
         self.assertLess(travel.index('market.DresserPreparationReady()'),travel.index('nextDresserAttempt=Environment.TickCount64+60000'))
         self.assertLess(travel.index('market.DresserPreparationReady()'),travel.index('"Dresser"'))
         deposit=(ROOT/'Services/MarketQueue.cs').read_text().split('private void DepositOpenDresserCore()')[1]
@@ -70,7 +70,7 @@ class FeatureWiring(unittest.TestCase):
         storage=(ROOT/'Plugin.Storage.cs').read_text()
         self.assertNotIn('carriedCollection',storage)
         self.assertNotIn('carriedActions',storage)
-        self.assertIn('if(Environment.TickCount64>=nextCollectionAttempt&&CollectionNeeded(player.ContentId))',storage)
+        self.assertIn('if(!storageRun.CleanupOnly&&Environment.TickCount64>=nextCollectionAttempt&&CollectionNeeded(player.ContentId))',storage)
         flow=storage.split('private bool AutomaticStorageWork()')[1]
         self.assertLess(flow.index('CollectionNeeded(player.ContentId)'),flow.index('NeedsCollectionVisit(false)'))
         self.assertIn('nextCollectionAttempt=Math.Max(nextCollectionAttempt,Environment.TickCount64+5000)',transition)

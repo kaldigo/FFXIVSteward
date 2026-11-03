@@ -12,3 +12,15 @@ class StorageTravel(unittest.TestCase):
   s=(ROOT/'Plugin.cs').read_text(encoding='utf-8')
   self.assertIn('market.CleanupDresser()',s)
   self.assertIn('operation=="Dresser"&&!config.Features.DresserCollection&&!config.CleanDresser',s)
+
+ def test_manual_bell_actions_wait_for_release_and_stay_scoped(self):
+  bell=(ROOT/'Plugin.ManualBell.cs').read_text(encoding='utf-8')
+  update=bell.split('private void UpdateManualBellAction()')[1]
+  self.assertLess(update.index('ManualBell("Released")'),update.index('StartCleanup()'))
+  self.assertIn('player.ContentId != bellCharacter || !BellActionAllowed(action)',update)
+  self.assertIn('BellAction.DresserCleanup && !pi.GetIpcSubscriber',update)
+  plugin=(ROOT/'Plugin.cs').read_text(encoding='utf-8')
+  self.assertIn('!storageRun.StorageOnly)market.CleanupDresser()',plugin)
+  self.assertIn('!storageRun.CleanupOnly)market.DepositOpenDresser()',plugin)
+  queue=(ROOT/'Services/MarketQueue.cs').read_text(encoding='utf-8')
+  self.assertIn('if(collectionOnly&&decision.Outcome==Outcome.Dispose)return StepResult.Completed',queue)

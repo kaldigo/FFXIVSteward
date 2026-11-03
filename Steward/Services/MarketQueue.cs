@@ -477,6 +477,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     if(InventoryView.ReadSlot(stock.Container,stock.Slot)!=stock)return StepResult.Failed;
                     var decision=judge(stock);if(!config.Features.Enabled(decision.Outcome))return StepResult.Completed;
                     if(AutoDutyCoordination.OwnsTravel(pi)&&decision.Outcome is Outcome.CollectArmoire or Outcome.CollectDresser)return StepResult.Completed;
+                    if(collectionOnly&&decision.Outcome==Outcome.Dispose)return StepResult.Completed;
                     if(disposalOnly&&decision.Outcome!=Outcome.Dispose)return StepResult.Completed;
                     if(decision.Outcome is not (Outcome.CollectArmoire or Outcome.CollectDresser or Outcome.Dispose))return StepResult.Completed;
                     if(decision.Outcome==Outcome.Dispose)
