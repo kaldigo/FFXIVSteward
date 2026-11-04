@@ -1,4 +1,6 @@
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
+using Dalamud.Interface.Components;
 using Steward.Services;
 
 namespace Steward;
@@ -27,17 +29,19 @@ public sealed partial class Plugin
 
     private void DrawManualBellActions()
     {
-        ImGui.TextUnformatted("Steward");
-        Button("Store glamours", BellAction.GlamourStorage);
-        Button("Clean dresser", BellAction.DresserCleanup);
-        Button("Dispose inventory", BellAction.InventoryDisposal);
+        Button(FontAwesomeIcon.Tshirt, "Store glamours", BellAction.GlamourStorage);
+        Button(FontAwesomeIcon.Broom, "Clean dresser", BellAction.DresserCleanup);
+        Button(FontAwesomeIcon.Recycle, "Dispose inventory", BellAction.InventoryDisposal);
 
-        void Button(string label, BellAction action)
+        void Button(FontAwesomeIcon icon, string label, BellAction action)
         {
             ImGui.SameLine();
             ImGui.BeginDisabled(pendingBellAction.HasValue);
-            var clicked = ImGui.Button(label);
+            ImGui.PushID("StewardBell" + action);
+            var clicked = ImGuiComponents.IconButton(icon);
+            ImGui.PopID();
             ImGui.EndDisabled();
+            if(ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled)) ImGui.SetTooltip(label);
             if(!clicked) return;
             if(!BellActionAllowed(action))
             {

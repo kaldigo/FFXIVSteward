@@ -1,3 +1,7 @@
+## 0.1.0.79
+
+Use compact icon buttons for the new manual bell actions, with hover tooltips matching the existing retainer toolbar.
+
 ## 0.1.0.78
 
 Add Store glamours, Clean dresser and Dispose inventory to the retainer list. Each button runs its own enabled work after the manual bell interaction closes. Storage preserves existing dresser entries. Dresser cleanup uses protected restoration, armoire migration and follow-up entrust. Inventory disposal uses the existing batch-cleanup safeguards. Requires AutoRetainer 4.6.3.29 for these buttons.
