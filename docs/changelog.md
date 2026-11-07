@@ -1,3 +1,7 @@
+## 0.1.0.81
+
+Sale rules can include or exclude finished orchestrion rolls separately from faded copies, blanks and other roll materials. Existing whole-category selections cover both.
+
 ## 0.1.0.80
 
 Check live armoire ownership for missing cabinet items when the dresser is closed. Limit automatic cabinet trips to carried candidates, once per item per storage run.

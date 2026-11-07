@@ -236,7 +236,7 @@ public sealed partial class Plugin
             ImGui.TextWrapped($"At least {rule.MinimumUnit:N0} gil each / {rule.MinimumTotal:N0} gil per listing · Up to {rule.MaximumStack} per stack");
             if(rule.AllowLowPriority)ImGui.TextWrapped($"Spare slots: from {rule.ListingMinimumUnit:N0} gil each / {rule.ListingMinimumTotal:N0} gil per listing · Low priority");
             var scope=rule.Group==ItemGroup.Gear?"Equipment only · ":rule.Group==ItemGroup.Other?"Non-equipment only · ":"";
-            ImGui.TextWrapped(scope+(rule.Categories.Count==0?"All categories":string.Join(", ",rule.Categories.Take(4).Select(id=>view.Categories.GetValueOrDefault(id,"Unavailable")))+(rule.Categories.Count>4?" …":""))+$" · {rule.ExcludedCategories.Count} excluded");
+            ImGui.TextWrapped(scope+(rule.Categories.Count==0?"All categories":string.Join(", ",rule.Categories.Take(4).Select(id=>view.SaleCategories.GetValueOrDefault(id,"Unavailable")))+(rule.Categories.Count>4?" …":""))+$" · {rule.ExcludedCategories.Count} excluded");
             if(expanded&&!deleted){ImGui.Indent();DrawSaleRuleEditor(rule);ImGui.Unindent();}
             ImGui.PopID();
         }

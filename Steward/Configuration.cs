@@ -64,7 +64,11 @@ public sealed class Configuration : IPluginConfiguration, IJsonOnDeserialized
         if(Silver==null||Silver.Enabled&&!Silver.Valid||Storage==null||Storage.ExcludedRetainers==null||Storage.ExcludedItems==null||Storage.ExcludedCategories==null||Storage.Categories==null||Storage.Categories.Any(p=>p.Value==null)||Features==null||ExcludedSaleRetainers==null||Rules.Sales.Any(r=>r.ExcludedRetainers==null))throw new System.Text.Json.JsonException("Invalid retainer filters");
         // Preserve legacy single-category rules when opening the multi-category editor.
         foreach(var rule in Rules.Sales)
+        {
             if(rule.Category!=0){rule.Categories.Add(rule.Category);rule.Category=0;}
+            SaleRule.ExpandRollCategory(rule.Categories);
+            SaleRule.ExpandRollCategory(rule.ExcludedCategories);
+        }
         if(Version!=1 || PendingCollection==null || SafetyRevision>=6&&!pendingCollectionRead ||
             PendingCollection.Any(p=>p.Key==0||p.Value==null||p.Value.Contains(0)))
             throw new System.Text.Json.JsonException("Missing or invalid collection safety state; execution must remain held");

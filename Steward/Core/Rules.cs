@@ -5,13 +5,26 @@ public enum QualityMode { Separate, Combined }
 public enum ItemGroup { Any, Gear, Other }
 public enum SourceKind { Unknown, Ordinary, Special, NormalDungeon, NormalRaid, AllianceRaid, SavageRaid, HighEnd }
 public sealed record ItemFacts(uint Id, string Name, bool Equipment, byte Rarity, int EquipLevel,
-    bool Marketable, bool ArmoireEligible, SourceKind Source, uint Category, uint NpcPrice = 0, bool DesignedForGlamour = false);
+    bool Marketable, bool ArmoireEligible, SourceKind Source, uint Category, uint NpcPrice = 0, bool DesignedForGlamour = false, bool HasItemAction = false)
+{
+    public uint SaleCategory => Category == SaleRule.OrchestrionRoll
+        ? (HasItemAction ? SaleRule.FinishedRoll : SaleRule.RollMaterial)
+        : Category;
+}
 public sealed record Stock(uint ItemId, bool Hq, uint Quantity, uint Container, ushort Slot);
 public sealed record Quote(uint ItemId, bool Hq, uint World, uint UnitPrice, DateTimeOffset Observed,
     string Source, bool Own = false);
 public sealed record Decision(Outcome Outcome, string Reason, SaleRule? Rule = null, uint? UnitPrice = null, bool SaleRejected = false, uint? MaximumRemovable = null);
 public sealed class SaleRule
 {
+    public const uint OrchestrionRoll = 94;
+    // Sale-only identifiers outside the range of native ItemUICategory rows.
+    public const uint FinishedRoll = 1000094;
+    public const uint RollMaterial = 2000094;
+    public static void ExpandRollCategory(HashSet<uint> categories)
+    {
+        if(categories.Remove(OrchestrionRoll)) categories.UnionWith([FinishedRoll, RollMaterial]);
+    }
     public string Name { get; set; } = "Sale rule";
     public bool Enabled { get; set; } = true;
     public HashSet<uint> ItemIds { get; set; } = [];
@@ -38,8 +51,8 @@ public sealed class SaleRule
         (retainer==0 || !UseRetainerFilter || !ExcludedRetainers.Contains(retainer)) &&
         (ItemIds.Count == 0 || ItemIds.Contains(item.Id)) &&
         (Group==ItemGroup.Any || Group==ItemGroup.Gear&&item.Equipment || Group==ItemGroup.Other&&!item.Equipment) &&
-        (Categories.Count==0 ? Category==0||Category==item.Category : Categories.Contains(item.Category)) &&
-        !ExcludedCategories.Contains(item.Category) &&
+        (Categories.Count==0 ? Category==0||Category==item.Category : (Categories.Contains(item.SaleCategory) || Categories.Contains(item.Category))) &&
+        !ExcludedCategories.Contains(item.SaleCategory) && !ExcludedCategories.Contains(item.Category) &&
         (Hq == null || Hq == stock.Hq);
 }
 public sealed class RuleSettings

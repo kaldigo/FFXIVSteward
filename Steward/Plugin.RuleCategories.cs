@@ -16,12 +16,13 @@ public sealed partial class Plugin
             ImGui.TextWrapped(rule.Group==ItemGroup.Gear?"This existing rule still has its previous equipment-only restriction.":"This existing rule still has its previous non-equipment restriction.");
             if(ImGui.SmallButton("Use categories alone instead")){rule.Group=ItemGroup.Any;SavePolicy();}
         }
-        DrawCategorySelection("Included categories",rule.Categories,"All categories","Empty means every category can match this sale rule. Select categories to limit it to those item types.");
-        DrawCategorySelection("Excluded categories for this rule",rule.ExcludedCategories,"None excluded","Checked categories cannot match this rule, even if included above. They can still match a later sale rule.");
+        DrawCategorySelection("Included categories",rule.Categories,"All categories","Empty means every category can match this sale rule. Select categories to limit it to those item types.",saleCategories:true);
+        DrawCategorySelection("Excluded categories for this rule",rule.ExcludedCategories,"None excluded","Checked categories cannot match this rule, even if included above. They can still match a later sale rule.",saleCategories:true);
     }
-    private void DrawCategorySelection(string label,HashSet<uint> selected,string emptyLabel,string description,bool nonEquipmentOnly=false)
+    private void DrawCategorySelection(string label,HashSet<uint> selected,string emptyLabel,string description,bool nonEquipmentOnly=false,bool saleCategories=false)
     {
-        var choices=CategoryDisplay.Build(view.Categories,view.CategoryDetails)
+        var names = saleCategories ? view.SaleCategories : view.Categories;
+        var choices=(saleCategories ? CategoryDisplay.Build(names,view.SaleCategoryDetails) : CategoryDisplay.Build(view.Categories,view.CategoryDetails))
             .Where(c=>c.Id!=62&&(c.Id!=39||selected.Contains(39))&&(!nonEquipmentOnly||c.Group is "Items" or "Housing")).ToArray();
         var selectedNames=choices.Where(c=>c.Members.Any(selected.Contains))
             .Select(c=>c.Name+(c.Members.All(selected.Contains)?"":" (partial)")).ToArray();
@@ -39,7 +40,7 @@ public sealed partial class Plugin
             if(ImGui.SmallButton("Select all")){CategoryDisplay.Set(selected,choices.Where(c=>c.Id!=39),true);SavePolicy();}
             ImGui.SameLine();if(ImGui.SmallButton("Clear selection")){selected.Clear();SavePolicy();}
             var visible=choices.Where(c=>query.Length==0||c.Name.Contains(query,StringComparison.OrdinalIgnoreCase)||
-                c.Group.Contains(query,StringComparison.OrdinalIgnoreCase)||c.Members.Any(id=>view.Categories[id].Contains(query,StringComparison.OrdinalIgnoreCase)||id.ToString().Contains(query))).ToArray();
+                c.Group.Contains(query,StringComparison.OrdinalIgnoreCase)||c.Members.Any(id=>names[id].Contains(query,StringComparison.OrdinalIgnoreCase)||id.ToString().Contains(query))).ToArray();
             if(visible.Length==0)ImGui.TextDisabled("No matching categories.");
             foreach(var groupName in CategoryDisplay.Groups)
             {
@@ -76,13 +77,13 @@ public sealed partial class Plugin
                     if(enabled||partial)
                         ImGui.GetWindowDrawList().AddRect(ImGui.GetItemRectMin(),ImGui.GetItemRectMax(),
                             ImGui.GetColorU32(partial?new Vector4(1,.70f,.20f,1):new Vector4(.35f,.85f,1,1)),3,ImDrawFlags.None,2);
-                    if(ImGui.IsItemHovered())ImGui.SetTooltip(name+(partial?" — partially selected; click to select both":enabled?" — selected":" — not selected")+"\n"+string.Join(", ",category.Members.Select(member=>view.Categories[member])));
+                    if(ImGui.IsItemHovered())ImGui.SetTooltip(name+(partial?" — partially selected; click to select both":enabled?" — selected":" — not selected")+"\n"+string.Join(", ",category.Members.Select(member=>names[member])));
                     if(clicked){CategoryDisplay.Set(selected,[category],!enabled);SavePolicy();}
                     ImGui.PopID();
                 }
                 ImGui.PopStyleVar();ImGui.PopID();
             }
-            foreach(var id in selected.Where(id=>!view.Categories.ContainsKey(id)).ToArray())
+            foreach(var id in selected.Where(id=>!names.ContainsKey(id)).ToArray())
             {var enabled=true;if(ImGui.Checkbox($"Unavailable category {id}",ref enabled)){selected.Remove(id);SavePolicy();}}
         }
         ImGui.EndChild();ImGui.PopID();

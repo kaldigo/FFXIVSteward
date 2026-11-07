@@ -25,6 +25,18 @@ static class CategoryChecks
         var migrated=JsonSerializer.Deserialize<Configuration>("{\"Version\":1,\"SafetyRevision\":6,\"PendingCollection\":{},\"Rules\":{\"Sales\":[{\"Category\":54}]}}")!;
         check(migrated.Rules.Sales[0].Categories.SetEquals([54])&&migrated.Rules.Sales[0].Category==0,"Legacy category migrates to multi-select without widening");
         check(migrated.Rules.Sales[0].Matches(mat,Stock(mat))&&!migrated.Rules.Sales[0].Matches(food,Stock(food)),"Migrated category still excludes unrelated types");
+        var finished = mat with { Category = 94, HasItemAction = true };
+        var material = finished with { HasItemAction = false };
+        var split = new SaleRule { Categories = [SaleRule.FinishedRoll] };
+        check(split.Matches(finished,Stock(finished)) && !split.Matches(material,Stock(material)), "Finished rolls can be selected alone");
+        split.Categories = [SaleRule.RollMaterial];
+        check(split.Matches(material,Stock(material)) && !split.Matches(finished,Stock(finished)), "Roll materials can be selected alone");
+        var legacyRolls = new HashSet<uint> {94};
+        SaleRule.ExpandRollCategory(legacyRolls);
+        split.Categories = legacyRolls;
+        check(split.Matches(finished,Stock(finished)) && split.Matches(material,Stock(material)), "Old whole-roll selections retain both types");
+        split.ExcludedCategories.Add(SaleRule.RollMaterial);
+        check(split.Matches(finished,Stock(finished)) && !split.Matches(material,Stock(material)), "Excluded materials do not exclude finished rolls");
         var defaults=JsonSerializer.Deserialize<RuleSettings>("{\"Sales\":[{}]}")!;
         check(defaults.IgnoredCategories.Count==0&&defaults.Sales[0].Group==ItemGroup.Any&&defaults.Sales[0].Categories.Count==0,"Existing all-item rules keep their original scope");
         var rules=new RuleSettings{Sales=[gearRule,matRule]};

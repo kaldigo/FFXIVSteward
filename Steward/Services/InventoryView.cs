@@ -35,6 +35,8 @@ public sealed unsafe class InventoryView
     public Dictionary<ulong,string> RetainerNames { get; } = [];
     public uint World { get; set; }
     public uint ItemStackLimit(uint id)=>data.GetExcelSheet<Sheets.Item>().GetRow(id).StackSize;
+    public IReadOnlyDictionary<uint,string> SaleCategories { get; }
+    public IReadOnlyDictionary<uint,(uint Icon,byte Major,byte Minor)> SaleCategoryDetails { get; }
     public IReadOnlyDictionary<uint,string> Categories { get; }
     public IReadOnlyDictionary<uint,(uint Icon,byte Major,byte Minor)> CategoryDetails { get; }
     public InventoryView(IDataManager data,Configuration config,InventoryMemory memory)
@@ -42,6 +44,18 @@ public sealed unsafe class InventoryView
         this.data=data;this.config=config;this.memory=memory;
         CategoryDetails=data.GetExcelSheet<Sheets.ItemUICategory>().ToDictionary(r=>r.RowId,r=>((uint)Math.Max(0,r.Icon),r.OrderMajor,r.OrderMinor));
         Categories=data.GetExcelSheet<Sheets.ItemUICategory>().Where(r=>!string.IsNullOrWhiteSpace(r.Name.ToString())).ToDictionary(r=>r.RowId,r=>r.Name.ToString());
+        var saleNames = new Dictionary<uint,string>(Categories);
+        var saleDetails = new Dictionary<uint,(uint Icon,byte Major,byte Minor)>(CategoryDetails);
+        if(saleNames.Remove(SaleRule.OrchestrionRoll))
+        {
+            var roll = CategoryDetails[SaleRule.OrchestrionRoll];
+            saleNames[SaleRule.FinishedRoll] = "Orchestrion rolls (finished)";
+            saleNames[SaleRule.RollMaterial] = "Orchestrion roll materials (faded and blank)";
+            saleDetails[SaleRule.FinishedRoll] = (25945, roll.Major, roll.Minor);
+            saleDetails[SaleRule.RollMaterial] = (25958, roll.Major, roll.Minor);
+        }
+        SaleCategories = saleNames;
+        SaleCategoryDetails = saleDetails;
         cabinet=data.GetExcelSheet<Sheets.Cabinet>().Where(r=>r.Item.RowId!=0).Select(r=>(r.RowId,r.Item.RowId)).ToArray();
         cabinetItems=cabinet.Select(c=>c.Item).ToHashSet();
         outfits=data.GetExcelSheet<Sheets.MirageStoreSetItem>().ToDictionary(r=>r.RowId,r=>new[]{r.MainHand.RowId,r.OffHand.RowId,r.Head.RowId,r.Body.RowId,r.Hands.RowId,r.Legs.RowId,r.Feet.RowId,r.Earrings.RowId,r.Necklace.RowId,r.Bracelets.RowId,r.Ring.RowId});
@@ -129,7 +143,7 @@ public sealed unsafe class InventoryView
             // IsGlamorous means dresser-compatible, not cosmetic-purpose gear.
             facts=new(id,row.Name.ToString(),row.EquipSlotCategory.RowId!=0,row.Rarity,row.LevelEquip,
                 !row.IsUntradable && row.ItemSearchCategory.RowId!=0,cabinetItems.Contains(id),row.IsPvP?SourceKind.Special:SourceKind.Unknown,
-                row.ItemUICategory.RowId,row.PriceLow,row.LevelItem.RowId==1);
+                row.ItemUICategory.RowId,row.PriceLow,row.LevelItem.RowId==1,row.ItemAction.RowId!=0);
             itemMetadata[id]=facts;
         }
         var source=config.Sources.GetValueOrDefault(id,crafted.Contains(id)||fishable.Contains(id)||repeatableMaterials.Contains(id)?SourceKind.Ordinary:SourceKind.Unknown);
