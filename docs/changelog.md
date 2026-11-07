@@ -1,3 +1,7 @@
+## 0.1.0.80
+
+Check live armoire ownership for missing cabinet items when the dresser is closed. Limit automatic cabinet trips to carried candidates, once per item per storage run.
+
 ## 0.1.0.79
 
 Use compact icon buttons for the new manual bell actions, with hover tooltips matching the existing retainer toolbar.

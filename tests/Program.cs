@@ -195,6 +195,11 @@ Decision Judge() => Rules.Judge(item,stock,settings,e,1,now);
     proof.Prices.Clear();Check(Blue(blue).Outcome==Outcome.Wait,"Unavailable market price is not evidence that a blue is unmarketable");
 }
 Check(Judge().Outcome==Outcome.CollectArmoire,"Missing blue goes to armoire");
+e.DresserKnown=false;
+Check(Judge().Outcome==Outcome.CollectArmoire,"A live missing cabinet entry authorizes storage with the dresser closed");
+e.Armoire.Add(42);Check(Judge().Outcome==Outcome.Wait,"Cabinet ownership alone cannot release a copy for disposal");
+e.Armoire.Clear();e.Gearsets.Add(42);Check(Judge().Outcome==Outcome.Keep,"Gearset protection wins at the open armoire");
+e.Gearsets.Clear();e.DresserKnown=true;
 e.Armoire.Add(42); Check(Judge().Outcome==Outcome.Dispose,"Collected blue duplicate disposes");
 e.Armoire.Clear();e.Dresser.Add(42);Check(Judge().Outcome==Outcome.CollectArmoire,"Dresser copy eligible for armoire is migrated to preferred storage");
 e.Gearsets.Add(42);Check(Judge().Outcome==Outcome.Keep,"Gearset beats duplicate disposal");

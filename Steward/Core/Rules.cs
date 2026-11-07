@@ -119,6 +119,9 @@ public static class Rules
         var collect=protections!=GlamourMatch.None;
         if(collect)
         {
+            // The cabinet can accept its missing copy even while the dresser is closed.
+            if(item.ArmoireEligible && evidence.ArmoireKnown && !evidence.Armoire.Contains(item.Id))
+                return new(Outcome.CollectArmoire, "Live armoire is missing this item");
             if(!evidence.DresserKnown || !evidence.ArmoireKnown)
                 return evidence.CachedDresser.Contains(item.Id)||evidence.CachedArmoire.Contains(item.Id)
                     ?new(Outcome.Keep,"Cached collection copy is unverified; preserve until collection is observed")

@@ -124,7 +124,13 @@ public sealed partial class Plugin
         if(config.Features.ArmoireStorage&&NeedsCollectionVisit(true))
         {
             if(!market.CloseDresserForStorage())return false;
-            if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,"Armoire"))return true;
+            var candidates = ArmoireCandidates().Distinct().ToArray();
+            if(candidates.Length > 0 && pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,"Armoire"))
+            {
+                storageRun.AttemptedArmoireItems.UnionWith(candidates);
+                Record("Armoire visit requested for carried items: " + string.Join(", ", candidates));
+                return true;
+            }
         }
         if(!storageRun.CleanupOnly&&!market.DresserOpen&&Environment.TickCount64>=nextDresserAttempt&&
             (config.Features.DresserCollection&&NeedsCollectionVisit(false)))
@@ -143,7 +149,12 @@ public sealed partial class Plugin
         config.Features.ArmoireStorage&&NeedsCollectionVisit(true)||
         !storageRun.CleanupOnly&&config.Features.DresserCollection&&NeedsCollectionVisit(false)||
         !storageRun.CleanupOnly&&config.Features.OverflowStorage&&view.Items.Any(s=>Judge(s).Outcome==Outcome.StoreRetainer);
-    private bool NeedsCollectionVisit(bool armoire)=>view.Items.Concat(tracked.Items
+    private IEnumerable<uint> ArmoireCandidates() => view.Items
+        .Where(stock => !storageRun.AttemptedArmoireItems.Contains(stock.ItemId) &&
+            view.Facts(stock.ItemId) is {} item &&
+            StoragePolicy.NeedsCollectionVisit(item,stock,config.Rules,view.Evidence,true))
+        .Select(stock => stock.ItemId);
+    private bool NeedsCollectionVisit(bool armoire)=>armoire ? ArmoireCandidates().Any() : view.Items.Concat(tracked.Items
         .Where(row=>!storageRun.CleanupOnly&&view.Retainers.Contains(row.Owner)&&config.Storage.RetainerEnabled(row.Owner)).Select(row=>row.Stock))
         .Any(stock=>view.Facts(stock.ItemId) is {} item&&
         StoragePolicy.NeedsCollectionVisit(item,stock,config.Rules,view.Evidence,armoire));
