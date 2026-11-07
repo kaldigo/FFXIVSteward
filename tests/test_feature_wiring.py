@@ -3,7 +3,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]/'Steward'
 class FeatureWiring(unittest.TestCase):
     def test_dresser_preparation_precedes_travel_and_control(self):
-        travel=(ROOT/'Plugin.Storage.cs').read_text().split('if(!storageRun.CleanupOnly&&!market.DresserOpen&&')[1]
+        travel=(ROOT/'Plugin.Storage.cs').read_text().split('if(!storageRun.ArmoireOnly&&!storageRun.CleanupOnly&&!market.DresserOpen&&')[1]
         self.assertLess(travel.index('market.DresserPreparationReady()'),travel.index('nextDresserAttempt=Environment.TickCount64+60000'))
         self.assertLess(travel.index('market.DresserPreparationReady()'),travel.index('"Dresser"'))
         deposit=(ROOT/'Services/MarketQueue.cs').read_text().split('private void DepositOpenDresserCore()')[1]
@@ -115,9 +115,9 @@ class FeatureWiring(unittest.TestCase):
         withdrawal=queue.split('private void WithdrawForOtherActionsCore')[1].split('public void CleanupDresser')[0] if 'private void WithdrawForOtherActionsCore' in queue else queue.split('public void WithdrawForOtherActions')[1].split('public void CleanupDresser')[0]
         self.assertNotIn('SalesEnabledFor',withdrawal)
         self.assertIn('config.Features.Enabled',withdrawal)
-        self.assertIn('else if(config.Features.Repricing)',queue)
+        self.assertIn('else if(scope!="List" && config.Features.Repricing)',queue)
         self.assertIn('if(cached.NeedsComparison)Enqueue(',queue)
-        self.assertIn('if(config.Features.NewListings)EnqueueListingPump',queue)
+        self.assertIn('if(scope!="Reprice" && config.Features.NewListings)EnqueueListingPump',queue)
         self.assertIn('config.Features.CanRestore',(ROOT/'Services/MarketQueue.Storage.cs').read_text())
     def test_native_rotation_and_return_recheck_toggles(self):
         rotation=(ROOT/'Services/MarketQueue.Rotation.cs').read_text()

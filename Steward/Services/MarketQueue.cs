@@ -94,15 +94,15 @@ public sealed unsafe partial class MarketQueue : IDisposable
         foreach(var quality in result.Offers.Where(x=>x.RetainerId!=0&&!config.OwnRetainers.Contains(x.RetainerId)).GroupBy(x=>x.Hq))
             view.Evidence.Prices[(item,quality.Key)]=new(item,quality.Key,view.World,quality.Min(x=>x.UnitPrice),result.At,"Game");
     }
-    public void Start(bool coordinated=false)
-        =>Plan(()=>StartCore(coordinated));
+    public void Start(bool coordinated=false,string? scope=null)
+        =>Plan(()=>StartCore(coordinated,scope));
     private void Plan(Action build)
     {
         try{Queue.Plan(build);}
         finally{try{CheckFault();}finally{if(!Queue.Running)ReleaseManualCoordination();}}
     }
     private RepriceRefresh repriceRefresh=new();
-    private void StartCore(bool coordinated)
+    private void StartCore(bool coordinated,string? scope)
     {
         if(Queue.Running||!config.ExecutionEnabled||config.ExecutionReviewRequired||!config.Connected) return;
         refreshProtection();
@@ -116,8 +116,11 @@ public sealed unsafe partial class MarketQueue : IDisposable
         foreach(var listing in listings)
         {
             if(ReturnReason(listing,retainer,false) is {} returnReason)
-            {history($"Reprice skipped: item={listing.ItemId}, retainer={retainer}, slot={listing.Slot}; scheduled withdrawal: {returnReason}");EnqueueReturn(listing,retainer,coordinated);}
-            else if(config.Features.Repricing)
+            {
+                history($"Existing listing outside sale rules: item={listing.ItemId}, retainer={retainer}, slot={listing.Slot}; {returnReason}");
+                if(scope is null or "Market")EnqueueReturn(listing,retainer,coordinated);
+            }
+            else if(scope!="List" && config.Features.Repricing)
             {
                 var cached=CachedReprice(listing,retainer);
                 history($"Reprice cache check: item={listing.ItemId}, slot={listing.Slot}, target={cached.Target}, cache observed={cached.Quote?.Observed:O}, validity={Math.Clamp(config.Rules.AllaganCacheHours,1,168)}h, {cached.Reason}");
@@ -125,7 +128,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 else history($"Reprice skipped: item={listing.ItemId}, retainer={retainer}, slot={listing.Slot}; {cached.Reason}");
             }
         }
-        if(config.Features.NewListings)EnqueueListingPump(retainer,coordinated,new ListingPass());
+        if(scope!="Reprice" && config.Features.NewListings)EnqueueListingPump(retainer,coordinated,new ListingPass{RotationUsed=scope=="List"});
         if(!Queue.Running)ReleaseManualCoordination();
     }
     private void Enqueue(Stock expected,ulong retainer,bool reprice,bool coordinated,Action<Stock,bool>? completed=null,bool quoteOnly=false)
@@ -440,7 +443,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
     public void Dispose(){try{Stop();}finally{market.OfferingsReceived-=Received;searchResponseHook?.Dispose();}}
     public void ReturnToRetainerMenu()
     {ui.Close("ItemSearchResult");ui.Close("RetainerSell");ui.Close("RetainerSellList");var agent=AgentRetainer.Instance();if(agent!=null)agent->Hide();}
-    public void WithdrawForOtherActions(ulong character,bool overflowOnly=false,bool collectionOnly=false,bool disposalOnly=false)
+    public void WithdrawForOtherActions(ulong character,bool overflowOnly=false,bool collectionOnly=false,bool disposalOnly=false,bool armoireOnly=false)
     {
         Queue.Begin();
         var manager=RetainerManager.Instance();
@@ -448,7 +451,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
         if(retainer==0 || !view.Retainers.Contains(retainer))throw new InvalidOperationException("Withdrawal retainer identity is unavailable");
         if(!config.Storage.RetainerEnabled(retainer))return;
         refreshProtection();
-        if(!disposalOnly)EnqueueOverflow(character,retainer);
+        if(!disposalOnly&&!armoireOnly)EnqueueOverflow(character,retainer);
         if(overflowOnly)return;
         var dresserWithdrawals=0;
         var initialWaiting=StoragePolicy.CountWaitingForDresser(view.Items,previewJudge);
@@ -462,6 +465,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
         history($"Retainer withdrawal planning: retainer={retainer}, live stacks={stored.Count}, candidates={candidates.Length}, collection only={collectionOnly}, free bag slots={InventoryView.FreeBagSlots()}, waiting dresser items={initialWaiting}");
         foreach(var stock in candidates.OrderBy(s=>view.Facts(s.ItemId) is {} f?StoragePolicy.Priority(f,config.Rules,view.Evidence):int.MaxValue).ThenBy(s=>s.ItemId))
         {
+            if(armoireOnly&&previewJudge(stock).Outcome!=Outcome.CollectArmoire)continue;
             if(AutoDutyCoordination.OwnsTravel(pi)&&previewJudge(stock).Outcome is Outcome.CollectArmoire or Outcome.CollectDresser)continue;
             var sent=false;var attempted=false;long before=0;
             Queue.Add(new("Withdraw "+stock.ItemId,()=>
@@ -477,6 +481,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     if(InventoryView.ReadSlot(stock.Container,stock.Slot)!=stock)return StepResult.Failed;
                     var decision=judge(stock);if(!config.Features.Enabled(decision.Outcome))return StepResult.Completed;
                     if(AutoDutyCoordination.OwnsTravel(pi)&&decision.Outcome is Outcome.CollectArmoire or Outcome.CollectDresser)return StepResult.Completed;
+                    if(armoireOnly&&decision.Outcome!=Outcome.CollectArmoire)return StepResult.Completed;
                     if(collectionOnly&&decision.Outcome==Outcome.Dispose)return StepResult.Completed;
                     if(disposalOnly&&decision.Outcome!=Outcome.Dispose)return StepResult.Completed;
                     if(decision.Outcome is not (Outcome.CollectArmoire or Outcome.CollectDresser or Outcome.Dispose))return StepResult.Completed;

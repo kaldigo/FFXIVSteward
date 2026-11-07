@@ -112,7 +112,10 @@ public sealed partial class Plugin : IDalamudPlugin
         pi.GetIpcProvider<ulong,uint,bool>("Steward.InventoryPolicy.NonEquipmentDisposalSelected").RegisterFunc((character,id)=>
             player.IsLoaded&&character==player.ContentId&&attached==character&&config.Connected&&view.Facts(id) is {} item&&
             !config.Rules.IsIgnored(item)&&config.Rules.AllowsNonEquipmentDisposal(item));
-        pi.GetIpcSubscriber<object>("AutoRetainer.OnRetainerListTaskButtonsDraw").Subscribe(DrawManualBellActions);
+        pi.GetIpcProvider<string,ulong,string>("Steward.Bell.Availability").RegisterFunc(BellAvailability);
+        pi.GetIpcProvider<object>("Steward.Bell.Stop").RegisterAction(Stop);
+        pi.GetIpcProvider<string,object>("Steward.Bell.Start").RegisterAction(StartBellAction);
+        pi.GetIpcProvider<string,string,bool>("Steward.Bell.Market").RegisterFunc(StartBellMarket);
         commands.AddHandler("/steward",new CommandInfo(Command){HelpMessage="Open Steward; /steward cleanup starts full disposal batches; /steward stop cancels Steward work."});
         pi.UiBuilder.Draw+=Draw;pi.UiBuilder.OpenMainUi+=Open;pi.UiBuilder.OpenConfigUi+=Open;
         framework.Update+=Update;
@@ -343,7 +346,7 @@ public sealed partial class Plugin : IDalamudPlugin
             {
                 if(Environment.TickCount64>marketOpenDeadline){HoldExecution("Retainer inventory timed out");StopQueue();}
                 else if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Menu").InvokeFunc(player.ContentId,"Inventory"))
-                {openingInventory=false;Refresh();market.WithdrawForOtherActions(player.ContentId,overflowPass,collectionPass,cleanupActive);withdrawing=true;}
+                {openingInventory=false;Refresh();market.WithdrawForOtherActions(player.ContentId,overflowPass,collectionPass,cleanupActive,storageRun.ArmoireOnly);withdrawing=true;}
             }
             if(withdrawing&&!market.Queue.Running)
             {
@@ -355,7 +358,15 @@ public sealed partial class Plugin : IDalamudPlugin
             {
                 if(Environment.TickCount64>marketOpenDeadline){HoldExecution("Retainer market menu timed out");StopQueue();}
                 else if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Menu").InvokeFunc(player.ContentId,"Market"))
-                {openingMarket=false;Refresh();market.Start(true);if(!market.Queue.Running)FinishPostprocess();}
+                {
+                    if(manualMarket!=null && market.OpenMarketRetainer()==0)return;
+                    openingMarket=false;Refresh();
+                    if(manualMarket!=null && market.OpenMarketRetainer()!=manualMarketOwner)Record("Market pass skipped: selected retainer changed");
+                    else if(manualMarket!=null && (previewBellMarket || config.LogOnly || manualMarket=="Review"))
+                        LogBellMarketPreview(manualMarket);
+                    else market.Start(true,manualMarket);
+                    if(!market.Queue.Running)FinishPostprocess();
+                }
             }
             if(ownsPostprocess && !openingInventory && !withdrawing && !openingMarket && !market.Queue.Running)FinishPostprocess();
             if(collectionPass&&!ownsPostprocess&&!market.Queue.Running&&!pi.GetIpcSubscriber<bool>("AutoRetainer.PluginState.IsBusy").InvokeFunc())
@@ -379,8 +390,8 @@ public sealed partial class Plugin : IDalamudPlugin
                         var storageStarted=AutomaticStorageWork();
                         if(!storageStarted)
                         {
-                            if(!market.Queue.Running&&!storageRun.CleanupOnly)market.DepositOpenDresser();
-                            if(!market.Queue.Running&&!storageRun.StorageOnly)market.CleanupDresser();
+                            if(!market.Queue.Running&&!storageRun.ArmoireOnly&&!storageRun.CleanupOnly)market.DepositOpenDresser();
+                            if(!market.Queue.Running&&!storageRun.ArmoireOnly&&!storageRun.StorageOnly)market.CleanupDresser();
                             if(storageRun.CleanupOnly && !market.Queue.Running && market.DresserOpen)market.CloseDresserForStorage();
                             if(!market.Queue.Running&&!StorageWorkRemaining())TryPostCleanupEntrust();
                             if(!market.Queue.Running&&!StorageWorkRemaining()&&!storageRun.EntrustPending&&!postCleanupEntrustPass&&market.CloseDresserForStorage())FinishStorageRun();
@@ -421,7 +432,7 @@ public sealed partial class Plugin : IDalamudPlugin
         {FinishPostprocess();return;}
         try{Refresh();
             if(!config.Features.AnyInventoryWork&&!config.Features.AnyMarket){FinishPostprocess();return;}
-            if(!cleanupActive)BeginStorageRun(pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsHandoff").InvokeFunc(player.ContentId));
+            if(!cleanupActive&&!overflowPass)BeginStorageRun(pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsHandoff").InvokeFunc(player.ContentId));
             openingInventory=config.Features.AnyInventoryWork;openingMarket=!openingInventory&&config.Features.AnyMarket;marketOpenDeadline=Environment.TickCount64+15000;}
         catch(Exception ex){log.Error(ex,"Retainer postprocess planning failed");HoldExecution("Retainer postprocess planning failed: "+ex.Message);StopQueue();}
     }
@@ -435,6 +446,7 @@ public sealed partial class Plugin : IDalamudPlugin
                 try{market.ReturnToRetainerMenu();}catch(Exception ex){Record("Retainer UI cleanup: "+ex.Message);}
                 pi.GetIpcSubscriber<object>("AutoRetainer.FinishPostprocessRequest").InvokeAction();
             }
+            manualMarket=null;
             ownsPostprocess=false;
         }
         catch(Exception ex)
@@ -486,7 +498,10 @@ public sealed partial class Plugin : IDalamudPlugin
             pi.GetIpcProvider<ulong,string,object>("Steward.InventoryPolicy.Fault").UnregisterAction();
             pi.GetIpcSubscriber<string,object>("AutoRetainer.OnRetainerAdditionalTask").Unsubscribe(RequestPostprocess);
             pi.GetIpcSubscriber<string,string,object>("AutoRetainer.OnRetainerReadyForPostprocess").Unsubscribe(Postprocess);
-            pi.GetIpcSubscriber<object>("AutoRetainer.OnRetainerListTaskButtonsDraw").Unsubscribe(DrawManualBellActions);
+            pi.GetIpcProvider<string,ulong,string>("Steward.Bell.Availability").UnregisterFunc();
+            pi.GetIpcProvider<object>("Steward.Bell.Stop").UnregisterAction();
+            pi.GetIpcProvider<string,object>("Steward.Bell.Start").UnregisterAction();
+            pi.GetIpcProvider<string,string,bool>("Steward.Bell.Market").UnregisterFunc();
             pi.UiBuilder.Draw-=Draw;pi.UiBuilder.OpenMainUi-=Open;pi.UiBuilder.OpenConfigUi-=Open;commands.RemoveHandler("/steward");Save();
         }
     }

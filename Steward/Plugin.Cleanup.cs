@@ -12,7 +12,7 @@ public sealed partial class Plugin
         attached==character&&config.Connected&&config.ExecutionEnabled&&config.Features.Disposal&&!executionFault;
     private bool CleanupRetainerAllowed(ulong character,ulong retainer)=>CleanupAllowed(character)&&
         view.Retainers.Contains(retainer)&&config.Storage.RetainerEnabled(retainer);
-    private void StartCleanup()
+    private void StartCleanup(string scope="RetainersAll")
     {
         if(Steward.Services.AutoDutyCoordination.OwnsTravel(pi))
         {Alert("Stop AutoDuty before starting full cleanup. Its separate GC step still uses Steward protections.");return;}
@@ -22,10 +22,13 @@ public sealed partial class Plugin
         {
             if(pi.GetIpcSubscriber<int>("AutoRetainer.InventoryPolicy.CleanupVersion").InvokeFunc()<1)
                 throw new InvalidOperationException("Update AutoRetainer for batch cleanup");
-            if(!pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.StartCleanup").InvokeFunc(player.ContentId))
+            var started=scope=="RetainersAll"
+                ? pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.StartCleanup").InvokeFunc(player.ContentId)
+                : pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.StartScopedCleanup").InvokeFunc(player.ContentId,scope);
+            if(!started)
             {cleanupStatus=pi.GetIpcSubscriber<string>("AutoRetainer.InventoryPolicy.CleanupStatus").InvokeFunc();Alert("Full cleanup could not start: "+cleanupStatus);return;}
             cleanupOwner=player.ContentId;cleanupActive=true;storageRun.End();nextCleanupStatus=0;
-            Record("Full cleanup started: approved disposal withdrawals, enabled methods, and return batches through AutoRetainer");
+            Record("Disposal pass started: "+scope);
         }
         catch(Exception ex){Alert("Full cleanup unavailable: "+ex.Message);}
     }

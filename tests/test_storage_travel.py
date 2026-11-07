@@ -16,7 +16,7 @@ class StorageTravel(unittest.TestCase):
  def test_manual_bell_actions_wait_for_release_and_stay_scoped(self):
   bell=(ROOT/'Plugin.ManualBell.cs').read_text(encoding='utf-8')
   update=bell.split('private void UpdateManualBellAction()')[1]
-  self.assertLess(update.index('ManualBell("Released")'),update.index('StartCleanup()'))
+  self.assertLess(update.index('ManualBell("Released")'),update.index('StartCleanup('))
   self.assertIn('player.ContentId != bellCharacter || !BellActionAllowed(action)',update)
   self.assertIn('BellAction.DresserCleanup && !pi.GetIpcSubscriber',update)
   plugin=(ROOT/'Plugin.cs').read_text(encoding='utf-8')
@@ -24,3 +24,17 @@ class StorageTravel(unittest.TestCase):
   self.assertIn('!storageRun.CleanupOnly)market.DepositOpenDresser()',plugin)
   queue=(ROOT/'Services/MarketQueue.cs').read_text(encoding='utf-8')
   self.assertIn('if(collectionOnly&&decision.Outcome==Outcome.Dispose)return StepResult.Completed',queue)
+
+ def test_manual_market_uses_only_the_selected_market_operations(self):
+  plugin=(ROOT/'Plugin.ManualBell.cs').read_text()
+  market=plugin.split('private bool StartBellMarket')[1].split('private void StartBellAction')[0]
+  self.assertIn('BellAvailability(action,retainer)',market)
+  self.assertIn('manualMarketOwner=retainer',market)
+  self.assertNotIn('BeginStorageRun',market)
+  queue=(ROOT/'Services/MarketQueue.cs').read_text().split('private void StartCore')[1].split('private void Enqueue(')[0]
+  self.assertIn('if(scope is null or "Market")EnqueueReturn',queue)
+  self.assertIn('scope!="Reprice" && config.Features.NewListings',queue)
+  self.assertIn('RotationUsed=scope=="List"',queue)
+  run=(ROOT/'Plugin.cs').read_text()
+  self.assertIn('market.OpenMarketRetainer()!=manualMarketOwner',run)
+  self.assertIn('config.LogOnly || manualMarket=="Review"',run)

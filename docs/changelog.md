@@ -1,3 +1,7 @@
+## 0.1.0.82
+
+Use the bell’s Market icon for all eligible retainers or choose one retainer, listings only, repricing only, or a read-only withdrawal and rotation review. Glamour and disposal menus support scoped passes without changing your settings.
+
 ## 0.1.0.81
 
 Sale rules can include or exclude finished orchestrion rolls separately from faded copies, blanks and other roll materials. Existing whole-category selections cover both.

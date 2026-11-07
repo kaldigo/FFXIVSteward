@@ -23,7 +23,7 @@ class ListingWiring(unittest.TestCase):
     def test_dynamic_pass_replaces_upfront_slot_allocation(self):
         source=(ROOT/'Steward/Services/MarketQueue.cs').read_text(encoding='utf-8')
         start=source.split('private void StartCore')[1].split('private void Enqueue(')[0]
-        self.assertIn('EnqueueListingPump(retainer,coordinated,new ListingPass())',start)
+        self.assertIn('EnqueueListingPump(retainer,coordinated,new ListingPass{RotationUsed=scope=="List"})',start)
         self.assertNotIn('.Take(free)',start)
         self.assertLess(start.index('foreach(var listing in listings)'),start.index('EnqueueListingPump'))
 
@@ -94,7 +94,7 @@ class ListingWiring(unittest.TestCase):
             self.assertIn('config.SalesEnabledFor(retainer)',(root/'Services'/name).read_text())
         queue=(root/'Services/MarketQueue.cs').read_text()
         self.assertIn('decision=marketJudge(expected,retainer,true)',queue)
-        self.assertIn('else if(config.Features.Repricing)',queue)
+        self.assertIn('else if(scope!="List" && config.Features.Repricing)',queue)
         self.assertIn('if(cached.NeedsComparison)Enqueue(listing,retainer,true,coordinated)',queue)
         self.assertIn('EnqueueReturn(listing,retainer,coordinated)',queue)
         review=(root/'Plugin.Review.cs').read_text()

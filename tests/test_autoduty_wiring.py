@@ -22,5 +22,5 @@ class AutoDutyWiring(unittest.TestCase):
   self.assertIn('ipc.HasFunction?ipc.InvokeFunc():null',service)
   run=(ROOT/'Plugin.cs').read_text().split('private void Run(string operation)')[1]
   self.assertLess(run.index('AutoDutyCoordination.OwnsTravel(pi)'),run.index('AutoRetainer.InventoryPolicy.Run'))
-  cleanup=(ROOT/'Plugin.Cleanup.cs').read_text().split('private void StartCleanup()')[1]
+  cleanup=(ROOT/'Plugin.Cleanup.cs').read_text().split('private void StartCleanup(')[1]
   self.assertLess(cleanup.index('AutoDutyCoordination.OwnsTravel(pi)'),cleanup.index('AutoRetainer.InventoryPolicy.StartCleanup'))
