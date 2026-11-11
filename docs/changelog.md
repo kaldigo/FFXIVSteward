@@ -1,3 +1,7 @@
+## 0.1.0.83
+
+Unique gear held solely for an uncertain acquisition source can follow the normal sale and disposal rules when another exact copy is verified in an owned storage retainer's bags this login. Review messages identify the retainer keeping the copy.
+
 ## 0.1.0.82
 
 Use the bell's Market icon for all eligible retainers or choose one retainer, listings only, repricing only, or a read-only withdrawal and rotation review. Glamour and disposal menus support scoped passes without changing your settings.

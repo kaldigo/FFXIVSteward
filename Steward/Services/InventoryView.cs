@@ -10,6 +10,7 @@ namespace Steward.Services;
 public sealed unsafe class InventoryView
 {
     private readonly IDataManager data;
+    private readonly ICondition condition;
     private readonly Configuration config;
     private readonly InventoryMemory memory;
     private readonly Dictionary<uint,uint[]> outfits;
@@ -39,8 +40,10 @@ public sealed unsafe class InventoryView
     public IReadOnlyDictionary<uint,(uint Icon,byte Major,byte Minor)> SaleCategoryDetails { get; }
     public IReadOnlyDictionary<uint,string> Categories { get; }
     public IReadOnlyDictionary<uint,(uint Icon,byte Major,byte Minor)> CategoryDetails { get; }
-    public InventoryView(IDataManager data,Configuration config,InventoryMemory memory)
+    public InventoryView(IDataManager data,Configuration config,InventoryMemory memory,ICondition condition)
     {
+        Evidence.VerifiedRetainerCopy=VerifiedRetainerCopy;
+        this.condition=condition;
         this.data=data;this.config=config;this.memory=memory;
         CategoryDetails=data.GetExcelSheet<Sheets.ItemUICategory>().ToDictionary(r=>r.RowId,r=>((uint)Math.Max(0,r.Icon),r.OrderMajor,r.OrderMinor));
         Categories=data.GetExcelSheet<Sheets.ItemUICategory>().Where(r=>!string.IsNullOrWhiteSpace(r.Name.ToString())).ToDictionary(r=>r.RowId,r=>r.Name.ToString());
@@ -258,6 +261,39 @@ public sealed unsafe class InventoryView
         memory.ObserveCollection(character,Evidence);memory.Flush();
     }
     public static InventoryType[] InventoryTypes() => Enum.GetValues<InventoryType>().Where(t=>t is >= InventoryType.Inventory1 and <= InventoryType.Inventory4 || t.ToString().StartsWith("Armory",StringComparison.Ordinal)).ToArray();
+    private string? VerifiedRetainerCopy(Stock source,ulong saleRetainer)
+    {
+        if(Character==0 || source.Quantity!=1 || !data.GetExcelSheet<Sheets.Item>().TryGetRow(source.ItemId,out var item) || !item.IsUnique)return null;
+        var manager=RetainerManager.Instance();
+        var finder=ItemFinderModule.Instance();
+        if(manager==null || !manager->IsReady || finder==null || finder->CharacterContentId!=Character || finder->IsRequestUnfulfilled)return null;
+        if(source.Container==(uint)InventoryType.RetainerMarket && (saleRetainer==0 || saleRetainer!=manager->LastSelectedRetainerId))return null;
+        if(ReadSlot(source.Container,source.Slot)!=source)return null;
+
+        // Item Finder's ordinary bag slots exclude listings, equipped gear and crystals.
+        // Require current-session server data and keep HQ and NQ copies separate.
+        uint exactId=source.ItemId+(source.Hq?1_000_000u:0u);
+        foreach(var owner in manager->Retainers)
+        {
+            if(owner.RetainerId==0 || !config.Storage.RetainerEnabled(owner.RetainerId) ||
+                !finder->IsRetainerCurrent(owner.RetainerId) ||
+                !finder->RetainerInventories.TryGetValue(owner.RetainerId,out var entry,false) || entry.Value==null)continue;
+            var ids=entry.Value->ItemIds;
+            var slot=ids.IndexOf(exactId);
+            if(slot<0 || entry.Value->ItemCount[slot]!=1)continue;
+            if(owner.RetainerId==manager->LastSelectedRetainerId && condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.OccupiedSummoningBell])
+            {
+                // During an open visit the live pages take precedence over an earlier search snapshot.
+                var pages=RetainerTypes();
+                if(!pages.All(t=>Loaded((uint)t)))continue;
+                List<Stock> live=[];
+                foreach(var page in pages)Read(page,live);
+                if(!live.Any(s=>s.ItemId==source.ItemId && s.Hq==source.Hq && s.Quantity==1))continue;
+            }
+            return $"{owner.NameString} ({owner.RetainerId})";
+        }
+        return null;
+    }
     public static InventoryType[] RetainerTypes() => [InventoryType.RetainerPage1,InventoryType.RetainerPage2,InventoryType.RetainerPage3,InventoryType.RetainerPage4,InventoryType.RetainerPage5,InventoryType.RetainerPage6,InventoryType.RetainerPage7];
     public static void Read(InventoryType type,List<Stock> target)
     {

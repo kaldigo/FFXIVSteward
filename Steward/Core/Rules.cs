@@ -85,6 +85,7 @@ public sealed class Evidence
     {
         DresserKnown=ArmoireKnown=GearsetsReady=ReferencesReady=false;
     }
+    public Func<Stock,ulong,string?>? VerifiedRetainerCopy { get; set; }
     public bool ReferencesReady { get; set; }
     public HashSet<uint> RelistingHolds { get; set; }=[];
     public HashSet<uint> References { get; set; } = [];
@@ -130,7 +131,12 @@ public static class Rules
         if(settings.CollectionKeep.Contains(item.Id)&&!item.Equipment&&!item.ArmoireEligible)return new(Outcome.Keep,"Supplemental collection item has no equipment storage destination");
         var protections=GlamourProtection.Match(item,settings,evidence);
         var collect=protections!=GlamourMatch.None;
-        if(collect)
+        // A retainer storage slot can never use itself (or a second retainer) as its reserve.
+        // Existing listings may be assessed against a separate ordinary-inventory copy.
+        var retainedBy=protections==GlamourMatch.Unknown && evidence.OmittedDresserItem==null &&
+            (stock.Container<4 || stock.Container==12002 && retainer!=0)
+            ? evidence.VerifiedRetainerCopy?.Invoke(stock,retainer) : null;
+        if(collect && retainedBy==null)
         {
             // The cabinet can accept its missing copy even while the dresser is closed.
             if(item.ArmoireEligible && evidence.ArmoireKnown && !evidence.Armoire.Contains(item.Id))
@@ -149,6 +155,7 @@ public static class Rules
             }
         }
         if(nonEquipmentHold!=null)return new(Outcome.Keep,nonEquipmentHold);
+        string SaleReason(string reason)=>retainedBy==null ? reason : $"{reason}; verified separate copy on {retainedBy}";
         var rule = settings.Sales.FirstOrDefault(r => r.Matches(item, stock, retainer));
         var saleRejected=false;
         if(item.Marketable)
@@ -167,7 +174,7 @@ public static class Rules
                     var quantity=Math.Min(removable.Value,(uint)Math.Clamp(rule.MaximumStack,1,9999));
                     if(value.Average>=rule.ListingMinimumUnit&&value.Average*quantity>=rule.ListingMinimumTotal&&
                         (rule.MinimumDailySales==null||value.DailySales>=rule.MinimumDailySales))
-                        return new(Outcome.Market,(rule.Priority(value.Average,quantity)>0?"Low-priority sale; fill spare slots: ":"Matches average-value and sales-velocity rule: ")+rule.Name,rule,(uint)Math.Floor(value.Average!.Value),MaximumRemovable:removable);
+                        return new(Outcome.Market,SaleReason((rule.Priority(value.Average,quantity)>0?"Low-priority sale; fill spare slots: ":"Matches average-value and sales-velocity rule: ")+rule.Name),rule,(uint)Math.Floor(value.Average!.Value),MaximumRemovable:removable);
                     saleRejected=true;
                 }
                 // An old value can propose a sale, but a quiet or truncated history window never permits destruction.
@@ -184,13 +191,14 @@ public static class Rules
             {
                 var quantity = Math.Min(removable.Value, (uint)Math.Clamp(rule.MaximumStack, 1, 9999));
                 if(quote.UnitPrice >= rule.ListingMinimumUnit && (ulong)quote.UnitPrice*quantity >= rule.ListingMinimumTotal)
-                    return new(Outcome.Market, "Matches sale rule: " + rule.Name, rule, quote.UnitPrice,MaximumRemovable:removable);
+                    return new(Outcome.Market, SaleReason("Matches sale rule: " + rule.Name), rule, quote.UnitPrice,MaximumRemovable:removable);
             }
         }
         }
         if(!item.Equipment && !settings.AllowsNonEquipmentDisposal(item))
             return new(Outcome.Keep, "Non-equipment disposal requires explicit item permission",rule,SaleRejected:saleRejected);
         if(removable<stock.Quantity)return new(Outcome.Keep,"Stack contains a quantity reserve; whole-stack disposal blocked",rule);
+        if(retainedBy!=null)return new(Outcome.Dispose,$"Verified separate copy on {retainedBy}; surplus may use AutoRetainer disposal rules",rule,SaleRejected:saleRejected);
         return new(Outcome.Dispose, collect ? "Exact copy already collected; surplus may use AutoRetainer disposal rules" : "Outside collection rules; use AutoRetainer disposal rules",rule,SaleRejected:saleRejected);
     }
 }

@@ -4,6 +4,40 @@ static class SafetyChecks
 {
     public static void Run(Action<bool,string> check,DateTimeOffset now)
     {
+        foreach(var (id,name) in new[]{(1624u,"Frostbite"),(1661u,"Templar's Falchion")})
+        {
+            var sword=new ItemFacts(id,name,true,2,40,true,false,SourceKind.Unknown,2);
+            var carried=new Stock(id,false,1,0,0);
+            var settings=new RuleSettings();
+            settings.Sales.Add(new SaleRule{MinimumUnit=5000,MinimumTotal=5000});
+            string? owner="Zorislava";
+            var proof=new Evidence{GearsetsReady=true,ReferencesReady=true,DresserKnown=true,ArmoireKnown=true,
+                VerifiedRetainerCopy=(_,_)=>owner};
+            Decision Decide(Stock source,ulong seller=0)=>Rules.Judge(sword,source,settings,proof,1,now,seller);
+
+            check(Decide(carried).Outcome==Outcome.Wait,"A verified duplicate still requires market evidence");
+            proof.Prices[(id,false)]=new(id,false,1,5000,now,"test");
+            check(Decide(carried).Outcome==Outcome.Market && Decide(carried).Reason.Contains("Zorislava"),"Eligible carried duplicate reaches the sale rule");
+            check(Decide(carried with{Container=12002},12).Outcome==Outcome.Market,"Rechecking the listed spare honors the separate ordinary-bag keeper");
+            proof.Prices[(id,false)]=new(id,false,1,4999,now,"test");
+            check(Decide(carried).Outcome==Outcome.Dispose && Decide(carried).Reason.Contains("Zorislava"),"Below-threshold spare can enter normal disposal");
+            check(Decide(carried with{Container=10000}).Outcome==Outcome.Keep,"Retainer stock cannot authorize its own withdrawal or listing");
+            proof.OmittedDresserItem=id;
+            check(Decide(carried).Outcome==Outcome.Keep,"Dresser cleanup cannot use a retainer copy to remove its protected last copy");
+            proof.OmittedDresserItem=null;
+            proof.Gearsets.Add(id);
+            check(Decide(carried).Outcome==Outcome.Keep,"Gearset protection survives verified duplicate");
+            proof.Gearsets.Clear();
+            proof.References.Add(id);
+            check(Decide(carried).Outcome==Outcome.CollectDresser,"Glamour reference still requires the missing dresser copy");
+            proof.References.Clear();
+            settings.QuantityReserves[id]=1;
+            proof.ReserveStocks.Add(carried);
+            check(Decide(carried).Outcome==Outcome.Keep,"A carried quantity reserve remains protected");
+            settings.QuantityReserves.Clear();
+            owner=null;
+            check(Decide(carried).Outcome==Outcome.Keep,"Loss of verification between proposal and submission protects the last copy");
+        }
         var item=new ItemFacts(42,"Required glamour",true,3,90,false,false,SourceKind.Ordinary,1);
         var stock=new Stock(42,false,1,0,0);
         var rules=new RuleSettings();

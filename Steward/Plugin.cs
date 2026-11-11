@@ -54,7 +54,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private long nextPostprocessRelease;
     private readonly Dictionary<string,long> recentDecisions=[];
     public Plugin(IDalamudPluginInterface pi,ICommandManager commands,IFramework framework,IPlayerState player,
-        IObjectTable objects,IDataManager data,IGameGui gui,IMarketBoard board,IPluginLog log,IChatGui chat,INotificationManager notifications,ITextureProvider textures,IAddonLifecycle lifecycle,ISigScanner sigScanner,IGameInteropProvider interop)
+        IObjectTable objects,IDataManager data,IGameGui gui,IMarketBoard board,IPluginLog log,IChatGui chat,INotificationManager notifications,ITextureProvider textures,IAddonLifecycle lifecycle,ISigScanner sigScanner,IGameInteropProvider interop,ICondition condition)
     {
         this.textures=textures;
         this.pi=pi;this.commands=commands;this.framework=framework;this.player=player;this.objects=objects;this.log=log;this.chat=chat;this.notifications=notifications;
@@ -86,7 +86,7 @@ public sealed partial class Plugin : IDalamudPlugin
         }
         universalis=new(Path.Combine(pi.GetPluginConfigDirectory(),"sale-statistics.json"));
         inventoryMemory=new(Path.Combine(pi.GetPluginConfigDirectory(),"inventory-observations.json"));
-        view=new(data,config,inventoryMemory);imports=new(pi,config,view);
+        view=new(data,config,inventoryMemory,condition);imports=new(pi,config,view);
         view.StoragePlanAllows=(source,retainer)=>pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.StoragePlanAllows").InvokeFunc(view.Character,
             JsonSerializer.Serialize(new{source.Container,source.Slot,source.ItemId,source.Quantity,source.Hq,Retainer=retainer}));
         tracked=new(pi);
