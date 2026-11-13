@@ -34,6 +34,21 @@ public sealed partial class Plugin
         if(!storageRun.Allows(player.ContentId,config.ExecutionEnabled)||executionFault||market.Queue.Running||ownsPostprocess)return;
         if(pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.FinishStorage").InvokeFunc(player.ContentId))
         {
+            if(storageRun.StorageOnly||storageRun.ArmoireOnly)
+            {
+                if(!view.Evidence.ReferencesReady||!view.Evidence.GearsetsReady||!InventoryView.PlayerLoaded())
+                    Alert("Glamour storage held: inventory, gear sets or selected glamour references are unavailable. Check inventory readiness.");
+                else if((storageRun.CheckedArmoire||storageRun.AttemptedArmoireItems.Count>0)&&!view.Evidence.ArmoireKnown)
+                    Alert("Armoire visit finished without verified cabinet contents. Check the armoire before retrying.");
+                else if(view.Items.Any(stock=>storageRun.AttemptedArmoireItems.Contains(stock.ItemId)&&!view.Evidence.Armoire.Contains(stock.ItemId)))
+                    Alert("Some requested armoire pieces are still carried. Check the cabinet and the run log.");
+                else if(!storageRun.RequestedStorage&&InventoryView.FreeBagSlots()<2)
+                    Alert("No collection transfer started. Retainer withdrawals need two empty bag slots.");
+                else if(storageRun.RequestedStorage)Alert("Glamour storage pass finished. See the run log for item results.");
+                else if(view.Retainers.Count==0||view.Retainers.Any(id=>config.Storage.RetainerEnabled(id)&&!inventoryMemory.HasRetainer(player.ContentId,id)))
+                    Alert("No eligible glamour storage found in observed inventory. Some retainer inventories have not been observed.");
+                else Alert("No eligible glamour items found to store in carried inventory or the saved inventories of included retainers.");
+            }
             storageRun.End();finishingStorageRun=false;
             Record("Storage run completed: dresser closed, native entrust finished or unnecessary, AutoRetainer handoff acknowledged");
         }
@@ -54,11 +69,26 @@ public sealed partial class Plugin
         if(!config.Features.DresserCollection&&!config.Features.ArmoireStorage)return false;
         if(!player.IsLoaded||character==0||character!=player.ContentId||attached!=character||!config.Connected||!config.ExecutionEnabled||executionFault||InventoryView.FreeBagSlots()<2)return false;
         RefreshProtection();
+        return CollectionNeededFromView();
+    }
+    private bool CollectionNeededFromView()
+    {
         var waiting=view.Items.Where(s=>Judge(s).Outcome==Outcome.CollectDresser).Select(s=>s.ItemId).Distinct().Count();
+        foreach(var stock in CollectionRetainerStocks())
+        {
+            if(view.Items.Any(s=>s.ItemId==stock.ItemId))continue;
+            var outcome=Judge(stock).Outcome;
+            if((!storageRun.ArmoireOnly||outcome==Outcome.CollectArmoire)&&
+                outcome is (Outcome.CollectArmoire or Outcome.CollectDresser)&&config.Features.Enabled(outcome)&&
+                StoragePolicy.CanWithdraw(outcome,view.Evidence.DresserFreeSlots,config.Rules.DresserEmptySlots,waiting,0))return true;
+        }
+        return false;
+    }
+    private IEnumerable<Stock> CollectionRetainerStocks()
+    {
         var containers=InventoryView.RetainerTypes().Select(t=>(uint)t).ToHashSet();
-        return tracked.Items.Any(r=>config.Storage.RetainerEnabled(r.Owner)&&view.Retainers.Contains(r.Owner)&&(containers.Contains(r.Stock.Container)||AllaganRetainerPreview.IsPreview(r.Stock.Container))&&
-            !view.Items.Any(s=>s.ItemId==r.Stock.ItemId)&&(!storageRun.ArmoireOnly||Judge(r.Stock).Outcome==Outcome.CollectArmoire)&&(Judge(r.Stock).Outcome is Outcome.CollectArmoire or Outcome.CollectDresser)&&config.Features.Enabled(Judge(r.Stock).Outcome)&&
-            StoragePolicy.CanWithdraw(Judge(r.Stock).Outcome,view.Evidence.DresserFreeSlots,config.Rules.DresserEmptySlots,waiting,0));
+        return tracked.Items.Where(r=>config.Storage.RetainerEnabled(r.Owner)&&view.Retainers.Contains(r.Owner)&&
+            (containers.Contains(r.Stock.Container)||AllaganRetainerPreview.IsPreview(r.Stock.Container))).Select(r=>r.Stock);
     }
     private long nextOverflowAttempt;
     private readonly Dictionary<string,long> storageAlerts=[];
@@ -107,30 +137,57 @@ public sealed partial class Plugin
         // the dresser must not turn lost live ownership into another dresser visit.
         if(storageRun.EntrustPending&&nextPostCleanupEntrust>0){TryPostCleanupEntrust();return true;}
         // Existing player/armoury items must not suppress missing-item retainer collection.
-        if(!storageRun.CleanupOnly&&Environment.TickCount64>=nextCollectionAttempt&&CollectionNeeded(player.ContentId))
+        if(!storageRun.CleanupOnly&&(config.Features.DresserCollection||config.Features.ArmoireStorage)&&InventoryView.FreeBagSlots()>=2&&Environment.TickCount64>=nextCollectionAttempt&&CollectionNeededFromView())
         {
-            if(!market.CloseDresserForStorage())return false;
+            if(!market.CloseDresserForStorage())return true;
             nextCollectionAttempt=Environment.TickCount64+60000;
             collectionPass=true;
             try
             {
                 if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,"Collect"))
-                {Record("Collection retainer pass requested; existing player gear does not block withdrawals");return true;}
+                {storageRun.RequestedStorage=true;Record("Collection retainer pass requested; existing player gear does not block withdrawals");return true;}
                 collectionPass=false;nextCollectionAttempt=Environment.TickCount64+5000;Alert("Protected items on retainers are waiting for collection. Move near a summoning bell and keep free inventory space.");
             }
             catch{collectionPass=false;throw;}
         }
-        if(storageRun.CleanupOnly && market.DresserOpen) return false;
-        if(config.Features.ArmoireStorage&&NeedsCollectionVisit(true))
+        if(storageRun.CheckedArmoire&&!view.Evidence.ArmoireKnown)
         {
-            if(!market.CloseDresserForStorage())return false;
+            view.Refresh(player.ContentId);
+            if(view.Evidence.ArmoireKnown)return true;
+            if(!storageRun.StorageOnly&&!storageRun.ArmoireOnly)Alert("Armoire contents could not be verified. Collection is paused for this pass.");
+            FinishStorageRun();
+            return true;
+        }
+        if(storageRun.CleanupOnly && market.DresserOpen) return false;
+        // Rules need live cabinet ownership before judging a missing dresser copy.
+        // A candidate on a retainer can require this visit even with empty player bags.
+        bool checkCabinet=config.Features.ArmoireStorage&&!storageRun.CleanupOnly&&!storageRun.CheckedArmoire&&!view.Evidence.ArmoireKnown&&
+            (InventoryView.FreeBagSlots()>=2&&CollectionRetainerStocks().Any(s=>view.Facts(s.ItemId) is {} item&&StoragePolicy.NeedsCollectionVisit(item,s,config.Rules,view.Evidence,true))||
+             !storageRun.ArmoireOnly&&config.Features.DresserCollection&&NeedsCollectionVisit(false));
+        if(config.Features.ArmoireStorage&&(checkCabinet||NeedsCollectionVisit(true)))
+        {
+            if(!market.CloseDresserForStorage())return true;
             var candidates = ArmoireCandidates().Distinct().ToArray();
-            if(candidates.Length > 0 && pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,"Armoire"))
+            if((checkCabinet||candidates.Length>0) && pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,"Armoire"))
             {
+                storageRun.CheckedArmoire=true;
+                storageRun.RequestedStorage=true;
                 storageRun.AttemptedArmoireItems.UnionWith(candidates);
+                if(checkCabinet)Record("Opening armoire to verify collection ownership before withdrawal or deposit");
                 Record("Armoire visit requested for carried items: " + string.Join(", ", candidates));
                 return true;
             }
+            Alert("Armoire route could not start. Check AutoRetainer and the available travel route.");
+            nextAutomaticWork=Environment.TickCount64+5000;
+            return true;
+        }
+        if(!storageRun.ArmoireOnly&&!storageRun.CleanupOnly&&config.Features.DresserCollection&&
+            !config.Features.ArmoireStorage&&!view.Evidence.ArmoireKnown&&NeedsCollectionVisit(false))
+        {
+            Alert("Dresser storage needs current armoire contents. Open the armoire once and retry, or enable armoire storage for automatic visits.");
+            storageRun.RequestedStorage=true;
+            FinishStorageRun();
+            return true;
         }
         if(!storageRun.ArmoireOnly&&!storageRun.CleanupOnly&&!market.DresserOpen&&Environment.TickCount64>=nextDresserAttempt&&
             (config.Features.DresserCollection&&NeedsCollectionVisit(false)))
@@ -138,7 +195,9 @@ public sealed partial class Plugin
             if(config.Features.DresserCollection&&!market.DresserPreparationReady())
             {status=market.DresserPreparationStatus!;return true;}
             nextDresserAttempt=Environment.TickCount64+60000;
-            if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,"Dresser"))return true;
+            if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,"Dresser"))
+            {storageRun.RequestedStorage=true;Record("Glamour dresser visit requested");return true;}
+            nextDresserAttempt=Environment.TickCount64+5000;
             Alert("Glamour collection is waiting for AutoRetainer's dresser route. Check its travel dependencies; protected items remain safe.");
         }
         if(!storageRun.ArmoireOnly&&!storageRun.CleanupOnly&&config.Features.OverflowStorage&&view.Items.Any(s=>Judge(s).Outcome==Outcome.StoreRetainer)&&Environment.TickCount64>=nextOverflowAttempt)
@@ -146,6 +205,7 @@ public sealed partial class Plugin
         return false;
     }
     private bool StorageWorkRemaining()=>
+        !storageRun.CleanupOnly&&(config.Features.ArmoireStorage||config.Features.DresserCollection)&&InventoryView.FreeBagSlots()>=2&&CollectionNeededFromView()||
         config.Features.ArmoireStorage&&NeedsCollectionVisit(true)||
         !storageRun.ArmoireOnly&&!storageRun.CleanupOnly&&config.Features.DresserCollection&&NeedsCollectionVisit(false)||
         !storageRun.ArmoireOnly&&!storageRun.CleanupOnly&&config.Features.OverflowStorage&&view.Items.Any(s=>Judge(s).Outcome==Outcome.StoreRetainer);
@@ -154,8 +214,7 @@ public sealed partial class Plugin
             view.Facts(stock.ItemId) is {} item &&
             StoragePolicy.NeedsCollectionVisit(item,stock,config.Rules,view.Evidence,true))
         .Select(stock => stock.ItemId);
-    private bool NeedsCollectionVisit(bool armoire)=>armoire ? ArmoireCandidates().Any() : view.Items.Concat(tracked.Items
-        .Where(row=>!storageRun.CleanupOnly&&view.Retainers.Contains(row.Owner)&&config.Storage.RetainerEnabled(row.Owner)).Select(row=>row.Stock))
+    private bool NeedsCollectionVisit(bool armoire)=>armoire ? ArmoireCandidates().Any() : view.Items.Concat(InventoryView.FreeBagSlots()>=2?CollectionRetainerStocks():Enumerable.Empty<Stock>())
         .Any(stock=>view.Facts(stock.ItemId) is {} item&&
         StoragePolicy.NeedsCollectionVisit(item,stock,config.Rules,view.Evidence,armoire));
     private void StartOverflow()

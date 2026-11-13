@@ -70,10 +70,10 @@ class FeatureWiring(unittest.TestCase):
         storage=(ROOT/'Plugin.Storage.cs').read_text()
         self.assertNotIn('carriedCollection',storage)
         self.assertNotIn('carriedActions',storage)
-        self.assertIn('if(!storageRun.CleanupOnly&&Environment.TickCount64>=nextCollectionAttempt&&CollectionNeeded(player.ContentId))',storage)
+        self.assertIn('Environment.TickCount64>=nextCollectionAttempt&&CollectionNeededFromView()',storage)
         flow=storage.split('private bool AutomaticStorageWork()')[1]
-        self.assertLess(flow.index('CollectionNeeded(player.ContentId)'),flow.index('NeedsCollectionVisit(false)'))
-        self.assertIn('nextCollectionAttempt=Math.Max(nextCollectionAttempt,Environment.TickCount64+5000)',transition)
+        self.assertLess(flow.index('CollectionNeededFromView()'),flow.index('NeedsCollectionVisit(false)'))
+        self.assertIn('nextCollectionAttempt=Environment.TickCount64+5000',transition)
 
     def test_storage_starts_only_from_handoff_or_explicit_run(self):
         plugin=(ROOT/'Plugin.cs').read_text()

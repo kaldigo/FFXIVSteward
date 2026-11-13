@@ -15,7 +15,7 @@ class CleanupWiring(unittest.TestCase):
   self.assertIn('return StepResult.Completed;',live.split('attempted=true')[0])
  def test_automatic_storage_closes_dresser_only_after_work_finishes(self):
   plugin=(ROOT/'Plugin.cs').read_text()
-  self.assertIn('!market.Queue.Running&&!StorageWorkRemaining()&&!storageRun.EntrustPending&&!postCleanupEntrustPass&&market.CloseDresserForStorage()',plugin)
+  self.assertRegex(plugin,r'if\(!market.Queue.Running&&!StorageWorkRemaining\(\)\)\s*\{\s*TryPostCleanupEntrust\(\);\s*if\(!storageRun.EntrustPending&&!postCleanupEntrustPass&&market.CloseDresserForStorage\(\)\)FinishStorageRun\(\);')
   storage=(ROOT/'Services/MarketQueue.Storage.cs').read_text().split('public sealed record CleanupCandidate')[0]
   self.assertIn('ui.Get("MiragePrismPrismBox")!=null||',storage)
   self.assertIn('Queue.Running||',storage)

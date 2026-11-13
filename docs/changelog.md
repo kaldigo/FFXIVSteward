@@ -1,3 +1,7 @@
+## Glamour storage
+
+Collection runs can visit the armoire to verify ownership before collecting retainer gear. Steward remembers verified dresser capacity after closing it for the current session, responds sooner between visits, and reports the result of manual storage checks.
+
 ## Steward settings window
 
 Steward now uses the shared AetherglassUI window. Activity, Inventory, Market, Collection and Setup keep related work on one page. Search settings across collapsed groups and edit sale rules, category selections and collection policies in place. Existing settings and execution holds carry over.

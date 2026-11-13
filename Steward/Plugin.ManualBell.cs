@@ -110,6 +110,7 @@ public sealed partial class Plugin
         {
             BeginStorageRun(true);
             storageRun.ArmoireOnly=true;
+            Alert("Checking carried items and included retainers for armoire storage.");
             return;
         }
         if(action==BellAction.Overflow) { StartOverflow(); return; }
@@ -126,6 +127,7 @@ public sealed partial class Plugin
         }
         BeginStorageRun(true);
         storageRun.StorageOnly = action == BellAction.GlamourStorage;
+        if(storageRun.StorageOnly)Alert("Checking carried items and included retainers for glamour storage.");
         storageRun.CleanupOnly = action == BellAction.DresserCleanup;
         Record("Manual bell action started: " + action);
     }

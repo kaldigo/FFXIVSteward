@@ -248,6 +248,7 @@ public sealed unsafe class InventoryView
         {
             Evidence.Dresser=sessionCopies.Keys.ToHashSet();Evidence.DresserCopyCounts=sessionCopies;Evidence.DresserKnown=true;
             Evidence.SessionDresserObservedAt=SessionDresser.ObservedAt;
+            Evidence.DresserFreeSlots=SessionDresser.FreeSlots(character);
         }
         if(mm!=null && mm->GlamourPlatesLoaded)
         {

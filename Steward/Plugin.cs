@@ -373,12 +373,12 @@ public sealed partial class Plugin : IDalamudPlugin
                 collectionPass=false;
                 nextDresserAttempt=0;nextAutomaticWork=0;
                 // Start the return route before another sweep, including passes that took over a minute.
-                nextCollectionAttempt=Math.Max(nextCollectionAttempt,Environment.TickCount64+5000);
+                nextCollectionAttempt=Environment.TickCount64+5000;
                 Record("Collection retainer pass finished; collection storage may resume immediately");
             }
             if(!ownsPostprocess&&!market.Queue.Running&&Environment.TickCount64>=nextAutomaticWork&&attached==player.ContentId&&attached!=0)
             {
-                nextAutomaticWork=Environment.TickCount64+5000;
+                nextAutomaticWork=Environment.TickCount64+(storageRun.Allows(player.ContentId,config.ExecutionEnabled)?750:5000);
                 var busy=pi.GetIpcSubscriber<bool>("AutoRetainer.PluginState.IsBusy").InvokeFunc();
                 if(!busy)
                 {
@@ -392,8 +392,11 @@ public sealed partial class Plugin : IDalamudPlugin
                             if(!market.Queue.Running&&!storageRun.ArmoireOnly&&!storageRun.CleanupOnly)market.DepositOpenDresser();
                             if(!market.Queue.Running&&!storageRun.ArmoireOnly&&!storageRun.StorageOnly)market.CleanupDresser();
                             if(storageRun.CleanupOnly && !market.Queue.Running && market.DresserOpen)market.CloseDresserForStorage();
-                            if(!market.Queue.Running&&!StorageWorkRemaining())TryPostCleanupEntrust();
-                            if(!market.Queue.Running&&!StorageWorkRemaining()&&!storageRun.EntrustPending&&!postCleanupEntrustPass&&market.CloseDresserForStorage())FinishStorageRun();
+                            if(!market.Queue.Running&&!StorageWorkRemaining())
+                            {
+                                TryPostCleanupEntrust();
+                                if(!storageRun.EntrustPending&&!postCleanupEntrustPass&&market.CloseDresserForStorage())FinishStorageRun();
+                            }
                         }
                     }
                 }
@@ -474,6 +477,16 @@ public sealed partial class Plugin : IDalamudPlugin
         if(!config.ExecutionEnabled){Record("Dry run: would request AutoRetainer "+operation);return;}
         if(market.Queue.Running){Record("Wait for the current operation to finish");return;}
         if(cleanupActive){Record("Stop full cleanup before starting another operation");return;}
+        if(operation=="Armoire"||operation=="Dresser"&&config.Features.DresserCollection&&!config.CleanDresser)
+        {
+            if(attached!=player.ContentId||attached==0){Alert("Glamour storage is waiting for the AutoRetainer connection.");return;}
+            BeginStorageRun(true);
+            storageRun.ArmoireOnly=operation=="Armoire";
+            storageRun.StorageOnly=operation=="Dresser";
+            nextAutomaticWork=0;
+            Alert("Checking carried items and included retainers for glamour storage.");
+            return;
+        }
         try{var result=pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,operation);
             if(result)BeginStorageRun(true);
             Record(result?"Requested AutoRetainer "+operation:"AutoRetainer could not start "+operation+"; check its settings, dependencies and current task");}

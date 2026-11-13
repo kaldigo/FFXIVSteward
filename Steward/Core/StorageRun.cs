@@ -6,6 +6,8 @@ public sealed class StorageRun
 {
     private ulong owner;
     public HashSet<uint> AttemptedArmoireItems { get; } = [];
+    public bool CheckedArmoire { get; set; }
+    public bool RequestedStorage { get; set; }
     public bool StorageOnly { get; set; }
     public bool ArmoireOnly { get; set; }
     public bool CleanupOnly { get; set; }
@@ -18,5 +20,5 @@ public sealed class StorageRun
         owner=authorized?character:0;
     }
     public bool Allows(ulong character,bool executionEnabled) => executionEnabled&&owner!=0&&owner==character;
-    public void End() { AttemptedArmoireItems.Clear();owner=0;EntrustPending=false;StorageOnly=false;CleanupOnly=false;ArmoireOnly=false; }
+    public void End() { CheckedArmoire=false;RequestedStorage=false;AttemptedArmoireItems.Clear();owner=0;EntrustPending=false;StorageOnly=false;CleanupOnly=false;ArmoireOnly=false; }
 }

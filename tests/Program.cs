@@ -27,11 +27,12 @@ Check(!MarketContextOwnership.Matches(129,129,0,0,-1,-1),"Unselected row cannot 
     var proof=new SessionCollection();
     Check(proof.Read(12)==null,"Disk caches cannot create same-login collection proof");
     Dictionary<uint,int> native=new(){[18311]=1,[18310]=1,[18283]=1};
-    proof.Seal(12,native,true,false);native.Clear();
+    proof.Seal(12,native,true,false,43);native.Clear();
+    Check(proof.FreeSlots(12)==43&&proof.FreeSlots(13)==null,"Capacity is preserved only for the verified character");
     Check(proof.Read(12)?.Count==3,"Verified close captures independent exact copy counts");
     Check(proof.Read(13)==null,"Collection proof is character scoped");
     proof.Read(12)!.Clear();Check(proof.Read(12)?.Count==3,"Readers cannot mutate retained proof");
-    proof.Invalidate();Check(proof.Read(12)==null,"Opening dresser or logout invalidates proof before edits");
+    proof.Invalidate();Check(proof.FreeSlots(12)==null,"Reopening invalidates sealed capacity");Check(proof.Read(12)==null,"Opening dresser or logout invalidates proof before edits");
     proof.Seal(12,new Dictionary<uint,int>(),true,false);
     Check(proof.Read(12)?.Count==0,"Removing last copy replaces previous ownership with observed empty contents");
     proof.Seal(12,new Dictionary<uint,int>{{18311,1}},false,false);Check(proof.Read(12)==null,"Unavailable native read never seals old cached contents");

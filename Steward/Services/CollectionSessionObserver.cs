@@ -26,7 +26,7 @@ public sealed class CollectionSessionObserver : IDisposable
         {
             var cid=character();if(cid==0)return;
             view.Refresh(cid);
-            view.SessionDresser.Seal(cid,view.Evidence.DresserCopyCounts,view.Evidence.DresserKnown,uncertain());
+            view.SessionDresser.Seal(cid,view.Evidence.DresserCopyCounts,view.Evidence.DresserKnown,uncertain(),view.Evidence.DresserFreeSlots);
             record(view.SessionDresser.Read(cid)!=null
                 ?$"Dresser session ownership verified at close: {view.Evidence.DresserCopyCounts.Count} exact item IDs; valid until next dresser opening or session end"
                 :"Dresser session ownership not sealed: native contents unavailable or an operation is uncertain; surplus disposal remains held");
