@@ -268,17 +268,14 @@ public sealed partial class Plugin
     private Group ItemSettings()
     {
         var rules = config.Rules;
-        var list = new AetherglassUI.Setting("items", "Item overrides", () => {}, "configured find item by name or ID")
-        {
-            ExpandedContent = () =>
+        var list = new AetherglassUI.Setting("items", "Item overrides", () =>
             {
                 var ids = rules.Ignored.Concat(rules.Keep).Concat(rules.CollectionKeep)
                     .Concat(rules.NonEquipmentDisposal).Concat(rules.QuantityReserves.Keys).Concat(config.Sources.Keys);
                 configuredOverrides ??= ids.Distinct().Select(id => new ItemListEntry(id, view.Facts(id)?.Name ?? "Unavailable item")).ToArray();
                 overrideList.Draw(configuredOverrides,
                     query => view.SearchItems(query).Select(i => new ItemListEntry(i.Id, i.Name)).ToArray(), OpenItemSettings, "Configured overrides", "Add an override");
-            }
-        };
+            }, "configured find item by name or ID") { Layout = FieldLayout.FullWidth };
         return new("Items", "Item overrides", new Topic("Inventory policy",
             Categories("Exclude categories from all handling",rules.IgnoredCategories,"No categories excluded","Applies to sales, collection, storage and disposal."), list));
     }
