@@ -17,6 +17,7 @@ public sealed class InventoryMemory : IDisposable
         public bool ArmoireObserved { get; set; }
         public HashSet<uint> Dresser { get; set; }=[];
         public HashSet<uint> Armoire { get; set; }=[];
+        public HashSet<ulong> NativeBags { get; set; }=[];
         public Dictionary<ulong,List<Stock>> Retainers { get; set; }=[];
     }
     private readonly string? path;
@@ -33,7 +34,7 @@ public sealed class InventoryMemory : IDisposable
             if(new FileInfo(path).Length>8*1024*1024)throw new InvalidDataException("Oversized inventory cache");
             var loaded=JsonSerializer.Deserialize<Dictionary<ulong,CharacterInventory>>(File.ReadAllText(path))??throw new InvalidDataException("Missing inventory cache");
             foreach(var (id,c) in loaded)
-                if(id==0||c==null||c.Dresser==null||c.Armoire==null||c.Retainers==null||c.Dresser.Contains(0)||c.Armoire.Contains(0)||c.NativePlateItems==null||c.NativePlateItems.Contains(0)||c.NativePlateItems.Count>4096||
+                if(id==0||c==null||c.Dresser==null||c.Armoire==null||c.Retainers==null||c.NativeBags==null||c.Dresser.Contains(0)||c.Armoire.Contains(0)||c.NativePlateItems==null||c.NativePlateItems.Contains(0)||c.NativePlateItems.Count>4096||
                     c.NativePlatesObserved&&(!c.NativePlateItemsRead||c.NativePlatesObservedAt==null||c.NativePlatesObservedAt==default(DateTimeOffset)||c.NativePlatesObservedAt>DateTimeOffset.UtcNow)||
                     c.Retainers.Any(r=>r.Key==0||r.Value==null||r.Value.Count>175||r.Value.Any(s=>s==null||!Valid(s))))
                     throw new InvalidDataException("Invalid inventory cache");
@@ -83,8 +84,12 @@ public sealed class InventoryMemory : IDisposable
         var stocks=items.OrderBy(s=>s.Container).ThenBy(s=>s.Slot).ToList();
         if(stocks.Count>175||stocks.Any(s=>!Valid(s))||stocks.Select(s=>(s.Container,s.Slot)).Distinct().Count()!=stocks.Count)
             throw new InvalidDataException("Incomplete or invalid retainer observation");
+        if(!onlyIfMissing&&c.NativeBags.Add(owner))dirty=true;
         if(!c.Retainers.TryGetValue(owner,out var old)||!old.SequenceEqual(stocks)){c.Retainers[owner]=stocks;dirty=true;}
     }
+    public IReadOnlyList<Stock>? ObservedBags(ulong character,ulong retainer)=>
+        characters.TryGetValue(character,out var c)&&c.Retainers.TryGetValue(retainer,out var rows)&&
+        (c.NativeBags.Contains(retainer)||rows.Count>0&&rows.All(s=>s.Container is >=10000 and <=10006))?rows:null;
     public bool HasRetainer(ulong character,ulong owner)=>characters.TryGetValue(character,out var c)&&c.Retainers.ContainsKey(owner);
     public IEnumerable<ulong> Owners(ulong id)=>characters.TryGetValue(id,out var c)?c.Retainers.Keys:[];
     public IEnumerable<(ulong Owner,Stock Stock)> Stocks(ulong id)=>characters.TryGetValue(id,out var c)?

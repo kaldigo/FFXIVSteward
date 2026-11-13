@@ -8,6 +8,13 @@ static class PersistentObservationChecks
         var item=new ItemFacts(42,"Protected glamour",true,3,60,false,false,SourceKind.AllianceRaid,1);
         var stock=new Stock(42,false,1,10000,0);
         var evidence=new Evidence{ReferencesReady=true,GearsetsReady=true,DresserKnown=true,ArmoireKnown=true,Dresser=[42],DresserCopyCounts=new(){[42]=1}};
+        using(var visits=new InventoryMemory())
+        {
+            visits.ObserveRetainer(100,101,[],onlyIfMissing:true);
+            check(visits.ObservedBags(100,101)==null,"Empty third-party preview cannot suppress a first visit");
+            visits.ObserveRetainer(100,101,[]);
+            check(visits.ObservedBags(100,101)?.Count==0&&visits.ObservedBags(200,101)==null,"Verified empty is specific to character and retainer");
+        }
         var rules=new RuleSettings();
         var directory=Path.Combine(Path.GetTempPath(),"Steward-observations-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(directory);
         var path=Path.Combine(directory,"inventory.json");

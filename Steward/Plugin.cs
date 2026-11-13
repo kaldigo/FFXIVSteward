@@ -109,6 +109,9 @@ public sealed partial class Plugin : IDalamudPlugin
         pi.GetIpcSubscriber<string,string,object>("AutoRetainer.OnRetainerReadyForPostprocess").Subscribe(Postprocess);
         pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.CollectionNeeded").RegisterFunc(CollectionNeeded);
         pi.GetIpcProvider<ulong,ulong,bool>("Steward.InventoryPolicy.CollectionNeededForRetainer").RegisterFunc(CollectionNeededForRetainer);
+        pi.GetIpcProvider<ulong,ulong,uint[]?>("Steward.InventoryPolicy.CachedBagStacks").RegisterFunc(CachedBagStacks);
+        pi.GetIpcProvider<ulong,ulong,uint[]>("Steward.InventoryPolicy.EntrustBlockedItems").RegisterFunc(EntrustBlockedItems);
+        pi.GetIpcProvider<ulong,ulong,string,int,bool>("Steward.InventoryPolicy.RetainerVisitNeeded").RegisterFunc(RetainerVisitNeeded);
         pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.CleanupAllowed").RegisterFunc(CleanupAllowed);
         pi.GetIpcProvider<ulong,ulong,bool>("Steward.InventoryPolicy.CleanupRetainerAllowed").RegisterFunc(CleanupRetainerAllowed);
         pi.GetIpcProvider<ulong,uint,bool>("Steward.InventoryPolicy.NonEquipmentDisposalSelected").RegisterFunc((character,id)=>
@@ -508,6 +511,9 @@ public sealed partial class Plugin : IDalamudPlugin
             pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.StrategyRetainer").UnregisterFunc();
             pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.CollectionNeeded").UnregisterFunc();
         pi.GetIpcProvider<ulong,ulong,bool>("Steward.InventoryPolicy.CollectionNeededForRetainer").UnregisterFunc();
+        pi.GetIpcProvider<ulong,ulong,uint[]?>("Steward.InventoryPolicy.CachedBagStacks").UnregisterFunc();
+        pi.GetIpcProvider<ulong,ulong,uint[]>("Steward.InventoryPolicy.EntrustBlockedItems").UnregisterFunc();
+        pi.GetIpcProvider<ulong,ulong,string,int,bool>("Steward.InventoryPolicy.RetainerVisitNeeded").UnregisterFunc();
             pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.CleanupAllowed").UnregisterFunc();
             pi.GetIpcProvider<ulong,ulong,bool>("Steward.InventoryPolicy.CleanupRetainerAllowed").UnregisterFunc();
             pi.GetIpcProvider<ulong,uint,bool>("Steward.InventoryPolicy.NonEquipmentDisposalSelected").UnregisterFunc();

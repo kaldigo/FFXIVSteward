@@ -98,6 +98,45 @@ public sealed partial class Plugin
         return tracked.Items.Where(r=>(retainer==0||r.Owner==retainer)&&config.Storage.RetainerEnabled(r.Owner)&&view.Retainers.Contains(r.Owner)&&
             (containers.Contains(r.Stock.Container)||AllaganRetainerPreview.IsPreview(r.Stock.Container))).Select(r=>r.Stock);
     }
+    // Planning hints only. Unknown snapshots permit an inspection. Every transfer still uses the live policy.
+    private uint[]? CachedBagStacks(ulong character,ulong retainer)
+    {
+        if(!player.IsLoaded||character==0||character!=player.ContentId)return null;
+        return inventoryMemory.ObservedBags(character,retainer)?.SelectMany(s=>new[]{s.ItemId,s.Hq?1u:0u,s.Quantity}).ToArray();
+    }
+
+    private uint[] EntrustBlockedItems(ulong character,ulong retainer)
+    {
+        if(character!=view.Character||!player.IsLoaded||!InventoryView.PlayerLoaded())return [];
+        return view.Items.GroupBy(s=>s.ItemId)
+            .Where(group=>group.All(s=>view.StorageBlock(s,retainer,nativeEntrust:true)!=null||!StorageCandidate(Judge(s))))
+            .Select(group=>group.Key).ToArray();
+    }
+    private bool RetainerVisitNeeded(ulong character,ulong retainer,string operation,int listed)
+    {
+        if(!player.IsLoaded||character!=player.ContentId||view.Character!=character)return true;
+        if(!InventoryView.PlayerLoaded()||!view.Evidence.ReferencesReady||!view.Evidence.GearsetsReady)return true;
+        var bags=inventoryMemory.ObservedBags(character,retainer);
+        if(operation=="Disposal")
+        {
+            if(!CleanupRetainerAllowed(character,retainer))return false;
+            return bags==null||bags.Any(stock=>Judge(stock).Outcome==Outcome.Dispose&&
+                pi.GetIpcSubscriber<uint,uint,bool>("AutoRetainer.InventoryPolicy.DisposalSelected").InvokeFunc(stock.ItemId,stock.Quantity));
+        }
+        if(operation=="Overflow")
+        {
+            if(!config.Storage.RetainerEnabled(retainer)||!config.Features.OverflowStorage)return false;
+            return (bags==null||bags.Count<175)&&view.Items.Any(s=>s.Quantity==1&&Judge(s).Outcome==Outcome.StoreRetainer&&
+                (bags==null||!view.IsUnique(s.ItemId)||!bags.Any(x=>x.ItemId==s.ItemId)));
+        }
+        if(operation is not ("List" or "Market" or "Review" or "Reprice"))return true;
+        if(!config.SalesEnabledFor(retainer))return false;
+        if(listed<0||listed>20)return true;
+        if(operation=="Review"||operation=="Reprice")return listed>0;
+        if(operation=="Market"&&listed>0&&(config.Features.Repricing||config.Features.ListingReturns||config.Features.Rotation))return true;
+        if(!config.Features.NewListings||listed>=20)return false;
+        return bags==null||view.Items.Where(s=>s.Container<4).Concat(bags).Any(s=>JudgeForRetainer(s,retainer).Outcome==Outcome.Market);
+    }
     private long nextOverflowAttempt;
     private readonly Dictionary<string,long> storageAlerts=[];
     private readonly List<string> cleanupPreview=[];
