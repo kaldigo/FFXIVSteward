@@ -23,11 +23,19 @@ public sealed partial class Plugin
     private void DrawSalePreview()
     {
         Section("Current retainer preview");
-        ImGui.TextWrapped("Opening a retainer's selling list automatically refreshes these proposals. Log-only mode records them automatically; no button click is needed.");
-        if(marketPreview==null)return;
+        if(marketPreview==null)
+        {
+            StewardShell.Panel("No market preview",1,()=>ImGui.TextWrapped("Open a retainer's selling list to load proposed listings, price changes and withdrawals."));
+            return;
+        }
         ImGui.TextWrapped(marketPreview.Status);
         if(marketPreview.Plan is not {} plan)return;
-        if(ImGui.BeginTable("ProposedSales",4,ImGuiTableFlags.RowBg|ImGuiTableFlags.BordersInnerH))
+        StewardShell.Panel("Market changes",3,()=>{
+            StewardShell.Metric("New stacks",plan.Listings.Count.ToString());
+            ImGui.TableNextColumn();StewardShell.Metric("Price changes",marketPreview.Reprices.Count.ToString());
+            ImGui.TableNextColumn();StewardShell.Metric("Rule returns",(marketPreview.Returns?.Count??0).ToString());
+        });
+        if(plan.Listings.Count>0 && ImGui.BeginTable("ProposedSales",4,ImGuiTableFlags.RowBg|ImGuiTableFlags.BordersInnerH))
         {
             ImGui.TableSetupColumn("Item");ImGui.TableSetupColumn("Stack");ImGui.TableSetupColumn("Gil each");ImGui.TableSetupColumn("Total gil");ImGui.TableHeadersRow();
             foreach(var listing in plan.Listings)

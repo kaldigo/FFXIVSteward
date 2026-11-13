@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
+    <DalamudLibPath Condition="'$(DALAMUD_HOME)' != ''">$(DALAMUD_HOME)</DalamudLibPath>
+    <DalamudLibPath Condition="'$(DalamudLibPath)' == ''">$(appdata)/XIVLauncher/addon/Hooks/dev</DalamudLibPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Steward/StewardShell.cs" />
+    <Compile Include="../Steward/TaskViews.cs" />
+    <Compile Include="../Steward/Plugin.ActivityControls.cs" />
+    <Compile Include="../Steward/Core/*.cs" />
+    <Compile Include="../Steward/Configuration.cs" />
+    <Compile Include="../tests/DalamudConfigurationStub.cs" />
+    <Compile Include="../Steward/Plugin.Silver.cs" />
+    <Compile Include="obj/Pages.g.cs" />
+    <PackageReference Include="Glasswork.Backend" Version="0.1.0-beta.3" />
+    <Reference Include="Dalamud.Bindings.ImGui"><HintPath>$(DalamudLibPath)/Dalamud.Bindings.ImGui.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="HexaGen.Runtime"><HintPath>$(DalamudLibPath)/HexaGen.Runtime.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+  <Target Name="LinkPages" BeforeTargets="CoreCompile">
+    <Exec Command="python &quot;$(MSBuildProjectDirectory)/link_pages.py&quot;" />
+  </Target>
+</Project>

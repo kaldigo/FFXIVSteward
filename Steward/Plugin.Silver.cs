@@ -13,6 +13,12 @@ public sealed partial class Plugin
         silverUndercut=(int)config.Silver.Undercut;
         silverPricesLoaded=true;
     }
+    private static void SilverPriceInput(string label,ref int value,int step,int fastStep)
+    {
+        ImGui.TextWrapped(label);
+        ImGui.SetNextItemWidth(Math.Min(ImGui.GetContentRegionAvail().X,180*StewardShell.Scale));
+        ImGui.InputInt("##"+label,ref value,step,fastStep);
+    }
     private void DrawSilverStrategy()
     {
         ImGui.TextWrapped("Metallic Silver Dye: a dedicated retainer strategy. Ordinary sales, rotation, storage and disposal exclusions remain in force elsewhere. Global log-only mode always wins.");
@@ -28,12 +34,12 @@ public sealed partial class Plugin
         ImGui.TextWrapped("Refill missing target stacks from your bags or this retainer. Other items are untouched. Existing dye listings are repriced but not resized or withdrawn when you change the split; the new mix fills free slots as items sell.");
         Section("Prices per dye");
         if(!silverPricesLoaded)LoadSilverPrices();
-        ImGui.SetNextItemWidth(180);ImGui.InputInt("Minimum selling price (gil)",ref silverMinimum,100,1000);
-        ImGui.TextDisabled("Lowest allowed price per dye, including the undercut.");
-        ImGui.SetNextItemWidth(180);ImGui.InputInt("Reset price (gil)",ref silverReset,100,1000);
-        ImGui.TextDisabled("Used when the market is empty or no competitor can be undercut above the minimum.");
-        ImGui.SetNextItemWidth(180);ImGui.InputInt("Undercut by (gil)",ref silverUndercut,1,5);
-        ImGui.TextDisabled("Amount below the cheapest qualifying competitor; applies when raising or lowering prices.");
+        SilverPriceInput("Minimum selling price (gil)",ref silverMinimum,100,1000);
+        ImGui.TextWrapped("Lowest allowed price per dye, including the undercut.");
+        SilverPriceInput("Reset price (gil)",ref silverReset,100,1000);
+        ImGui.TextWrapped("Used when the market is empty or no competitor can be undercut above the minimum.");
+        SilverPriceInput("Undercut by (gil)",ref silverUndercut,1,5);
+        ImGui.TextWrapped("Amount below the cheapest qualifying competitor; applies when raising or lowering prices.");
         var priceError=SilverStrategy.PriceInputError(silverMinimum,silverReset,silverUndercut);
         var changed=silverMinimum!=config.Silver.MinimumPrice||silverReset!=config.Silver.ResetPrice||silverUndercut!=config.Silver.Undercut;
         if(priceError!=null)ImGui.TextWrapped(priceError);
@@ -48,15 +54,15 @@ public sealed partial class Plugin
         ImGui.TextWrapped($"Your own retainers never count as competition. Competitors too cheap to undercut above the minimum trigger a manual-buyout alert. If no qualifying competitor remains, reset to {config.Silver.ResetPrice:N0} gil. Missing or incomplete prices always hold. No purchases are automated.");
         Section("Listing stack mix");
         silverStackEdits??=[..config.Silver.Stacks];
-        if(ImGui.BeginTable("Silver stack targets",3,ImGuiTableFlags.SizingFixedFit))
+        if(ImGui.BeginTable("Silver stack targets",3,ImGuiTableFlags.SizingStretchProp))
         {
-            ImGui.TableSetupColumn("Dyes per stack");ImGui.TableSetupColumn("Number of stacks");ImGui.TableSetupColumn("Actions");ImGui.TableHeadersRow();
+            ImGui.TableSetupColumn("Dyes per stack");ImGui.TableSetupColumn("Number of stacks");ImGui.TableSetupColumn("Actions",ImGuiTableColumnFlags.WidthFixed,ImGui.CalcTextSize("Remove").X+2*ImGui.GetStyle().FramePadding.X);ImGui.TableHeadersRow();
             for(var i=0;i<silverStackEdits.Count;i++)
             {
                 ImGui.PushID(i);ImGui.TableNextRow();ImGui.TableNextColumn();
                 var quantity=(int)silverStackEdits[i].Quantity;var count=silverStackEdits[i].Count;
-                ImGui.SetNextItemWidth(150);ImGui.InputInt("##dyes",ref quantity,1,5);
-                ImGui.TableNextColumn();ImGui.SetNextItemWidth(150);ImGui.InputInt("##stacks",ref count,1,5);
+                ImGui.SetNextItemWidth(-1);ImGui.InputInt("##dyes",ref quantity,1,5);
+                ImGui.TableNextColumn();ImGui.SetNextItemWidth(-1);ImGui.InputInt("##stacks",ref count,1,5);
                 silverStackEdits[i]=new((uint)Math.Max(0,quantity),count);
                 ImGui.TableNextColumn();var remove=ImGui.SmallButton("Remove");ImGui.PopID();
                 if(remove){silverStackEdits.RemoveAt(i);i--;}

@@ -46,7 +46,6 @@ public sealed partial class Plugin : IDalamudPlugin
     private bool ownsPostprocess;
     private bool executionFault;
     private string status="Starting in dry-run mode";
-    private string search="";
     private bool openingMarket;
     private bool openingInventory;
     private bool withdrawing;

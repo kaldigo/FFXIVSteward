@@ -57,10 +57,11 @@ class ListingWiring(unittest.TestCase):
         self.assertIn('listing.UnitPrice,listing.Total,marketPreview.World',source)
         self.assertIn('listing.Reference.Source,listing.Reference.Observed',source)
         self.assertNotIn('market.Start(',source)
-        ui=(ROOT/'Steward/Plugin.Settings.cs').read_text(encoding='utf-8')
-        self.assertIn('ImGui.BeginDisabled(!config.ExecutionEnabled||executionFault);',ui)
-        self.assertIn('if(ImGui.Button("List / reprice current retainer"))market.Start();',ui)
-        self.assertIn('if(config.LogOnly)',ui)
+        ui=(ROOT/'Steward/Plugin.Settings.cs').read_text(encoding='utf-8')+(ROOT/'Steward/Plugin.ActivityControls.cs').read_text(encoding='utf-8')
+        self.assertIn('if(!config.ExecutionEnabled||executionFault||cleanupActive)return;',ui)
+        self.assertIn('case 0:market.Start();break;',ui)
+        desk=(ROOT/'Steward/TaskViews.cs').read_text()
+        self.assertIn('ImGui.BeginDisabled(hold!=null||!available);',desk)
 
     def test_passive_price_observation_uses_current_native_request(self):
         source=(ROOT/'Steward/Services/MarketQueue.Listing.cs').read_text(encoding='utf-8')

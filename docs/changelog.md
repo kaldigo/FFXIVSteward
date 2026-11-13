@@ -1,3 +1,7 @@
+## 0.1.0.85
+
+Redesigned the Steward window for regular and compact layouts. Inspect carried-item decisions by outcome, compare sale-rule thresholds, and review collection status and market proposals. Manual passes, protection settings, disposal permissions and the dedicated retainer strategy are available from the task navigation.
+
 ## 0.1.0.84
 
 Sale rules can select the highest two materia grades separately from all other materia. Existing whole-materia selections cover both groups.

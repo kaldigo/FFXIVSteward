@@ -27,7 +27,7 @@ public sealed partial class Plugin
         var selectedNames=choices.Where(c=>c.Members.Any(selected.Contains))
             .Select(c=>c.Name+(c.Members.All(selected.Contains)?"":" (partial)")).ToArray();
         var summary=selected.Count==0?emptyLabel:selectedNames.Length==0?"Saved hidden category selection":$"{selectedNames.Length} selected";
-        if(!ImGui.CollapsingHeader($"{label} — {summary}###{label}"))return;
+        if(!StewardShell.CategoryHeader(label,summary))return;
         ImGui.PushID(label);
         if(ImGui.BeginChild("CategoryDetails",new(0,ImGui.GetTextLineHeightWithSpacing()*19),true))
         {
@@ -35,7 +35,7 @@ public sealed partial class Plugin
             ImGui.SetNextItemWidth(-1);
             if(ImGui.InputTextWithHint("##Search","Find a category...",ref query,100))categorySearches[ImGui.GetID(label).ToString()]=query;
             ImGui.TextWrapped(description);
-            ImGui.TextDisabled("Click an icon to toggle it. Highlighted icons are selected; amber borders indicate a partial selection. Hover for the category name.");
+            ImGui.TextWrapped("Click an icon to toggle it. Highlighted icons are selected; amber borders indicate a partial selection. Hover for the category name.");
             if(selectedNames.Length>0)ImGui.TextWrapped("Selected: "+string.Join(", ",selectedNames.Take(8))+(selectedNames.Length>8?" …":""));
             if(ImGui.SmallButton("Select all")){CategoryDisplay.Set(selected,choices.Where(c=>c.Id!=39),true);SavePolicy();}
             ImGui.SameLine();if(ImGui.SmallButton("Clear selection")){selected.Clear();SavePolicy();}

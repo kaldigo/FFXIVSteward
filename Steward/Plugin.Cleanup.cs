@@ -1,4 +1,3 @@
-using Dalamud.Bindings.ImGui;
 
 namespace Steward;
 
@@ -47,14 +46,5 @@ public sealed partial class Plugin
         var owner=cleanupOwner;cleanupActive=false;cleanupOwner=0;
         try{pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.StopCleanup").InvokeFunc(owner);}
         catch(Exception ex){Record("Cleanup cancellation could not be confirmed: "+ex.Message);}
-    }
-    private void DrawCleanupControls()
-    {
-        ImGui.BeginDisabled(!config.Features.Disposal||cleanupActive);
-        if(ImGui.Button("Run full cleanup"))StartCleanup();
-        ImGui.EndDisabled();
-        if(cleanupActive){ImGui.SameLine();if(ImGui.Button("Stop full cleanup"))Stop();}
-        ImGui.TextWrapped("Visits included retainers, withdraws approved disposal items, and runs enabled methods in order: GC, desynthesis, then selling. Repeats while confirmed progress is made, using AutoRetainer's configured return travel. This pass does not start market listings or glamour removals.");
-        if(cleanupStatus.Length>0)ImGui.TextWrapped(cleanupStatus);
     }
 }

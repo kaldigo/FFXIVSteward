@@ -6,17 +6,13 @@ namespace Steward;
 
 public sealed partial class Plugin
 {
-    private int settingsPage;
-    private readonly Dictionary<SaleRule,string> ruleUiIds=[];
-    private string navigationSearch="";
+    private readonly StewardShell shell = new();
     private uint selectedItem;
-    private SaleRule? expandSaleRule;
     private readonly Dictionary<uint,string> itemQueries=[];
     private readonly Dictionary<uint,IReadOnlyList<(uint Id,string Name)>> itemSearchResults=[];
-    private static readonly string[] Pages=["Overview","Sale rules","Glamour filters","Storage","Item overrides","Integrations","Developer tools","Experimental strategies"];
-    private static readonly string[] PageKeywords=["automation pause status inventory","market prices stacks quality undercut sales","collection outfits plates rarity dungeon raid favourites","dresser armoire overflow cleanup space","exclude keep reserve quantities categories disposal","AutoRetainer Market Buddy Universalis connection","logs diagnostics log-only testing","silver dye dedicated retainer stacks reset buyout strategy"];
     private void SavePolicy()
     {
+        decisions.Clear();
         market.ReplanPending();
         config.GlamaholicExpected=config.Rules.Glamour.Glamaholic;
         config.UseBundledGlamourList=config.Rules.Glamour.EorzeaCollection;
@@ -24,153 +20,133 @@ public sealed partial class Plugin
     }
     private void Setting(string title,bool value,Action<bool> update,string? description=null)
     {
-        if(ImGui.Checkbox(title,ref value)){update(value);SavePolicy();}
-        if(description!=null)
-        {
-            ImGui.SameLine();ImGui.TextDisabled("(?)");
-            if(ImGui.IsItemHovered()){ImGui.BeginTooltip();ImGui.PushTextWrapPos(ImGui.GetFontSize()*30);ImGui.TextUnformatted(description);ImGui.PopTextWrapPos();ImGui.EndTooltip();}
-        }
+        if(StewardShell.SwitchRow(title,value,description)){update(!value);SavePolicy();}
     }
-    private static void Section(string title)
-    {ImGui.Spacing();ImGui.Separator();ImGui.Spacing();ImGui.TextUnformatted(title);ImGui.Spacing();}
+    private static void Section(string title) => StewardShell.Section(title);
+    private string RunContext => executionFault || config.ExecutionReviewRequired ? "Inventory review needed"
+        : config.LogOnly ? "Log-only review" : !config.Connected ? "Disconnected"
+        : cleanupActive ? "Cleanup running" : market.Queue.Running ? "Processing items"
+        : attached == 0 || attached != player.ContentId ? "Waiting for AutoRetainer" : "Following AutoRetainer";
+
     private void Draw()
     {
-        if(!open)return;
-        ImGui.SetNextWindowSize(new(1000,700),ImGuiCond.FirstUseEver);
-        ImGui.SetNextWindowSizeConstraints(new(800,500),new(float.MaxValue,float.MaxValue));
-        if(!ImGui.Begin("Steward###StewardSettings",ref open)){ImGui.End();return;}
-        var width=Math.Clamp(ImGui.GetContentRegionAvail().X*.23f,180,240);
-        if(ImGui.BeginChild("Navigation",new(width,0),true))
+        if (!open) return;
+        float scale = StewardShell.Scale;
+        ImGui.SetNextWindowSize(new Vector2(860,650)*scale,ImGuiCond.FirstUseEver);
+        ImGui.SetNextWindowSizeConstraints(new Vector2(420,340)*scale,new(float.MaxValue,float.MaxValue));
+        ImGui.PushStyleColor(ImGuiCol.WindowBg,new Vector4(.055f,.058f,.074f,1));
+        try
         {
-            var icon=textures.GetFromFile(Path.Combine(pi.AssemblyLocation.DirectoryName!,"images","icon.png")).GetWrapOrDefault();
-            if(icon!=null)
-            {
-                var size=Math.Min(125*ImGui.GetFontSize()/17,ImGui.GetContentRegionAvail().X);
-                ImGui.SetCursorPosX(ImGui.GetCursorPosX()+(ImGui.GetContentRegionAvail().X-size)/2);
-                ImGui.Image(icon.Handle,new(size,size));ImGui.Spacing();
-            }
-            ImGui.TextUnformatted("Steward");ImGui.TextDisabled(config.LogOnly?"Log-only review":config.ExecutionReviewRequired?"Inventory review needed":"Following AutoRetainer");
-            ImGui.Spacing();ImGui.SetNextItemWidth(-1);
-            ImGui.InputTextWithHint("##NavigationSearch","Find a setting...",ref navigationSearch,100);
-            for(var i=0;i<Pages.Length;i++)
-            {
-                if(i==0||i==5||i==6){ImGui.Spacing();ImGui.TextDisabled(i==0?"SETUP":i==5?"CONNECTIONS":"DEVELOPMENT");}
-                if(!($"{Pages[i]} {PageKeywords[i]}").Contains(navigationSearch,StringComparison.OrdinalIgnoreCase))continue;
-                if(ImGui.Selectable(Pages[i],settingsPage==i))settingsPage=i;
-            }
-            ImGui.Spacing();if(ImGui.Button("Stop current Steward run",new(-1,0)))Stop();
+            if (ImGui.Begin("Steward###StewardSettings",ref open,ImGuiWindowFlags.NoTitleBar))
+                shell.Draw(RunContext,()=>open=false,Stop,DrawWorkspace);
+            ImGui.End();
         }
-        ImGui.EndChild();ImGui.SameLine();
-        if(ImGui.BeginChild("SettingsPage",Vector2.Zero,false))
+        finally { ImGui.PopStyleColor(); }
+    }
+    private void DrawWorkspace(Desk page)
+    {
+        if(executionFault && page!=Desk.Activity)
         {
-            ImGui.TextUnformatted(Pages[settingsPage]);ImGui.Separator();ImGui.Spacing();
-            if(executionFault)ImGui.TextWrapped("Automation is stopped because an earlier operation needs an inventory check. Resolve this on Overview.");
-            switch(settingsPage)
-            {
-                case 0:DrawOverviewPage();break;
-                case 1:DrawSalesPage();break;
-                case 2:DrawGlamourPage();break;
-                case 3:DrawStoragePage();break;
-                case 4:DrawOverridesPage();break;
-                case 5:DrawIntegrationsPage();break;
-                case 6:DrawDeveloperPage();break;
-                case 7:DrawSilverStrategy();break;
-            }
+            ImGui.TextWrapped("A previous operation needs an inventory check.");
+            if(ImGui.SmallButton("Review on Activity"))shell.Open(Desk.Activity);
         }
-        ImGui.EndChild();ImGui.End();
+        switch(page)
+        {
+            case Desk.Inventory:DrawDecisions();break;
+            case Desk.Market:
+                if(ImGui.Button("Edit sale rules"))shell.Open(Desk.Sales);
+                if(ImGui.Button("Dedicated retainer strategy"))shell.Open(Desk.Strategies);
+                DrawSalePreview();break;
+            case Desk.Collection:
+                DrawCollectionFeatureControls();
+                if(config.PendingCollection.TryGetValue(view.Character,out var pending))
+                    ImGui.TextWrapped($"{pending.Count} protected items waiting for collection");
+                ImGui.TextWrapped($"Dresser free slots: {view.Evidence.DresserFreeSlots?.ToString()??"unknown"}   /   Reserved: {config.Rules.DresserEmptySlots}");
+                StewardShell.Link("Choose protected gear","Set which outfits, sources and equipment require a collection copy.",()=>shell.Open(Desk.Glamour));
+                StewardShell.Link("Manage storage and dresser cleanup","Set overflow, dresser reserve and cleanup permissions.",()=>shell.Open(Desk.Storage));
+                break;
+            case Desk.Setup:
+                StewardShell.Link("Integrations","Manage the AutoRetainer connection and imported settings.",()=>shell.Open(Desk.Connections));
+                StewardShell.Link("Developer tools","Review proposals in log-only mode and inspect diagnostics.",()=>shell.Open(Desk.Review));
+                break;
+            case Desk.Disposal:DrawDisposalPermissions();break;
+            case Desk.Readiness:DrawReadiness();break;
+            case Desk.Activity:DrawOverviewPage();break;
+            case Desk.Sales:DrawSalesPage();break;
+            case Desk.Glamour:DrawGlamourPage();break;
+            case Desk.Storage:DrawStoragePage();break;
+            case Desk.Items:DrawOverridesPage();break;
+            case Desk.Connections:DrawIntegrationsPage();break;
+            case Desk.Review:DrawDeveloperPage();break;
+            case Desk.Strategies:DrawSilverStrategy();break;
+        }
     }
     private void DrawOverviewPage()
     {
-        ImGui.TextWrapped("Choose what to collect and sell. AutoRetainer carries out retainer and disposal work using its own enabled methods.");
-        if(config.LogOnly)
-        {ImGui.TextWrapped("Developer log-only mode is active. Item actions are disabled.");if(ImGui.SmallButton("Open developer tools"))settingsPage=6;}
-        ImGui.TextWrapped("Enabled features join AutoRetainer's runs. Use the feature switches below to choose the work, or log-only mode to review it. Run now requests a manual pass.");
-        ImGui.TextDisabled("Setting changes apply to fresh decisions; an already submitted action is verified before continuing.");
-        DrawRecoveryControls();
+        string? hold=executionFault || config.ExecutionReviewRequired ? "Check inventory before resuming."
+            : config.LogOnly ? "Log-only mode is recording proposals. Manual passes are paused."
+            : !config.ExecutionEnabled ? "Connect Steward to AutoRetainer before running a pass." : null;
+        runDesk.Draw(RunContext,config.Rules.Sales.Count(r=>r.Enabled),view.Evidence.DresserFreeSlots,
+            view.Character==0?null:config.PendingCollection.GetValueOrDefault(view.Character)?.Count??0,hold,DrawRecoveryControls,
+            pass=>pass switch {0=>!cleanupActive&&config.Features.AnyMarket,1=>!cleanupActive&&(config.Features.DresserCollection||config.CleanDresser),
+                2=>!cleanupActive&&config.Features.ArmoireStorage,_=>!cleanupActive&&config.Features.Disposal},
+            pass=>{if(!config.ExecutionEnabled||executionFault||cleanupActive)return;
+                switch(pass){case 0:market.Start();break;case 1:Run("Dresser");break;case 2:Run("Armoire");break;case 3:StartCleanup();break;}},
+            ()=>shell.Open(Desk.Inventory),()=>shell.Open(Desk.Readiness));
+        if(cleanupActive || cleanupStatus.Length>0)ImGui.TextWrapped(cleanupStatus);
+    }
+    private readonly RunDesk runDesk=new();
+    private readonly DecisionBrowser decisions=new();
+    private (ulong Character,uint World) decisionOwner;
+    private void DrawDecisions()
+    {
+        var owner=(view.Character,view.World);
+        if(owner!=decisionOwner){decisions.Clear();decisionOwner=owner;}
+        decisions.Draw(()=>decisions.Capture(view.Items.Select(stock=>new DecisionRow(stock,view.Facts(stock.ItemId)?.Name??$"Item {stock.ItemId}",Judge(stock)))),
+            id=>{selectedItem=id;shell.Open(Desk.Items);},()=>shell.Open(Desk.Disposal));
+        if(ImGui.Button("Manage item overrides"))shell.Open(Desk.Items);
+    }
+    private void DrawReadiness()
+    {
         Section("Readiness");
         ImGui.TextUnformatted(attached==player.ContentId&&attached!=0?"AutoRetainer: connected":"AutoRetainer: waiting for connection");
-        ImGui.TextUnformatted(view.Evidence.ReferencesReady?(view.NativeReferencesCached&&config.Rules.Glamour.NativePlates?"Selected glamour references: ready (saved native plates)":"Selected glamour references: ready"):!view.NativeReferencesAvailable&&config.Rules.Glamour.NativePlates?"Waiting for in-game glamour plate data":"Waiting for selected glamour references");
+        ImGui.TextWrapped(view.Evidence.ReferencesReady?(view.NativeReferencesCached&&config.Rules.Glamour.NativePlates?"Selected glamour references: ready (saved native plates)":"Selected glamour references: ready"):!view.NativeReferencesAvailable&&config.Rules.Glamour.NativePlates?"Waiting for in-game glamour plate data":"Waiting for selected glamour references");
         if(!view.NativeReferencesAvailable&&config.Rules.Glamour.NativePlates)ImGui.TextWrapped("Open the in-game glamour plate editor to load your saved plates.");
         if(view.NativeReferencesCached&&config.Rules.Glamour.NativePlates)ImGui.TextWrapped($"Using saved native plate references from {view.NativeReferencesObservedAt:yyyy-MM-dd HH:mm} UTC. Opening the plate editor refreshes them automatically.");
         if(!view.Evidence.GlamaholicKnown&&config.Rules.Glamour.Glamaholic)ImGui.TextWrapped("Glamaholic is selected but its saved outfits are unavailable. Check that the plugin is installed and configured.");
-        ImGui.TextUnformatted(view.Evidence.DresserKnown?"Glamour dresser: ready":"Glamour dresser: open it to verify current contents");
-        ImGui.TextUnformatted(view.Evidence.ArmoireKnown?"Armoire: ready":"Armoire: open it to verify current contents");
+        ImGui.TextWrapped(view.Evidence.DresserKnown?"Glamour dresser: ready":"Glamour dresser: open it to verify current contents");
+        ImGui.TextWrapped(view.Evidence.ArmoireKnown?"Armoire: ready":"Armoire: open it to verify current contents");
         Section("Your setup");
         ImGui.TextUnformatted($"{config.Rules.Sales.Count(r=>r.Enabled)} enabled sale rules · {config.Rules.Ignored.Count} item exclusions");
         ImGui.TextUnformatted($"Dresser space reserved: {config.Rules.DresserEmptySlots} slots");
         if(config.PendingCollection.TryGetValue(view.Character,out var waiting)&&waiting.Count>0)ImGui.TextWrapped($"{waiting.Count} protected items are waiting for collection. They remain protected in retainer storage.");
-        Section("Features");
-        ImGui.TextWrapped("Choose the work Steward should do. Disabling a feature preserves its settings and all item protections. Changes apply to fresh decisions.");
-        DrawMarketFeatureControls();
-        Setting("Prefer faster-selling listings",config.Rules.PreferFasterSales,v=>config.Rules.PreferFasterSales=v,"Prioritise listing quantity divided by average daily sales. Rotate only for a strictly faster replacement with known current activity. Market-wide activity is not a guaranteed sale time.");
-        if(ImGui.CollapsingHeader("Glamour collection",ImGuiTreeNodeFlags.DefaultOpen))
-        {
-            DrawCollectionFeatureControls();
-            Setting("Clean the glamour dresser",config.CleanDresser,v=>config.CleanDresser=v,"Restore unneeded items when the dresser is open for collection or you request a dresser run. This does not add a dresser trip to venture or entrust runs. Armoire migration also requires armoire storage.");
-        }
-        if(ImGui.CollapsingHeader("Storage and disposal",ImGuiTreeNodeFlags.DefaultOpen))
-        {
-            Setting("Store protected overflow in retainers",config.Features.OverflowStorage,v=>config.Features.OverflowStorage=v,"When disabled, protected overflow stays in inventory and remains protected.");
-            Setting("Allow AutoRetainer disposal",config.Features.Disposal,v=>config.Features.Disposal=v,"Allow eligible vendor sales, desynthesis and Grand Company deliveries through AutoRetainer. Turning this off blocks these managed actions while Steward is connected. AutoRetainer demo mode also blocks all three methods independently, so collection can run while disposal stays paused.");
-        }
-        Section("Run now");
-        ImGui.BeginDisabled(!config.ExecutionEnabled||executionFault);
-        DrawCleanupControls();
-        ImGui.BeginDisabled(cleanupActive);
-        ImGui.BeginDisabled(!config.Features.AnyMarket);
-        if(ImGui.Button("List / reprice current retainer"))market.Start();
-        ImGui.EndDisabled();
-        ImGui.BeginDisabled(!config.Features.DresserCollection&&!config.CleanDresser);
-        if(ImGui.Button("Collect glamour items"))Run("Dresser");
-        ImGui.EndDisabled();ImGui.SameLine();ImGui.BeginDisabled(!config.Features.ArmoireStorage);
-        if(ImGui.Button("Store armoire items"))Run("Armoire");
-        ImGui.EndDisabled();
-        ImGui.EndDisabled();
-        ImGui.EndDisabled();
-        Section("Current inventory");
-        ImGui.InputTextWithHint("##InventorySearch","Search item names...",ref search,128);
-        if(ImGui.BeginTable("InventorySummary",3,ImGuiTableFlags.RowBg|ImGuiTableFlags.BordersInnerH|ImGuiTableFlags.ScrollY,new(0,200)))
-        {
-            ImGui.TableSetupColumn("Item");ImGui.TableSetupColumn("Quantity");ImGui.TableSetupColumn("Decision");ImGui.TableHeadersRow();
-            foreach(var stock in view.Items)
-            {
-                var item=view.Facts(stock.ItemId);if(item==null||!item.Name.Contains(search,StringComparison.OrdinalIgnoreCase))continue;
-                ImGui.TableNextRow();ImGui.TableNextColumn();ImGui.TextUnformatted(item.Name+(stock.Hq?" (HQ)":""));
-                ImGui.TableNextColumn();ImGui.TextUnformatted(stock.Quantity.ToString());ImGui.TableNextColumn();
-                ImGui.TextUnformatted(Judge(stock).Outcome switch{Outcome.Ignore=>"Excluded",Outcome.Keep=>"Keep",Outcome.CollectArmoire=>"Collect in armoire",Outcome.CollectDresser=>"Collect in dresser",Outcome.StoreRetainer=>"Protected overflow",Outcome.Market=>"Eligible for sale",Outcome.Dispose=>"AutoRetainer disposal candidate",_=>"Waiting for evidence"});
-            }
-            ImGui.EndTable();
-        }
     }
     private void DrawGlamourPage()
     {
-        DrawCollectionFeatureControls();
-        ImGui.TextWrapped("Collection switches control item movement. The protection filters below still protect items when collection is disabled.");
-        ImGui.TextWrapped("These filters decide which items need one copy in the armoire or dresser. A match from ANY enabled filter protects that copy. Extra copies can be sold or disposed of only after live collection ownership is confirmed.");
+        ImGui.TextWrapped("Keep one copy when any enabled filter matches. Turning off collection pauses item movement and keeps these protections active.");
         var f=config.Rules.Glamour;
-        Section("Saved outfits");
-        Setting("In-game glamour plates",f.NativePlates,v=>f.NativePlates=v);
-        Setting("Glamaholic saved outfits",f.Glamaholic,v=>f.Glamaholic=v,"Includes nested folders. Selected reference sources must be available before handling items.");
-        Section("Automatic collection filters");
-        Setting("Eorzea Collection favourites",f.EorzeaCollection,v=>f.EorzeaCollection=v,"Steward's internal, curated popularity list. Frequency is the main signal; likes support it. Maintained with major-patch updates. It supplements the filters below and is not a complete catalogue of popular items.");
-        Setting("Level 1 equipment",f.LevelOne,v=>f.LevelOne=v);
-        Setting("Equipment designed for glamour",f.GlamourDesign,v=>f.GlamourDesign=v);
-        Setting("Nonmarketable blue equipment",f.NonmarketableBlue,v=>f.NonmarketableBlue=v,"Normal dungeon and normal raid gear are excluded from this rarity filter. Marketable blues can still match other filters.");
-        Setting("Equipment above blue rarity",f.HigherRarity,v=>f.HigherRarity=v);
-        Section("Acquisition sources");
-        Setting("Special rewards",f.SpecialRewards,v=>f.SpecialRewards=v,"Includes identified PvP, event and other special-source rewards. These share one source category in the current data.");
-        Setting("Alliance raids",f.AllianceRaids,v=>f.AllianceRaids=v);
-        Setting("Savage raids",f.SavageRaids,v=>f.SavageRaids=v);
-        Setting("Other high-end duties",f.HighEndDuties,v=>f.HighEndDuties=v,"Includes Coil and other duties classified as harder to refarm.");
-        Setting("Normal raids",f.NormalRaids,v=>f.NormalRaids=v);
-        Setting("Normal dungeons",f.NormalDungeons,v=>f.NormalDungeons=v);
+        if(!ImGui.BeginTabBar("ProtectionTopics",ImGuiTabBarFlags.FittingPolicyScroll))return;
+        if(ImGui.BeginTabItem("Keep one copy"))
+        {
+            DrawProtectionFilters(f);
+            ImGui.EndTabItem();
+        }
+        if(ImGui.BeginTabItem("Gear categories"))
+        {
         Section("Which gear types should automatic filters collect?");
         DrawCategorySelection("Apply automatic filters to",f.Categories,"All equipment categories","Empty means all gear types. Selecting categories limits the automatic filters above to those gear types; a category alone does not protect an item.");
         DrawCategorySelection("Skip automatic filters for",f.ExcludedCategories,"No categories skipped","Checked gear types will not be protected by the automatic filters above. Saved outfits, manual collection items, pending holds and unknown-source safeguards still apply.");
         ImGui.TextWrapped("Category scope applies to automatic filters, not saved outfits, manual collection items or pending collection holds.");
+            ImGui.EndTabItem();
+        }
+        if(ImGui.BeginTabItem("Exceptions"))
+        {
         Section("Always preserved");
         ImGui.TextWrapped("Equipped items, gear sets, explicit keep overrides, quantity reserves and pending collection holds retain their protection. Unknown acquisition is held rather than assumed disposable. Armoire-eligible items use the armoire and do not consume dresser space. Dyes do not require extra copies.");
-        if(ImGui.Button("Edit manual collection items"))settingsPage=4;
+        if(ImGui.Button("Edit manual collection items"))shell.Open(Desk.Items);
+            ImGui.EndTabItem();
+        }
+        ImGui.EndTabBar();
     }
     private void DrawMarketFeatureControls()
     {
@@ -202,45 +178,18 @@ public sealed partial class Plugin
     }
     private void DrawSalesPage()
     {
-        DrawMarketFeatureControls();
-        Setting("Prefer faster-selling listings",config.Rules.PreferFasterSales,v=>config.Rules.PreferFasterSales=v,"Prioritise listing quantity divided by average daily sales. Rotate only for a strictly faster replacement with known current activity. Market-wide activity is not a guaranteed sale time.");
-        if(!ImGui.BeginTabBar("SalesSections"))return;
+        if(!ImGui.BeginTabBar("SalesSections",ImGuiTabBarFlags.FittingPolicyScroll))return;
+        if(ImGui.BeginTabItem("Rules"))
+        {
+            DrawSaleCards();
+        ImGui.EndTabItem();
+        }
         if(ImGui.BeginTabItem("Retainers"))
         {
             ImGui.TextWrapped("Ordinary sale automation only runs on checked retainers. Experimental strategies have their own narrowly scoped item exceptions. Each ordinary sale rule can narrow this selection further.");
             DrawRetainerSelection(config.ExcludedSaleRetainers,false);
             ImGui.TextWrapped("Existing listings on enabled retainers are checked against the rules and withdrawn when they no longer qualify. Returned items follow normal collection, sale and disposal rules.");
             ImGui.EndTabItem();
-        }
-        if(ImGui.BeginTabItem("Rules"))
-        {
-        ImGui.TextWrapped("Rules run from top to bottom. The first enabled rule matching an item supplies its price, activity and stack thresholds. Collection protection and global exclusions take priority.");
-        if(ImGui.Button("Add sale rule")){expandSaleRule=new();config.Rules.Sales.Add(expandSaleRule);SavePolicy();}
-        if(config.Rules.Sales.Count==0)ImGui.TextWrapped("Add your first rule, then choose item categories and price thresholds.");
-        foreach(var rule in config.Rules.Sales.ToArray())
-        {
-            if(!ruleUiIds.TryGetValue(rule,out var key))ruleUiIds[rule]=key=Guid.NewGuid().ToString();
-            ImGui.PushID(key);
-            var index=config.Rules.Sales.IndexOf(rule);
-            ImGui.Spacing();ImGui.Separator();ImGui.Spacing();
-            if(ReferenceEquals(expandSaleRule,rule)){ImGui.SetNextItemOpen(true);expandSaleRule=null;}
-            var expanded=ImGui.CollapsingHeader($"{index+1}. {rule.Name}###RuleDetails");
-            Setting("Enabled",rule.Enabled,v=>rule.Enabled=v);
-            ImGui.SameLine();ImGui.BeginDisabled(index==0);
-            if(ImGui.SmallButton("Move up")){(config.Rules.Sales[index-1],config.Rules.Sales[index])=(rule,config.Rules.Sales[index-1]);SavePolicy();}
-            ImGui.EndDisabled();ImGui.SameLine();ImGui.BeginDisabled(index==config.Rules.Sales.Count-1);
-            if(ImGui.SmallButton("Move down")){(config.Rules.Sales[index+1],config.Rules.Sales[index])=(rule,config.Rules.Sales[index+1]);SavePolicy();}
-            ImGui.EndDisabled();ImGui.SameLine();
-            var deleted=ImGui.SmallButton("Delete");
-            if(deleted){config.Rules.Sales.Remove(rule);ruleUiIds.Remove(rule);SavePolicy();}
-            ImGui.TextWrapped($"At least {rule.MinimumUnit:N0} gil each / {rule.MinimumTotal:N0} gil per listing · Up to {rule.MaximumStack} per stack");
-            if(rule.AllowLowPriority)ImGui.TextWrapped($"Spare slots: from {rule.ListingMinimumUnit:N0} gil each / {rule.ListingMinimumTotal:N0} gil per listing · Low priority");
-            var scope=rule.Group==ItemGroup.Gear?"Equipment only · ":rule.Group==ItemGroup.Other?"Non-equipment only · ":"";
-            ImGui.TextWrapped(scope+(rule.Categories.Count==0?"All categories":string.Join(", ",rule.Categories.Take(4).Select(id=>view.SaleCategories.GetValueOrDefault(id,"Unavailable")))+(rule.Categories.Count>4?" …":""))+$" · {rule.ExcludedCategories.Count} excluded");
-            if(expanded&&!deleted){ImGui.Indent();DrawSaleRuleEditor(rule);ImGui.Unindent();}
-            ImGui.PopID();
-        }
-        ImGui.EndTabItem();
         }
         if(ImGui.BeginTabItem("Pricing"))
         {
@@ -262,6 +211,12 @@ public sealed partial class Plugin
         ImGui.TextWrapped("Steward never undercuts your own retainers. Stack sizes also respect the item's stack limit and the matching sale rule. Configure disposal methods in AutoRetainer.");
         ImGui.EndTabItem();
         }
+        if(ImGui.BeginTabItem("Automation"))
+        {
+        DrawMarketFeatureControls();
+        Setting("Prefer faster-selling listings",config.Rules.PreferFasterSales,v=>config.Rules.PreferFasterSales=v,"Prioritise listing quantity divided by average daily sales. Rotate only for a strictly faster replacement with known current activity. Market-wide activity is not a guaranteed sale time.");
+            ImGui.EndTabItem();
+        }
         if(ImGui.BeginTabItem("Price data"))
         {
         Section("Price data");
@@ -276,14 +231,16 @@ public sealed partial class Plugin
         ImGui.TextWrapped("The listing-price validity applies to manually observed or imported offers. Prices prefetch on login and remain cached across restarts. Actual posting and price changes still require a verified game comparison; unchanged listings can be skipped from the Allagan cache.");
         ImGui.EndTabItem();
         }
-        if(ImGui.BeginTabItem("Listing preview")){DrawSalePreview();ImGui.EndTabItem();}
         ImGui.EndTabBar();
     }
     private void DrawSaleRuleEditor(SaleRule rule)
     {
+            var name=rule.Name;if(ImGui.InputText("Name",ref name,100)){rule.Name=name;SavePolicy();}
+        if(!ImGui.BeginTabBar("RuleEditor",ImGuiTabBarFlags.FittingPolicyScroll))return;
+        if(ImGui.BeginTabItem("Eligibility"))
+        {
         Setting("Restrict this rule to selected retainers",rule.UseRetainerFilter,v=>rule.UseRetainerFilter=v,"Optional. Global retainer exclusions always apply.");
         if(rule.UseRetainerFilter)DrawRetainerSelection(rule.ExcludedRetainers,true);
-            var name=rule.Name;if(ImGui.InputText("Name",ref name,100)){rule.Name=name;SavePolicy();}
             Section("Items matched by this rule");DrawSaleRuleCategories(rule);
             var quality=rule.Hq==null?0:rule.Hq==false?1:2;if(ImGui.Combo("Quality",ref quality,"Any quality\0NQ only\0HQ only\0")){rule.Hq=quality==0?null:quality==2;SavePolicy();}
             if(ImGui.CollapsingHeader("Restrict to specific items"))
@@ -291,7 +248,10 @@ public sealed partial class Plugin
                 ImGui.TextWrapped("Optional: limit this rule to named items. Category and quality restrictions still apply.");
                 DrawItemPicker(id=>{rule.ItemIds.Add(id);SavePolicy();});DrawNamedItems(rule.ItemIds,id=>{rule.ItemIds.Remove(id);SavePolicy();});
             }
-            Section("Value and activity");
+            ImGui.EndTabItem();
+        }
+        if(ImGui.BeginTabItem("Price & stacks"))
+        {
             var unit=(int)Math.Min(rule.MinimumUnit,999999999);var total=(int)Math.Min(rule.MinimumTotal,999999999);var stack=rule.MaximumStack;
             if(ImGui.InputInt("Minimum gil per item",ref unit)){rule.MinimumUnit=(uint)Math.Clamp(unit,1,999999999);SavePolicy();}
             if(ImGui.InputInt("Minimum gil per listing",ref total)){rule.MinimumTotal=(uint)Math.Clamp(total,1,999999999);SavePolicy();}
@@ -311,6 +271,10 @@ public sealed partial class Plugin
                 ImGui.Unindent();
             }
             if(ImGui.InputInt("Maximum items per stack",ref stack)){rule.MaximumStack=Math.Clamp(stack,1,9999);SavePolicy();}
+            ImGui.EndTabItem();
+        }
+        if(ImGui.BeginTabItem("Demand & rotation"))
+        {
             Setting("Require minimum sales activity",rule.MinimumDailySales.HasValue,v=>rule.MinimumDailySales=v ? 0.1 : null);
             if(rule.MinimumDailySales.HasValue)
             {var velocity=(float)rule.MinimumDailySales.Value;if(ImGui.InputFloat("Minimum average units sold per day",ref velocity,.01f,.1f,"%.3f")){rule.MinimumDailySales=float.IsFinite(velocity)?Math.Max(0,velocity):0;SavePolicy();}}
@@ -321,20 +285,27 @@ public sealed partial class Plugin
             ImGui.TextWrapped("Rotation only replaces a full market slot when another eligible item is waiting. Returned items join the waiting list and follow the normal collection, sale and disposal rules. Existing listings start tracking when first observed; repricing does not reset their window.");
             Setting("Allow older known values for slow sellers",rule.AllowOlderSaleValue,v=>rule.AllowOlderSaleValue=v);
             ImGui.TextWrapped("Missing activity data holds an item when a minimum is enabled. Older prices may support a sale proposal, but cannot authorize disposal. Price floors also apply to the final listing price.");
+            ImGui.EndTabItem();
+        }
+        ImGui.EndTabBar();
     }
     private void DrawStoragePage()
     {
         ImGui.TextWrapped("Armoire first, then glamour dresser. If the dresser has no usable space, protected items go to retainers and remain protected. Steward alerts you when collection cannot finish.");
         DrawStorageSettings();
-        Section("Disposal permissions");
-        DrawCategorySelection("Allow disposal of these non-equipment categories",config.Rules.NonEquipmentDisposalCategories,"None allowed",
-            "Selected categories may be disposed of after protection and sale checks. Items passing a sale rule stay eligible for sale. Items with no matching sale rule may also be disposed of. Missing price data, exclusions, keeps and quantity reserves remain holds. AutoRetainer's enabled methods and stack limits still apply.",nonEquipmentOnly:true);
-        ImGui.TextWrapped("Category permission does not enable disposal or override special-reward protection. Unknown acquisition sources are held for review. Review proposed disposals in log-only mode before running them.");
         ImGui.BeginDisabled(!config.ExecutionEnabled||!config.CleanDresser||executionFault);
         if(ImGui.Button("Clean open dresser now"))market.CleanupDresser();
         ImGui.EndDisabled();
         Section("Inventory memory");
         ImGui.TextWrapped("Retainer, dresser and armoire observations are saved per character without a time limit. Opening storage refreshes its contents. Cached collection copies never authorize disposal or removal of a protected last copy.");
+    }
+    private void DrawDisposalPermissions()
+    {
+        Section("Disposal permissions");
+        Setting("Allow AutoRetainer disposal",config.Features.Disposal,v=>config.Features.Disposal=v,"Allows eligible items to use the disposal methods enabled in AutoRetainer. Demo mode still blocks disposal.");
+        DrawCategorySelection("Allow disposal of these non-equipment categories",config.Rules.NonEquipmentDisposalCategories,"None allowed",
+            "Selected categories may be disposed of after protection and sale checks. Items passing a sale rule stay eligible for sale. Items with no matching sale rule may also be disposed of. Missing price data, exclusions, keeps and quantity reserves remain holds. AutoRetainer's enabled methods and stack limits still apply.",nonEquipmentOnly:true);
+        ImGui.TextWrapped("Category permission does not enable disposal or override special-reward protection. Unknown acquisition sources are held for review. Review proposed disposals in log-only mode before running them.");
     }
     private void DrawItemPicker(Action<uint> choose)
     {
@@ -394,9 +365,9 @@ public sealed partial class Plugin
         if(config.Connected&&ImGui.Button("Disconnect Steward from this character"))DetachPolicy();
         ImGui.TextWrapped("Without Steward, AutoRetainer can run native entrust, ventures and gil withdrawal. Disposal, automated sales and glamour work stay paused. Saved collection holds remain available when you reconnect.");
         Section("Glamaholic and native plates");
-        ImGui.TextWrapped("Choose which saved outfits protect items on Glamour filters.");if(ImGui.Button("Open glamour filters"))settingsPage=2;
+        ImGui.TextWrapped("Choose which saved outfits protect items on Glamour filters.");if(ImGui.Button("Open glamour filters"))shell.Open(Desk.Glamour);
         Section("Market Buddy and Universalis");
-        ImGui.TextWrapped("Pricing preferences, undercutting and cache intervals belong on Sale rules.");if(ImGui.Button("Open sale rules"))settingsPage=1;
+        ImGui.TextWrapped("Pricing preferences, undercutting and cache intervals belong on Sale rules.");if(ImGui.Button("Open sale rules"))shell.Open(Desk.Sales);
         Section("Allagan Tools and Allagan Market");
         ImGui.TextWrapped("Optional inventory and market data are imported read-only when available. Saved inventory observations allow prefetching without reopening every retainer. Other plugins' settings are never edited.");
     }
@@ -410,8 +381,7 @@ public sealed partial class Plugin
     {
         ImGui.TextWrapped("For testing and troubleshooting. Ordinary configuration is on the setup pages.");
         DrawReviewSettings();
-        Section("Diagnostic status");
-        ImGui.TextWrapped(status);ImGui.TextWrapped(imports.Status);ImGui.TextWrapped(universalis.Status);ImGui.TextWrapped(universalis.Freshness);ImGui.TextWrapped(tracked.Status);ImGui.TextWrapped(dungeonSources.Status);
+        StewardShell.Diagnostics(status,imports.Status,universalis.Status,universalis.Freshness,tracked.Status,dungeonSources.Status);
         if(ImGui.CollapsingHeader("Diagnostic history"))foreach(var line in history)ImGui.TextWrapped(line);
     }
     private void DrawRecoveryControls()
