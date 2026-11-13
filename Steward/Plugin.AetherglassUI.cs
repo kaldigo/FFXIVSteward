@@ -261,15 +261,40 @@ public sealed partial class Plugin
                     DisabledReason=()=>config.ExecutionEnabled&&config.CleanDresser&&!executionFault?null:"Requires execution and dresser cleanup."}));
     }
 
+    private readonly SearchableItemList overrideList = new();
+
+    private ItemListEntry[]? configuredOverrides;
+
     private Group ItemSettings()
     {
-        var r=config.Rules;
-        var rows=new List<AetherglassUI.Setting>{
-            Categories("Exclude categories from all handling",r.IgnoredCategories,"No categories excluded","Applies to sales, collection, storage and disposal."),
-            new("find","Find an item",()=>DrawItemPicker(id=>selectedItem=id))
+        var rules = config.Rules;
+        var list = new AetherglassUI.Setting("items", "Item overrides", () => {}, "configured find item by name or ID")
+        {
+            ExpandedContent = () =>
+            {
+                var ids = rules.Ignored.Concat(rules.Keep).Concat(rules.CollectionKeep)
+                    .Concat(rules.NonEquipmentDisposal).Concat(rules.QuantityReserves.Keys).Concat(config.Sources.Keys);
+                configuredOverrides ??= ids.Distinct().Select(id => new ItemListEntry(id, view.Facts(id)?.Name ?? "Unavailable item")).ToArray();
+                overrideList.Draw(configuredOverrides,
+                    query => view.SearchItems(query).Select(i => new ItemListEntry(i.Id, i.Name)).ToArray(), OpenItemSettings, "Configured overrides", "Add an override");
+            }
         };
-        if(selectedItem!=0 && view.Facts(selectedItem) is {} item){
-            uint id=item.Id;
+        return new("Items", "Item overrides", new Topic("Inventory policy",
+            Categories("Exclude categories from all handling",rules.IgnoredCategories,"No categories excluded","Applies to sales, collection, storage and disposal."), list));
+    }
+
+    private void OpenItemSettings(uint id)
+    {
+        var detail = new SettingsPage();
+        overrideList.OpenDetail(workspaceWindow, workspacePages[Desk.Inventory], "override-" + id,
+            view.Facts(id)?.Name ?? $"Item {id}", () => detail.Draw("item-policy", [ItemPolicy(id)], searchable: false));
+    }
+
+    private Group ItemPolicy(uint id)
+    {
+        var r = config.Rules;
+        var rows = new List<AetherglassUI.Setting>();
+        if (view.Facts(id) is {} item) {
             AetherglassUI.Setting Member(string label,HashSet<uint> set)=>Toggle(label,set.Contains(id),v=>{if(v)set.Add(id);else set.Remove(id);},item.Name) with {Id=id+label};
             rows.Add(Member("Exclude from all Steward handling",r.Ignored));
             rows.Add(Member("Keep in inventory",r.Keep));
@@ -285,10 +310,8 @@ public sealed partial class Plugin
                 if(next!=current){if(next==sources[0])config.Sources.Remove(id);else config.Sources[id]=(SourceKind)(Array.IndexOf(sources,next)-1);SavePolicy();}
             },Detail:item.Name));
         }
-        foreach(var id in r.Ignored.Concat(r.Keep).Concat(r.CollectionKeep).Concat(r.NonEquipmentDisposal).Concat(r.QuantityReserves.Keys).Concat(config.Sources.Keys).Distinct()){
-            rows.Add(new("item"+id,view.Facts(id)?.Name??id.ToString(),()=>{if(ImGui.SmallButton("Edit"))selectedItem=id;},"configured item "+id,Detail:"Configured item"));
-        }
-        return new("Items","Item overrides",new Topic("Inventory policy",rows.ToArray()));
+        else rows.Add(new("unavailable", "Item data unavailable", () => {}, Detail: $"Item ID {id}"));
+        return new("policy", "Item settings", new Topic("Policy", rows.ToArray()));
     }
 
     private Group ConnectionSettings()=>new("Connections","Connections",new Topic("Integrations",
