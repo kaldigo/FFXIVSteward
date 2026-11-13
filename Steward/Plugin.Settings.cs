@@ -34,14 +34,20 @@ public sealed partial class Plugin
         float scale = StewardShell.Scale;
         ImGui.SetNextWindowSize(new Vector2(860,650)*scale,ImGuiCond.FirstUseEver);
         ImGui.SetNextWindowSizeConstraints(new Vector2(420,340)*scale,new(float.MaxValue,float.MaxValue));
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding,new Vector2(14,12)*scale);
         ImGui.PushStyleColor(ImGuiCol.WindowBg,new Vector4(.055f,.058f,.074f,1));
         try
         {
             if (ImGui.Begin("Steward###StewardSettings",ref open,ImGuiWindowFlags.NoTitleBar))
-                shell.Draw(RunContext,()=>open=false,Stop,DrawWorkspace);
+                shell.Draw(RunContext,()=>open=false,Stop,DrawWorkspace,DrawHeaderMark);
             ImGui.End();
         }
-        finally { ImGui.PopStyleColor(); }
+        finally { ImGui.PopStyleColor(); ImGui.PopStyleVar(); }
+    }
+    private void DrawHeaderMark(Vector2 topLeft,float size)
+    {
+        var icon=textures.GetFromFile(Path.Combine(pi.AssemblyLocation.DirectoryName!,"images","icon.png")).GetWrapOrDefault();
+        if(icon!=null) ImGui.GetWindowDrawList().AddImage(icon.Handle,topLeft,topLeft+new Vector2(size));
     }
     private void DrawWorkspace(Desk page)
     {

@@ -54,7 +54,7 @@ internal sealed class StewardShell
     {
         float scale=Scale;
         ImGui.PushStyleVar(ImGuiStyleVar.CellPadding,new Vector2(10,7)*scale);
-        if(ImGui.BeginTable(id,columns,ImGuiTableFlags.SizingStretchSame|ImGuiTableFlags.NoSavedSettings))
+        if(ImGui.BeginTable(id,columns,ImGuiTableFlags.SizingStretchSame|ImGuiTableFlags.NoSavedSettings|ImGuiTableFlags.PadOuterX))
         {
             ImGui.TableNextRow();
             ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0,0xff292423);
@@ -111,7 +111,7 @@ internal sealed class StewardShell
         foreach (var line in lines)
             if (!string.IsNullOrWhiteSpace(line)) ImGui.TextWrapped(line);
     }
-    internal void Draw(string context, Action close, Action stop, Action<Desk> drawPage)
+    internal void Draw(string context, Action close, Action stop, Action<Desk> drawPage, Action<Vector2, float> drawMark)
     {
         float s = Scale;
         ImGui.PushStyleColor(ImGuiCol.ChildBg, new Vector4(.082f,.087f,.11f,1));
@@ -120,13 +120,7 @@ internal sealed class StewardShell
         {
             var pos = ImGui.GetCursorScreenPos();
             var dl = ImGui.GetWindowDrawList();
-            // The tray and check from Steward's inventory mark.
-            void Stroke(float x,float y,float u,float v,uint color) =>
-                dl.AddLine(pos+new Vector2(x,y)*s,pos+new Vector2(u,v)*s,color,2.6f*s);
-            Stroke(3,19,8,10,0xffbccb28); Stroke(3,19,5,26,0xffbccb28);
-            Stroke(5,26,25,26,0xffffaa68); Stroke(25,26,28,19,0xffee70dd);
-            Stroke(28,19,23,10,0xffee70dd); Stroke(4,19,27,19,0xffeeaa74);
-            Stroke(10,8,14,12,0xffe2cc50); Stroke(14,12,22,4,0xffed69d9);
+            drawMark(pos,30*s);
             float width = ImGui.GetContentRegionAvail().X;
             var text = pos + new Vector2(38*s,(30*s-ImGui.GetTextLineHeight())/2);
             dl.AddText(text,0xfff2f2f4,"Steward");
@@ -155,7 +149,11 @@ internal sealed class StewardShell
                 }
             }
             ImGui.EndChild(); ImGui.SameLine();
-            if(ImGui.BeginChild("Workspace",new(0,bodyHeight),false))
+            var gutter=(ImGui.GetWindowSize().X<600*s ? new Vector2(10,9) : new Vector2(17,14))*s;
+            ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding,gutter);
+            bool workspaceVisible=ImGui.BeginChild("Workspace",new(0,bodyHeight),false,ImGuiWindowFlags.AlwaysUseWindowPadding);
+            ImGui.PopStyleVar();
+            if(workspaceVisible)
             {
                 if(history.TryPeek(out var parent) && !results)
                 {

@@ -74,13 +74,30 @@ public sealed partial class Plugin
         if(StewardShell.SwitchRow(title,value,description)){update(!value);SavePolicy();}
     }
     internal void Open(Desk page) => shell.Open(page);
+    // The offline renderer has no Dalamud texture provider. Sample the same packaged artwork.
+    private static readonly uint[,] icon=ReadIcon();
+    private static uint[,] ReadIcon()
+    {
+        using var reader=new BinaryReader(File.OpenRead(Path.Combine(Path.GetDirectoryName(typeof(Plugin).Assembly.Location)!,"icon.rgba")));
+        var pixels=new uint[30,30];
+        for(int y=0;y<30;y++)
+            for(int x=0;x<30;x++)pixels[x,y]=reader.ReadUInt32();
+        return pixels;
+    }
+    private static void DrawMark(Vector2 pos,float size)
+    {
+        var dl=ImGui.GetWindowDrawList();
+        for(int y=0;y<30;y++)
+            for(int x=0;x<30;x++)
+                dl.AddRectFilled(pos+new Vector2(x,y)*(size/30),pos+new Vector2(x+1,y+1)*(size/30),icon[x,y]);
+    }
     internal void Draw(bool held)
     {
         executionFault=held;
         string context=held?"Inventory review needed":"Log-only review";
         var p=ImGui.GetWindowPos();
         ImGui.GetWindowDrawList().AddRectFilled(p,p+ImGui.GetWindowSize(),0xff130f0e);
-        shell.Draw(context,()=>{},()=>{},DrawWorkspace);
+        shell.Draw(context,()=>{},()=>{},DrawWorkspace,DrawMark);
     }
 }
 public abstract class Screen : IPreviewScreen

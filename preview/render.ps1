@@ -18,6 +18,16 @@ if ($LASTEXITCODE) { throw 'Could not build Steward preview' }
 $assembly = Join-Path $PSScriptRoot 'bin/Release/net10.0-windows/Steward.Preview.dll'
 # A quiet backdrop makes the translucent controls legible without a game capture.
 Add-Type -AssemblyName System.Drawing
+# Preview has no game texture provider. Sample the packaged icon for its draw list.
+$sourceIcon = [Drawing.Bitmap]::new((Resolve-Path (Join-Path $PSScriptRoot '../assets/icon.png')).Path)
+$smallIcon = [Drawing.Bitmap]::new($sourceIcon,30,30)
+try {
+    $rgba = foreach ($y in 0..29) { foreach ($x in 0..29) {
+        $pixel = $smallIcon.GetPixel($x,$y)
+        $pixel.R, $pixel.G, $pixel.B, $pixel.A
+    }}
+    [IO.File]::WriteAllBytes((Join-Path (Split-Path $assembly) 'icon.rgba'),[byte[]]$rgba)
+} finally { $smallIcon.Dispose(); $sourceIcon.Dispose() }
 $backdrop = Join-Path $OutputDirectory 'backdrop.png'
 $bitmap = [Drawing.Bitmap]::new(640, 480)
 $graphics = [Drawing.Graphics]::FromImage($bitmap)
