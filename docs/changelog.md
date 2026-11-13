@@ -1,3 +1,7 @@
+## 0.1.0.84
+
+Sale rules can select the highest two materia grades separately from all other materia. Existing whole-materia selections cover both groups.
+
 ## 0.1.0.83
 
 Unique gear held solely for an uncertain acquisition source can follow the normal sale and disposal rules when another exact copy is verified in an owned storage retainer's bags this login. Review messages identify the retainer keeping the copy.

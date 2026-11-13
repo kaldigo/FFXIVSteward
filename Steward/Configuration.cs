@@ -66,8 +66,8 @@ public sealed class Configuration : IPluginConfiguration, IJsonOnDeserialized
         foreach(var rule in Rules.Sales)
         {
             if(rule.Category!=0){rule.Categories.Add(rule.Category);rule.Category=0;}
-            SaleRule.ExpandRollCategory(rule.Categories);
-            SaleRule.ExpandRollCategory(rule.ExcludedCategories);
+            SaleRule.ExpandSaleCategories(rule.Categories);
+            SaleRule.ExpandSaleCategories(rule.ExcludedCategories);
         }
         if(Version!=1 || PendingCollection==null || SafetyRevision>=6&&!pendingCollectionRead ||
             PendingCollection.Any(p=>p.Key==0||p.Value==null||p.Value.Contains(0)))

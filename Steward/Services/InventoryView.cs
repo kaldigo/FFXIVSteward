@@ -15,6 +15,7 @@ public sealed unsafe class InventoryView
     private readonly InventoryMemory memory;
     private readonly Dictionary<uint,uint[]> outfits;
     private readonly (uint Row,uint Item)[] cabinet;
+    private readonly HashSet<uint> topMateria;
     private readonly HashSet<uint> crafted;
     private readonly HashSet<uint> fishable;
     private readonly HashSet<uint> repeatableMaterials;
@@ -56,6 +57,20 @@ public sealed unsafe class InventoryView
             saleNames[SaleRule.RollMaterial] = "Orchestrion roll materials (faded and blank)";
             saleDetails[SaleRule.FinishedRoll] = (25945, roll.Major, roll.Minor);
             saleDetails[SaleRule.RollMaterial] = (25958, roll.Major, roll.Minor);
+        }
+        var materiaGrades=data.GetExcelSheet<Sheets.Materia>()
+            .SelectMany(row=>row.Item.Select((item,index)=>(Item:item,Grade:index+1)))
+            .Where(entry=>entry.Item.RowId!=0 && entry.Item.IsValid && entry.Item.Value.ItemUICategory.RowId==SaleRule.Materia)
+            .ToLookup(entry=>entry.Grade,entry=>entry.Item.Value);
+        var grades=materiaGrades.Select(group=>group.Key).OrderDescending().ToArray();
+        topMateria=grades.Take(2).SelectMany(grade=>materiaGrades[grade]).Select(item=>item.RowId).ToHashSet();
+        if(grades.Length>=2 && saleNames.Remove(SaleRule.Materia))
+        {
+            var detail=saleDetails[SaleRule.Materia];
+            saleNames[SaleRule.TopMateria]=$"Materia (top two grades: {grades[1]} and {grades[0]})";
+            saleNames[SaleRule.OtherMateria]="Materia (all other grades)";
+            saleDetails[SaleRule.TopMateria]=(materiaGrades[grades[0]].First().Icon,detail.Major,detail.Minor);
+            saleDetails[SaleRule.OtherMateria]=(materiaGrades[grades[^1]].First().Icon,detail.Major,detail.Minor);
         }
         SaleCategories = saleNames;
         SaleCategoryDetails = saleDetails;
@@ -146,7 +161,7 @@ public sealed unsafe class InventoryView
             // IsGlamorous means dresser-compatible, not cosmetic-purpose gear.
             facts=new(id,row.Name.ToString(),row.EquipSlotCategory.RowId!=0,row.Rarity,row.LevelEquip,
                 !row.IsUntradable && row.ItemSearchCategory.RowId!=0,cabinetItems.Contains(id),row.IsPvP?SourceKind.Special:SourceKind.Unknown,
-                row.ItemUICategory.RowId,row.PriceLow,row.LevelItem.RowId==1,row.ItemAction.RowId!=0);
+                row.ItemUICategory.RowId,row.PriceLow,row.LevelItem.RowId==1,row.ItemAction.RowId!=0,topMateria.Contains(id));
             itemMetadata[id]=facts;
         }
         var source=config.Sources.GetValueOrDefault(id,crafted.Contains(id)||fishable.Contains(id)||repeatableMaterials.Contains(id)?SourceKind.Ordinary:SourceKind.Unknown);

@@ -5,11 +5,14 @@ public enum QualityMode { Separate, Combined }
 public enum ItemGroup { Any, Gear, Other }
 public enum SourceKind { Unknown, Ordinary, Special, NormalDungeon, NormalRaid, AllianceRaid, SavageRaid, HighEnd }
 public sealed record ItemFacts(uint Id, string Name, bool Equipment, byte Rarity, int EquipLevel,
-    bool Marketable, bool ArmoireEligible, SourceKind Source, uint Category, uint NpcPrice = 0, bool DesignedForGlamour = false, bool HasItemAction = false)
+    bool Marketable, bool ArmoireEligible, SourceKind Source, uint Category, uint NpcPrice = 0, bool DesignedForGlamour = false, bool HasItemAction = false, bool IsTopRankMateria = false)
 {
-    public uint SaleCategory => Category == SaleRule.OrchestrionRoll
-        ? (HasItemAction ? SaleRule.FinishedRoll : SaleRule.RollMaterial)
-        : Category;
+    public uint SaleCategory => Category switch
+    {
+        SaleRule.OrchestrionRoll => HasItemAction ? SaleRule.FinishedRoll : SaleRule.RollMaterial,
+        SaleRule.Materia => IsTopRankMateria ? SaleRule.TopMateria : SaleRule.OtherMateria,
+        _ => Category
+    };
 }
 public sealed record Stock(uint ItemId, bool Hq, uint Quantity, uint Container, ushort Slot);
 public sealed record Quote(uint ItemId, bool Hq, uint World, uint UnitPrice, DateTimeOffset Observed,
@@ -21,8 +24,12 @@ public sealed class SaleRule
     // Sale-only identifiers outside the range of native ItemUICategory rows.
     public const uint FinishedRoll = 1000094;
     public const uint RollMaterial = 2000094;
-    public static void ExpandRollCategory(HashSet<uint> categories)
+    public const uint Materia = 58;
+    public const uint TopMateria = 1000058;
+    public const uint OtherMateria = 2000058;
+    public static void ExpandSaleCategories(HashSet<uint> categories)
     {
+        if(categories.Remove(Materia)) categories.UnionWith([TopMateria, OtherMateria]);
         if(categories.Remove(OrchestrionRoll)) categories.UnionWith([FinishedRoll, RollMaterial]);
     }
     public string Name { get; set; } = "Sale rule";
