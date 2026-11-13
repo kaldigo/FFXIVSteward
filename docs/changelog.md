@@ -1,3 +1,7 @@
+## Steward settings window
+
+Steward now uses the shared AetherglassUI window. Activity, Inventory, Market, Collection and Setup keep related work on one page. Search settings across collapsed groups and edit sale rules, category selections and collection policies in place. Existing settings and execution holds carry over.
+
 ## 0.1.0.86
 
 Added scaled margins around the settings workspace and inset controls within their rows. The header now uses the packaged neon Steward artwork.

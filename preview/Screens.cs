@@ -12,7 +12,11 @@ public sealed partial class Plugin
     private readonly StewardShell shell = new();
     private readonly Configuration config=new(){Rules=new(){Sales=[new(){Name="General items",MinimumUnit=50000,MinimumTotal=50000,MaximumStack=1},new(){Name="Materials",MaximumStack=30,AllowLowPriority=true}]}};
     private sealed class SampleView {
-        public Dictionary<uint,string> SaleCategories {get;}=[];
+        public uint World=>1;
+        public Dictionary<uint,string> Categories {get;}=new(){[12]="Carpenter tools"};
+        public Dictionary<uint,(uint Icon,byte Major,byte Minor)> CategoryDetails {get;}=new(){[12]=(0,2,1)};
+        public Dictionary<uint,(uint Icon,byte Major,byte Minor)> SaleCategoryDetails=>CategoryDetails;
+        public Dictionary<uint,string> SaleCategories=>Categories;
         public Dictionary<ulong,string> RetainerNames {get;}=new(){[1]="Example retainer"};
         public IReadOnlyCollection<ulong> Retainers=>RetainerNames.Keys;
         public uint ItemStackLimit(uint id)=>999;
@@ -27,7 +31,7 @@ public sealed partial class Plugin
     private readonly SampleView view=new();
     private readonly ulong attached=1;
     private readonly SamplePlayer player=new();
-    private record SamplePlayer(ulong ContentId=1);
+    private record SamplePlayer(ulong ContentId=1){public bool IsLoaded=>true;}
     private uint selectedItem;
     private readonly Dictionary<uint,string> itemQueries=[];
     private readonly Dictionary<uint,IReadOnlyList<(uint Id,string Name)>> itemSearchResults=[];
@@ -55,7 +59,13 @@ public sealed partial class Plugin
     }
     private void DrawDecisions()=>decisions.Draw(()=>{},_=>Open(Desk.Items),()=>Open(Desk.Disposal));
     private void DrawOverviewPage()=>runDesk.Draw("Log-only review",2,37,6,"Log-only mode is recording proposals. Manual passes are paused.",()=>{},_=>true,_=>{},()=>Open(Desk.Inventory),()=>Open(Desk.Readiness));
-    private bool executionFault;
+    private bool executionFault,open=true;
+    private (ulong Character,uint World) decisionOwner=(1,1);
+    private string RunContext=>executionFault?"Inventory review needed":"Log-only review";
+    private static ImTextureID? CategoryIcon(uint icon)=>null;
+    private static void DrawHeaderMark(Vector2 position,float size)=>DrawMark(position,size);
+    private void DrawRecoveryControls()=>ImGui.TextWrapped("Inventory review pending.");
+
     private readonly RunDesk runDesk=new();
     private readonly DecisionBrowser decisions=new();
     internal Plugin()
@@ -73,7 +83,8 @@ public sealed partial class Plugin
     {
         if(StewardShell.SwitchRow(title,value,description)){update(!value);SavePolicy();}
     }
-    internal void Open(Desk page) => shell.Open(page);
+    private Desk? initialPage;
+    internal void Open(Desk page) => initialPage=page;
     // The offline renderer has no Dalamud texture provider. Sample the same packaged artwork.
     private static readonly uint[,] icon=ReadIcon();
     private static uint[,] ReadIcon()
@@ -94,10 +105,9 @@ public sealed partial class Plugin
     internal void Draw(bool held)
     {
         executionFault=held;
-        string context=held?"Inventory review needed":"Log-only review";
-        var p=ImGui.GetWindowPos();
-        ImGui.GetWindowDrawList().AddRectFilled(p,p+ImGui.GetWindowSize(),0xff130f0e);
-        shell.Draw(context,()=>{},()=>{},DrawWorkspace,DrawMark);
+        if(!open)return;
+        if(initialPage is {} desk && workspaceRail!=null){NavigateWorkspace(desk);initialPage=null;}
+        DrawAetherglassWindow();
     }
 }
 public abstract class Screen : IPreviewScreen

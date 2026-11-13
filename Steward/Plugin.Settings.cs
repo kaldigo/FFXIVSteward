@@ -33,20 +33,20 @@ public sealed partial class Plugin
         if (!open) return;
         float scale = StewardShell.Scale;
         ImGui.SetNextWindowSize(new Vector2(860,650)*scale,ImGuiCond.FirstUseEver);
-        ImGui.SetNextWindowSizeConstraints(new Vector2(420,340)*scale,new(float.MaxValue,float.MaxValue));
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding,new Vector2(14,12)*scale);
+        ImGui.SetNextWindowSizeConstraints(new Vector2(370,340)*scale,new(float.MaxValue,float.MaxValue));
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding,Vector2.Zero);
         ImGui.PushStyleColor(ImGuiCol.WindowBg,new Vector4(.055f,.058f,.074f,1));
         try
         {
-            if (ImGui.Begin("Steward###StewardSettings",ref open,ImGuiWindowFlags.NoTitleBar))
-                shell.Draw(RunContext,()=>open=false,Stop,DrawWorkspace,DrawHeaderMark);
+            if (ImGui.Begin("Steward###StewardSettings",ref open,ImGuiWindowFlags.NoTitleBar|ImGuiWindowFlags.NoScrollbar|ImGuiWindowFlags.NoScrollWithMouse))
+                DrawAetherglassWindow();
             ImGui.End();
         }
         finally { ImGui.PopStyleColor(); ImGui.PopStyleVar(); }
     }
     private void DrawHeaderMark(Vector2 topLeft,float size)
     {
-        var icon=textures.GetFromFile(Path.Combine(pi.AssemblyLocation.DirectoryName!,"images","icon.png")).GetWrapOrDefault();
+        var icon=textures.GetFromFile(Path.Combine(pi.AssemblyLocation.DirectoryName!,"images","mark.png")).GetWrapOrDefault();
         if(icon!=null) ImGui.GetWindowDrawList().AddImage(icon.Handle,topLeft,topLeft+new Vector2(size));
     }
     private void DrawWorkspace(Desk page)
@@ -107,7 +107,7 @@ public sealed partial class Plugin
     private void DrawDecisions()
     {
         var owner=(view.Character,view.World);
-        if(owner!=decisionOwner){decisions.Clear();decisionOwner=owner;}
+        if(owner!=decisionOwner){decisions.Clear();selectedItem=0;itemQueries.Clear();itemSearchResults.Clear();decisionOwner=owner;}
         decisions.Draw(()=>decisions.Capture(view.Items.Select(stock=>new DecisionRow(stock,view.Facts(stock.ItemId)?.Name??$"Item {stock.ItemId}",Judge(stock)))),
             id=>{selectedItem=id;shell.Open(Desk.Items);},()=>shell.Open(Desk.Disposal));
         if(ImGui.Button("Manage item overrides"))shell.Open(Desk.Items);

@@ -9,3 +9,5 @@ __pycache__/
 artifacts/
 __pycache__/
 *.pyc
+
+/.dependencies/

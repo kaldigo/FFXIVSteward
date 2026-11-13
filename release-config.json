@@ -5,7 +5,8 @@
   "project": "Steward/Steward.csproj",
   "build": "Steward/bin/Release",
   "required_dlls": [
-    "Steward.dll"
+    "Steward.dll",
+    "AetherglassUI.dll"
   ],
   "licenses": {
     "LICENSE": "LICENSE",

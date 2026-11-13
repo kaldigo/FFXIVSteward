@@ -29,7 +29,7 @@ class Distribution(unittest.TestCase):
   self.assertIn('AutoRetainer owns execution/results',((ROOT/'Steward/Plugin.cs').read_text()+(ROOT/'Steward/Plugin.Settings.cs').read_text()))
  def test_source_package_is_separate(self):
   cfg=json.loads((ROOT/'release-config.json').read_text())
-  self.assertEqual(cfg['required_dlls'],['Steward.dll'])
+  self.assertEqual(cfg['required_dlls'],['Steward.dll','AetherglassUI.dll'])
  def test_stopped_run_survives_plugin_reload(self):
   config=(ROOT/'Steward/Configuration.cs').read_text();plugin=((ROOT/'Steward/Plugin.cs').read_text()+(ROOT/'Steward/Plugin.Settings.cs').read_text())
   self.assertIn('public bool ExecutionReviewRequired',config)

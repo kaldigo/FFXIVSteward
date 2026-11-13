@@ -5,7 +5,13 @@
     <DalamudLibPath Condition="'$(DALAMUD_HOME)' != ''">$(DALAMUD_HOME)</DalamudLibPath>
     <DalamudLibPath Condition="'$(DalamudLibPath)' == ''">$(appdata)/XIVLauncher/addon/Hooks/dev</DalamudLibPath>
   </PropertyGroup>
+  <PropertyGroup>
+    <AetherglassUIProject Condition="'$(AetherglassUIProject)' == '' and Exists('../../AetherglassUI/Library/AetherglassUI.csproj')">../../AetherglassUI/Library/AetherglassUI.csproj</AetherglassUIProject>
+    <AetherglassUIProject Condition="'$(AetherglassUIProject)' == ''">../.dependencies/AetherglassUI/Library/AetherglassUI.csproj</AetherglassUIProject>
+  </PropertyGroup>
+  <ItemGroup><ProjectReference Include="$(AetherglassUIProject)" /></ItemGroup>
   <ItemGroup>
+    <Compile Include="../Steward/Plugin.AetherglassUI.cs" />
     <Compile Include="../Steward/StewardShell.cs" />
     <Compile Include="../Steward/TaskViews.cs" />
     <Compile Include="../Steward/Plugin.ActivityControls.cs" />

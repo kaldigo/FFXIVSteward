@@ -124,3 +124,7 @@ Category selectors follow the marketboard grouping: Main Arm/Off Arm (weapons an
 The maintained fork continues native entrust/retrieval from its own plans, retainer ventures and gil handling when Steward is disconnected, unloaded or temporarily unavailable. It pauses disposal, automated market work, armoire and dresser operations, including optional postprocessing that might perform those actions. Outstanding uncertain transactions remain held for review. Reconnecting restores Steward's decision checks; log-only remains an explicit denial while connected. Collection holds survive disconnect and are verified again on reconnection.
 
 Skaenwyda's manual item role excludes native entrust and ordinary sales, not ventures or gil. Her normal ventures use AutoRetainer's existing collector/planner, and the five-minute wait applies normally. Her experimental dye strategy requires an active Steward connection.
+
+### Building the settings window
+
+Steward builds AetherglassUI from the sibling `AetherglassUI/Library/AetherglassUI.csproj` in the development workspace. For a standalone checkout, clone the shared source into `.dependencies/AetherglassUI` and check out the revision pinned in `.github/actions/build/action.yml`, or pass the source project path as `-p:AetherglassUIProject=...`. The release contains both Steward.dll and AetherglassUI.dll.

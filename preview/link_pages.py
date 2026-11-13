@@ -7,7 +7,7 @@ parts = ["using Dalamud.Bindings.ImGui;", "using Steward.Core;", "namespace Stew
 sources = {
     "Settings": ["DrawWorkspace", "DrawReadiness", "DrawGlamourPage", "DrawCollectionFeatureControls", "DrawMarketFeatureControls", "DrawRetainerSelection", "DrawSalesPage", "DrawSaleRuleEditor", "DrawStoragePage", "DrawDisposalPermissions", "DrawItemPicker", "DrawNamedItems", "ToggleMembership", "DrawOverridesPage", "DrawIntegrationsPage", "DrawDeveloperPage"],
     "Storage": ["DrawStorageSettings"],
-    "Review": ["DrawReviewSettings"]
+    "Review": ["DrawReviewSettings","SetReviewMode"]
 }
 for file, methods in sources.items():
     source = (root / "Steward" / f"Plugin.{file}.cs").read_text(encoding="utf-8")

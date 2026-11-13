@@ -26,16 +26,20 @@ public sealed partial class Plugin
         var enabled=config.LogOnly;
         if(ImGui.Checkbox("Log only — do not change any items",ref enabled))
         {
-            // Set the restrictive flag before cancellation/save; changing mode never enables execution.
-            config.LogOnly=true;Stop();
-            config.LogOnly=enabled;Save();reviewJournal.Reset();nextReview=0;
-            Record(enabled?"Log-only review enabled: all managed item actions blocked":"Log-only review disabled; enabled features resume on the next authorised AutoRetainer run");
+            SetReviewMode(enabled);
         }
         ImGui.TextWrapped("Logs collection destinations, overflow, proposed listings and prices, disposal, and enabled dresser cleanup. No managed item actions occur in log-only mode. Open a retainer selling list to load its market capacity; cached prices are labelled estimates.");
         Setting("Log disposal candidates",config.LogDisposal,v=>config.LogDisposal=v,"Records eligibility even while AutoRetainer demo mode blocks disposal. Never enables disposal.");
         ImGui.TextWrapped("Review log: "+ReviewPath);
         if(ImGui.Button("Write review snapshot now"))
         {if(!config.LogOnly)Record("Enable Log only in Developer tools before recording a review session.");else{reviewJournal.Reset();nextReview=0;}}
+    }
+    private void SetReviewMode(bool enabled)
+    {
+        // Set the restrictive flag before cancellation/save; changing mode never enables execution.
+        config.LogOnly=true;Stop();
+        config.LogOnly=enabled;Save();reviewJournal.Reset();nextReview=0;
+        Record(enabled?"Log-only review enabled: all managed item actions blocked":"Log-only review disabled; enabled features resume on the next authorised AutoRetainer run");
     }
     private void LogPolicyProposal(string? action,Stock stock,Decision decision)
     {

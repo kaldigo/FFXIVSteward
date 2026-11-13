@@ -7,6 +7,7 @@ namespace Steward;
 
 public sealed partial class Plugin
 {
+    private ImTextureID? CategoryIcon(uint icon)=>icon!=0&&textures.GetFromGameIcon(new GameIconLookup(icon,hiRes:true)).TryGetWrap(out var wrap,out _)?wrap.Handle:null;
     private readonly Dictionary<string,string> categorySearches=[];
     private void DrawSaleRuleCategories(SaleRule rule)
     {

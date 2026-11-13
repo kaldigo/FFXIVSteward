@@ -15,7 +15,7 @@ internal sealed class DecisionBrowser
     private string query="";
     private Stock? selected;
     private DateTime? observed;
-    internal void Clear() { rows=[];selected=null;observed=null; }
+    internal void Clear() { rows=[];selected=null;observed=null;query="";group=0;Array.Clear(totals); }
     internal void Capture(IEnumerable<DecisionRow> items)
     {
         rows=items.OrderBy(row=>row.Name,StringComparer.OrdinalIgnoreCase).ThenBy(row=>row.Stock.Container).ThenBy(row=>row.Stock.Slot).ToArray();
@@ -105,39 +105,22 @@ internal sealed class RunDesk
         "Store eligible pieces in the armoire.","Visit included retainers and use the enabled AutoRetainer disposal methods, in order: GC delivery, desynthesis, then vendor sale."];
     internal void Draw(string context,int saleRules,int? freeSlots,int? overflow,string? hold,Action recovery,Func<int,bool> enabled,Action<int> start,Action inspect,Action readiness)
     {
-        StewardShell.Panel("Session",1,()=>{
-            ImGui.TextUnformatted(context);
-            ImGui.TextWrapped(hold??"Enabled work follows AutoRetainer. Choose a pass below for a manual run.");
-            if(hold!=null)recovery();
+        ImGui.TextWrapped(hold??context);
+        if(hold!=null)recovery();
+        ImGui.Spacing();
+        AetherglassUI.Controls.Row("pass","Manual pass",Details[selected],()=>{
+            var next=AetherglassUI.Controls.Choice("##pass",Passes[selected],Passes);
+            selected=Array.IndexOf(Passes,next);
         });
-        StewardShell.Panel("Inventory status",3,()=>{
-            StewardShell.Metric("Active sale rules",saleRules.ToString());
-            ImGui.TableNextColumn();StewardShell.Metric("Dresser slots free",freeSlots?.ToString()??"Unknown");
-            ImGui.TableNextColumn();StewardShell.Metric("Awaiting collection",overflow?.ToString()??"Unknown");
-        });
-        if(ImGui.Button("Inspect inventory decisions"))inspect();
-        ImGui.SameLine();if(ImGui.Button("Check readiness"))readiness();
-        StewardShell.Section("Manual pass");
-        bool split=ImGui.GetContentRegionAvail().X>=535*StewardShell.Scale;
-        bool table=split&&ImGui.BeginTable("PassPicker",2,ImGuiTableFlags.SizingStretchProp|ImGuiTableFlags.BordersInnerV);
-        if(table){ImGui.TableSetupColumn("Pass",ImGuiTableColumnFlags.WidthFixed,175*StewardShell.Scale);ImGui.TableSetupColumn("Details");ImGui.TableNextColumn();}
-        if(table)
-        {
-            for(int i=0;i<Passes.Length;i++)
-                if(ImGui.Selectable(Passes[i],selected==i))selected=i;
-        }
-        else
-        {
-            ImGui.SetNextItemWidth(-1);
-            ImGui.Combo("##ManualPass",ref selected,Passes,Passes.Length);
-        }
-        if(table)ImGui.TableNextColumn();else ImGui.Separator();
-        ImGui.TextWrapped(Details[selected]);
         bool available=enabled(selected);
         if(!available)ImGui.TextWrapped("This pass is disabled by your feature settings or an active cleanup.");
         ImGui.BeginDisabled(hold!=null||!available);
         if(ImGui.Button("Run "+Passes[selected].ToLowerInvariant()))start(selected);
         ImGui.EndDisabled();
-        if(table)ImGui.EndTable();
+        ImGui.Spacing();
+        AetherglassUI.ReviewControls.Metric("rules","Enabled sale rules",saleRules,"");
+        AetherglassUI.ReviewControls.Metric("free","Free dresser slots",freeSlots,"Latest observation");
+        AetherglassUI.ReviewControls.Metric("pending","Awaiting collection",overflow,"Protected items",readiness);
+        if(ImGui.Button("Inspect inventory decisions"))inspect();
     }
 }

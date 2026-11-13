@@ -19,7 +19,7 @@ $assembly = Join-Path $PSScriptRoot 'bin/Release/net10.0-windows/Steward.Preview
 # A quiet backdrop makes the translucent controls legible without a game capture.
 Add-Type -AssemblyName System.Drawing
 # Preview has no game texture provider. Sample the packaged icon for its draw list.
-$sourceIcon = [Drawing.Bitmap]::new((Resolve-Path (Join-Path $PSScriptRoot '../assets/icon.png')).Path)
+$sourceIcon = [Drawing.Bitmap]::new((Resolve-Path (Join-Path $PSScriptRoot '../assets/mark.png')).Path)
 $smallIcon = [Drawing.Bitmap]::new($sourceIcon,30,30)
 try {
     $rgba = foreach ($y in 0..29) { foreach ($x in 0..29) {

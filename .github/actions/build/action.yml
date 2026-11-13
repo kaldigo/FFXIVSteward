@@ -7,6 +7,13 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Check out shared AetherglassUI source
+      uses: actions/checkout@v4
+      with:
+        repository: kaldigo/FFXIV-AetherglassUI
+        ref: c8ad08a2ca26ade4b9d3eef397142e4914818bab
+        path: .dependencies/AetherglassUI
+        persist-credentials: false
     - uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '10.0.x'

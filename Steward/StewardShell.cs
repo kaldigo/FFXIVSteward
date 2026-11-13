@@ -14,8 +14,10 @@ internal sealed class StewardShell
     private bool results;
     internal Desk Current { get; private set; }
     private readonly Stack<(Desk Page,bool Results)> history=new();
+    internal Action<Desk>? Navigate { get; set; }
     internal void Open(Desk page)
     {
+        if(Navigate!=null){Navigate(page);return;}
         if(page!=Current || results) history.Push((Current,results));
         Current=page;
         results=false;
@@ -68,34 +70,9 @@ internal sealed class StewardShell
 
     internal static bool SwitchRow(string title,bool value,string? description)
     {
-        bool changed=false;
-        ImGui.PushID(title);
-        Panel("setting",1,()=>{
-            float height=ImGui.GetFrameHeight();
-            float width=ImGui.GetContentRegionAvail().X;
-            float control=height*1.9f;
-            var origin=ImGui.GetCursorScreenPos();
-            ImGui.BeginGroup();
-            ImGui.PushTextWrapPos(ImGui.GetCursorPosX()+Math.Max(40,width-control-14*Scale));
-            ImGui.TextUnformatted(title);
-            if(description!=null && ImGui.IsItemHovered())ImGui.SetTooltip(description);
-            ImGui.PopTextWrapPos();
-            ImGui.EndGroup();
-            ImGui.SameLine();
-            ImGui.SetCursorScreenPos(new Vector2(origin.X+width-control,origin.Y));
-            var pos=ImGui.GetCursorScreenPos();
-            ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding,height/2);
-            ImGui.PushStyleColor(ImGuiCol.Button,value?new Vector4(.10f,.48f,.43f,1):new Vector4(.23f,.24f,.28f,1));
-            changed=ImGui.Button("###"+title,new Vector2(control,height));
-            ImGui.PopStyleColor();
-            ImGui.PopStyleVar();
-            var on=changed?!value:value;
-            var knob=pos+new Vector2(on?control-height/2:height/2,height/2);
-            ImGui.GetWindowDrawList().AddCircleFilled(knob,height*.34f,0xfff3f1ec);
-            if((ImGui.IsItemHovered()||ImGui.IsItemFocused())&&description!=null) ImGui.SetTooltip(description);
-        });
-        ImGui.PopID();
-        return changed;
+        bool updated=value;
+        AetherglassUI.Controls.Row(title,title,description??"",()=>updated=AetherglassUI.Controls.Switch("value",value));
+        return updated!=value;
     }
 
     internal static void Metric(string label,string value)
@@ -193,7 +170,7 @@ internal sealed class StewardShell
     }
 
     // A pulse, price tag, hanger, box, list, link, terminal and trend line.
-    private static void Glyph(int i, Vector2 p, float s, uint ink)
+    internal static void Glyph(int i, Vector2 p, float s, uint ink)
     {
         var dl=ImGui.GetWindowDrawList();
         Vector2 P(int x,int y)=>p+new Vector2(x,y)*s;

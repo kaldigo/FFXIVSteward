@@ -22,6 +22,7 @@ def package(root,tag,changelog='Validated source update. Development preview; na
         if deps.is_file():z.write(deps,deps.name)
         z.writestr(name+'.json',json.dumps(manifest,indent=2)+'\n')
         z.write(icon,'images/icon.png')
+        z.write(root/'assets/mark.png','images/mark.png')
         for source,target in cfg['licenses'].items():z.write(root/source,target)
         z.write(root/'docs/publishing.md','PUBLISHING.md')
     feed=json.dumps([manifest],indent=2)+'\n'

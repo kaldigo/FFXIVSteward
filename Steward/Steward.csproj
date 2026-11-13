@@ -5,6 +5,12 @@
     <Punchline>Collect what matters. Sell the surplus.</Punchline>
     <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings><AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+  <PropertyGroup>
+    <AetherglassUIProject Condition="'$(AetherglassUIProject)' == '' and Exists('../../AetherglassUI/Library/AetherglassUI.csproj')">../../AetherglassUI/Library/AetherglassUI.csproj</AetherglassUIProject>
+    <AetherglassUIProject Condition="'$(AetherglassUIProject)' == ''">../.dependencies/AetherglassUI/Library/AetherglassUI.csproj</AetherglassUIProject>
+  </PropertyGroup>
+  <ItemGroup><ProjectReference Include="$(AetherglassUIProject)" /></ItemGroup>
   <ItemGroup><None Include="../assets/icon.png" Link="images/icon.png" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
+  <ItemGroup><None Include="../assets/mark.png" Link="images/mark.png" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
   <ItemGroup><EmbeddedResource Include="data/*.json" /></ItemGroup>
 </Project>
