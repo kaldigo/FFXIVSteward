@@ -94,6 +94,8 @@ public sealed partial class Plugin : IDalamudPlugin
         reviewJournal=new(historyPath);
         market=new(pi,board,view,config,new(gui),JudgeLive,Record,RefreshProtection,()=>imports.MarketPreferencesReady,HoldExecution,BeginOperation,CompleteOperation,ProtectCollection,Alert,Judge,Save,JudgeMarket,new NativeDresserStore(sigScanner,config),interop);
         market.DresserRestored+=storageRun.Restored;
+        market.CollectionWithdrawalConfirmed+=storageRun.ConfirmWithdrawal;
+        market.DresserDepositConfirmed+=storageRun.ConfirmDeposit;
         var collectionUi=new NativeUi(gui);
         collectionSession=new(lifecycle,view,()=>player.IsLoaded?player.ContentId:0,
             ()=>executionFault||config.PendingOperation!=null||market.Queue.Running||market.Queue.HasUnverifiedAction||
@@ -106,6 +108,7 @@ public sealed partial class Plugin : IDalamudPlugin
         pi.GetIpcSubscriber<string,object>("AutoRetainer.OnRetainerAdditionalTask").Subscribe(RequestPostprocess);
         pi.GetIpcSubscriber<string,string,object>("AutoRetainer.OnRetainerReadyForPostprocess").Subscribe(Postprocess);
         pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.CollectionNeeded").RegisterFunc(CollectionNeeded);
+        pi.GetIpcProvider<ulong,ulong,bool>("Steward.InventoryPolicy.CollectionNeededForRetainer").RegisterFunc(CollectionNeededForRetainer);
         pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.CleanupAllowed").RegisterFunc(CleanupAllowed);
         pi.GetIpcProvider<ulong,ulong,bool>("Steward.InventoryPolicy.CleanupRetainerAllowed").RegisterFunc(CleanupRetainerAllowed);
         pi.GetIpcProvider<ulong,uint,bool>("Steward.InventoryPolicy.NonEquipmentDisposalSelected").RegisterFunc((character,id)=>
@@ -371,6 +374,8 @@ public sealed partial class Plugin : IDalamudPlugin
             if(collectionPass&&!ownsPostprocess&&!market.Queue.Running&&!pi.GetIpcSubscriber<bool>("AutoRetainer.PluginState.IsBusy").InvokeFunc())
             {
                 collectionPass=false;
+                storageRun.RetainerSweepStalled=storageRun.Withdrawn==withdrawnAtSweepStart;
+                if(storageRun.RetainerSweepStalled)Alert("No collection withdrawal was confirmed during this retainer visit. Remaining retainer candidates will be checked on your next run.");
                 nextDresserAttempt=0;nextAutomaticWork=0;
                 // Start the return route before another sweep, including passes that took over a minute.
                 nextCollectionAttempt=Environment.TickCount64+5000;
@@ -502,6 +507,7 @@ public sealed partial class Plugin : IDalamudPlugin
             collectionSession.Dispose();universalis.Dispose();inventoryMemory.Dispose();reviewJournal.Dispose();
             pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.StrategyRetainer").UnregisterFunc();
             pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.CollectionNeeded").UnregisterFunc();
+        pi.GetIpcProvider<ulong,ulong,bool>("Steward.InventoryPolicy.CollectionNeededForRetainer").UnregisterFunc();
             pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.CleanupAllowed").UnregisterFunc();
             pi.GetIpcProvider<ulong,ulong,bool>("Steward.InventoryPolicy.CleanupRetainerAllowed").UnregisterFunc();
             pi.GetIpcProvider<ulong,uint,bool>("Steward.InventoryPolicy.NonEquipmentDisposalSelected").UnregisterFunc();

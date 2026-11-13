@@ -32,7 +32,7 @@ class CleanupWiring(unittest.TestCase):
   self.assertIn('!cleanupActive&&storageRun.Allows',plugin)
   self.assertNotIn('SetAutomatic',plugin)
   queue=(ROOT/'Services/MarketQueue.cs').read_text().split('public void WithdrawForOtherActions')[1].split('public void CleanupDresser')[0]
-  self.assertIn('if(!disposalOnly&&!armoireOnly)EnqueueOverflow',queue)
+  self.assertIn('if(!collectionOnly&&!disposalOnly&&!armoireOnly)EnqueueOverflow',queue)
   self.assertIn('disposalOnly&&decision.Outcome!=Outcome.Dispose',queue)
   self.assertLess(queue.index('StockTransition.Removed'),queue.index('CleanupWithdrawalConfirmed'))
   self.assertIn('InventoryView.FreeBagSlots()<2',queue)

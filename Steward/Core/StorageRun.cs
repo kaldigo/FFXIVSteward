@@ -6,6 +6,11 @@ public sealed class StorageRun
 {
     private ulong owner;
     public HashSet<uint> AttemptedArmoireItems { get; } = [];
+    public bool RetainerSweepStalled { get; set; }
+    public int Withdrawn { get; private set; }
+    public int Deposited { get; private set; }
+    public void ConfirmWithdrawal() => Withdrawn++;
+    public void ConfirmDeposit() => Deposited++;
     public bool CheckedArmoire { get; set; }
     public bool RequestedStorage { get; set; }
     public bool StorageOnly { get; set; }
@@ -20,5 +25,5 @@ public sealed class StorageRun
         owner=authorized?character:0;
     }
     public bool Allows(ulong character,bool executionEnabled) => executionEnabled&&owner!=0&&owner==character;
-    public void End() { CheckedArmoire=false;RequestedStorage=false;AttemptedArmoireItems.Clear();owner=0;EntrustPending=false;StorageOnly=false;CleanupOnly=false;ArmoireOnly=false; }
+    public void End() { RetainerSweepStalled=false;Withdrawn=Deposited=0;CheckedArmoire=false;RequestedStorage=false;AttemptedArmoireItems.Clear();owner=0;EntrustPending=false;StorageOnly=false;CleanupOnly=false;ArmoireOnly=false; }
 }

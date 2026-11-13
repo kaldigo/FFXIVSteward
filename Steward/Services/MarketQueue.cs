@@ -451,7 +451,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
         if(retainer==0 || !view.Retainers.Contains(retainer))throw new InvalidOperationException("Withdrawal retainer identity is unavailable");
         if(!config.Storage.RetainerEnabled(retainer))return;
         refreshProtection();
-        if(!disposalOnly&&!armoireOnly)EnqueueOverflow(character,retainer);
+        if(!collectionOnly&&!disposalOnly&&!armoireOnly)EnqueueOverflow(character,retainer);
         if(overflowOnly)return;
         var dresserWithdrawals=0;
         var initialWaiting=StoragePolicy.CountWaitingForDresser(view.Items,previewJudge);
@@ -508,6 +508,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 var after=view.Items.Where(s=>s.ItemId==stock.ItemId&&s.Hq==stock.Hq).Sum(s=>(long)s.Quantity);
                 if(after<before+stock.Quantity)return StepResult.Waiting;
                 if(after!=before+stock.Quantity || !StockTransition.Removed(stock,InventoryView.ReadSlot(stock.Container,stock.Slot),stock.Quantity,true))return StepResult.Failed;
+                if(collectionOnly)CollectionWithdrawalConfirmed?.Invoke();
                 if(judge(stock).Outcome==Outcome.CollectDresser)dresserWithdrawals++;
                 if(disposalOnly&&!pi.GetIpcSubscriber<ulong,ulong,uint,bool>("AutoRetainer.InventoryPolicy.CleanupWithdrawalConfirmed").InvokeFunc(character,retainer,stock.Quantity))
                     return StepResult.Failed;
@@ -515,6 +516,8 @@ public sealed unsafe partial class MarketQueue : IDisposable
             },TimeoutMs:10000,CanSkip:()=>!attempted));
         }
     }
+    public event Action? DresserDepositConfirmed;
+    public event Action? CollectionWithdrawalConfirmed;
     public event Action<ulong>? DresserRestored;
     public void CleanupDresser()
         =>Plan(CleanupDresserCore);
@@ -644,6 +647,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     var owned=view.LiveDresserContains(source.ItemId);
                     var result=DresserConfirmation.Acknowledge(source,live,false,
                         InventoryView.Loaded(source.Container),owned.HasValue,owned==true);
+                    if(result==StepResult.Completed)DresserDepositConfirmed?.Invoke();
                     if(result==StepResult.Completed)history($"Confirmed dresser storage: item={source.ItemId}, source={source.Container}/{source.Slot}, route={plan!.Kind}, target={plan.Target}; source consumed and live collection copy present");
                     return result;
                 }

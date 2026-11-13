@@ -5,6 +5,16 @@ static class StorageChecks
 {
     public static void Run(Action<bool,string> check,DateTimeOffset now)
     {
+        var pass=new StorageRun();
+        pass.Begin(10,true);
+        pass.ConfirmWithdrawal();
+        pass.ConfirmDeposit();
+        pass.RetainerSweepStalled=true;
+        pass.Begin(10,true);
+        check(pass.Withdrawn==1&&pass.Deposited==1&&pass.RetainerSweepStalled,"A same-character retainer handoff keeps the batch results");
+        pass.End();
+        pass.Begin(10,true);
+        check(pass.Withdrawn==0&&pass.Deposited==0&&!pass.RetainerSweepStalled,"A new storage run retries held retainers and starts fresh totals");
         var routeRules=new RuleSettings();
         var routeEvidence=new Evidence{ReferencesReady=true,GearsetsReady=true};
         var routeItem=new ItemFacts(14799,"Chestwrap",true,2,60,false,false,SourceKind.Special,35);

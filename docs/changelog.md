@@ -1,6 +1,6 @@
 ## Glamour storage
 
-Collection runs can visit the armoire to verify ownership before collecting retainer gear. Steward remembers verified dresser capacity after closing it for the current session, responds sooner between visits, and reports the result of manual storage checks.
+Collection runs can visit the armoire to verify ownership before collecting retainer gear. Steward remembers verified dresser capacity after closing it for the current session, responds sooner between visits, and reports confirmed transfers on manual storage checks. Collection sweeps visit retainers with eligible stock, deposit a carried batch at an open dresser first, and stop retrying a sweep that confirmed no withdrawals.
 
 ## Steward settings window
 
