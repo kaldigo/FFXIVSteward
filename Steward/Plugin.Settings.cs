@@ -48,9 +48,7 @@ public sealed partial class Plugin
     {
         var icon=textures.GetFromFile(Path.Combine(pi.AssemblyLocation.DirectoryName!,"images","mark.png")).GetWrapOrDefault();
         if (icon == null) return;
-        // Reserve space for the shell's close button at the right edge.
-        var position = new Vector2(ImGui.GetWindowPos().X + ImGui.GetWindowWidth() - 3 * size, topLeft.Y);
-        ImGui.GetWindowDrawList().AddImage(icon.Handle, position, position + new Vector2(size));
+        ImGui.GetWindowDrawList().AddImage(icon.Handle, topLeft, topLeft + new Vector2(size));
     }
     private void DrawWorkspace(Desk page)
     {
