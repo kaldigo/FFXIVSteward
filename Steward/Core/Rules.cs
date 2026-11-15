@@ -109,6 +109,7 @@ public sealed class Evidence
     public HashSet<uint> Dresser { get; set; } = [];
     public Dictionary<uint,int> DresserCopyCounts { get; set; } = [];
     public HashSet<uint> GlamaholicReferences { get; set; } = [];
+    public HashSet<uint>? AetherloomReferences { get; set; }
     public bool GlamaholicKnown { get; set; }
     public uint? OmittedDresserItem { get; set; }
     public HashSet<uint> Armoire { get; set; } = [];

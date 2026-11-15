@@ -9,6 +9,7 @@ public sealed partial class Plugin
     {
         Section("Saved outfits");
         Setting("In-game glamour plates",f.NativePlates,v=>f.NativePlates=v);
+        Setting("Aetherloom designs",f.Aetherloom,v=>f.Aetherloom=v,"Protect items used by saved wardrobe designs, including alternate main hands.");
         Setting("Glamaholic saved outfits",f.Glamaholic,v=>f.Glamaholic=v,"Includes nested folders. Selected reference sources must be available before handling items.");
         Section("Automatic collection filters");
         Setting("Eorzea Collection favourites",f.EorzeaCollection,v=>f.EorzeaCollection=v,"Steward's internal, curated popularity list. Frequency is the main signal; likes support it. Maintained with major-patch updates. It supplements the filters below and is not a complete catalogue of popular items.");

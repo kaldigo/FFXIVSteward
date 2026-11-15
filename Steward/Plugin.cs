@@ -85,7 +85,9 @@ public sealed partial class Plugin : IDalamudPlugin
         }
         universalis=new(Path.Combine(pi.GetPluginConfigDirectory(),"sale-statistics.json"));
         inventoryMemory=new(Path.Combine(pi.GetPluginConfigDirectory(),"inventory-observations.json"));
-        view=new(data,config,inventoryMemory,condition);imports=new(pi,config,view);
+        view=new(data,config,inventoryMemory,condition);
+        var designItems=pi.GetIpcSubscriber<uint[]>("Aetherloom.GetDesignItemIds");
+        imports=new(pi,config,view,()=>designItems.InvokeFunc());
         view.StoragePlanAllows=(source,retainer)=>pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.StoragePlanAllows").InvokeFunc(view.Character,
             JsonSerializer.Serialize(new{source.Container,source.Slot,source.ItemId,source.Quantity,source.Hq,Retainer=retainer}));
         tracked=new(pi);

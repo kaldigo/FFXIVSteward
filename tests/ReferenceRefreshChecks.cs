@@ -13,13 +13,22 @@ static class ReferenceRefreshChecks
             File.WriteAllText(path,"""{"Version":1,"Plates":[{"Items":{"Head":{"ItemId":42}}}]}""");
             var config=new Configuration{ImportMarketBuddy=false};
             var view=new InventoryView{NativeReferencesKnown=true,NativeReferences=[99]};
-            var imports=new ExternalImports(new Interface(root),config,view);
+            uint[]? designItems=[42,72,72];
+            var imports=new ExternalImports(new Interface(root),config,view,()=>designItems??throw new InvalidOperationException());
             imports.Refresh();
             for(var i=0;i<5;i++)
             {
                 view.Evidence.InvalidateLive();imports.RefreshReferences();
                 check(view.Evidence.ReferencesReady&&view.Evidence.References.SetEquals(new uint[]{42,99}),"Between full imports, live refresh restores the exact selected reference union");
             }
+            config.Rules.Glamour.Aetherloom=true;
+            imports.RefreshReferences();
+            check(view.Evidence.ReferencesReady && view.Evidence.References.SetEquals(new uint[]{42,72,99}),"Aetherloom adds unique references alongside Glamaholic and native plates");
+            designItems=null;imports.RefreshReferences();
+            check(!view.Evidence.ReferencesReady && !view.Evidence.References.Contains(72),"Unavailable selected Aetherloom invalidates previous results");
+            designItems=[];imports.RefreshReferences();
+            check(view.Evidence.ReferencesReady && view.Evidence.References.SetEquals(new uint[]{42,99}),"Empty Aetherloom library is a successful read");
+            config.Rules.Glamour.Aetherloom=false;
             view.NativeReferencesKnown=false;imports.RefreshReferences();
             check(!view.Evidence.ReferencesReady,"Real native plate unavailability still holds actions");
             view.NativeReferencesCached=true;imports.RefreshReferences();

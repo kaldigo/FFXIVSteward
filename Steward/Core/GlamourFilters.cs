@@ -3,6 +3,7 @@ namespace Steward.Core;
 public sealed class GlamourFilters
 {
     public bool NativePlates { get; set; }=true;
+    public bool Aetherloom { get; set; }
     public bool Glamaholic { get; set; }=true;
     public bool EorzeaCollection { get; set; }=true;
     public bool LevelOne { get; set; }=true;
@@ -26,14 +27,14 @@ public enum GlamourMatch
 }
 public static class GlamourProtection
 {
-    public static bool ReferencesReady(GlamourFilters f,bool native,bool saved)=>(!f.NativePlates||native)&&(!f.Glamaholic||saved);
+    public static bool ReferencesReady(GlamourFilters f,bool native,bool saved,bool aetherloom=false)=>(!f.NativePlates||native)&&(!f.Glamaholic||saved)&&(!f.Aetherloom||aetherloom);
     public static GlamourMatch Match(ItemFacts item,RuleSettings rules,Evidence e)
     {
         var f=rules.Glamour;var result=item.ArmoireEligible?GlamourMatch.Armoire:GlamourMatch.None;
         if(!item.Equipment)return result;
         if(e.PendingCollection.Contains(item.Id))result|=GlamourMatch.Pending;
         if(rules.CollectionKeep.Contains(item.Id))result|=GlamourMatch.Supplemental;
-        if((f.NativePlates||f.Glamaholic)&&e.References.Contains(item.Id))result|=GlamourMatch.SavedOutfit;
+        if((f.NativePlates||f.Glamaholic||f.Aetherloom)&&e.References.Contains(item.Id))result|=GlamourMatch.SavedOutfit;
         // Unidentified acquisition is a safety hold, not a user-selectable assumption of easy replacement.
         if(item.Source==SourceKind.Unknown)result|=GlamourMatch.Unknown;
         if((f.Categories.Count>0&&!f.Categories.Contains(item.Category))||f.ExcludedCategories.Contains(item.Category))return result;

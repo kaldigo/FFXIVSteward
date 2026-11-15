@@ -230,7 +230,8 @@ public sealed partial class Plugin
         var f=config.Rules.Glamour;
         return new("Glamour","Protected gear",new Topic("Saved outfits",
             Toggle("In-game glamour plates",f.NativePlates,v=>f.NativePlates=v),
-            Toggle("Glamaholic saved outfits",f.Glamaholic,v=>f.Glamaholic=v)),
+            Toggle("Glamaholic saved outfits",f.Glamaholic,v=>f.Glamaholic=v),
+            Toggle("Aetherloom designs",f.Aetherloom,v=>f.Aetherloom=v)),
             new Topic("Equipment",Toggle("Eorzea Collection favourites",f.EorzeaCollection,v=>f.EorzeaCollection=v),
                 Toggle("Level 1 equipment",f.LevelOne,v=>f.LevelOne=v),Toggle("Equipment designed for glamour",f.GlamourDesign,v=>f.GlamourDesign=v),
                 Toggle("Nonmarketable blue equipment",f.NonmarketableBlue,v=>f.NonmarketableBlue=v,"Normal dungeon and normal raid gear are excluded from this filter."),

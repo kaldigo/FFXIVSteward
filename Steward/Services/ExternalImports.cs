@@ -12,8 +12,10 @@ public sealed class ExternalImports
     private readonly HashSet<uint> bundled=[];
     public string Status { get; private set; } = "Waiting for imports";
     public bool MarketPreferencesReady { get; private set; }
-    public ExternalImports(IDalamudPluginInterface pi,Configuration config,InventoryView view)
+    private readonly Func<uint[]> designItems;
+    public ExternalImports(IDalamudPluginInterface pi,Configuration config,InventoryView view,Func<uint[]> designItems)
     {
+        this.designItems=designItems;
         directory=Directory.GetParent(pi.GetPluginConfigDirectory())!.FullName;this.config=config;this.view=view;
         using var stream=typeof(ExternalImports).Assembly.GetManifestResourceStream("Steward.data.common-glamour.json")??throw new InvalidDataException("Bundled glamour list missing");
         using var doc=JsonDocument.Parse(stream);foreach(var entry in doc.RootElement.GetProperty("items").EnumerateArray())bundled.Add(entry.GetProperty("itemId").GetUInt32());
@@ -44,7 +46,18 @@ public sealed class ExternalImports
             else if(filters.Glamaholic)errors.Add("Glamaholic config not found");
         }
         catch(Exception ex){glamReady=!filters.Glamaholic;if(filters.Glamaholic)errors.Add("Glamaholic: "+ex.Message);}
-        view.Evidence.References=references;view.Evidence.ReferencesReady=GlamourProtection.ReferencesReady(filters,view.NativeReferencesAvailable,glamReady);
+        view.Evidence.AetherloomReferences=null;
+        if(filters.Aetherloom)
+        {
+            try
+            {
+                var ids=designItems() ?? throw new InvalidDataException("Design references unavailable");
+                view.Evidence.AetherloomReferences=ids.ToHashSet();
+                references.UnionWith(ids);
+            }
+            catch(Exception ex){errors.Add("Aetherloom: "+ex.Message);}
+        }
+        view.Evidence.References=references;view.Evidence.ReferencesReady=GlamourProtection.ReferencesReady(filters,view.NativeReferencesAvailable,glamReady,view.Evidence.AetherloomReferences!=null);
         return errors;
     }
     public void Refresh()
