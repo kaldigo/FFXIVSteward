@@ -4,7 +4,7 @@ A collection-aware companion for the maintained AutoRetainer integration fork. O
 
 ## Agreed rules
 
-- Both Glamaholic (nested and legacy configurations) and native glamour plates are references.
+- Saved outfit protection combines selected native glamour plates, Glamaholic outfits (including nested folders), and tagged Aetherloom wardrobe designs. Glamaholic and Aetherloom are optional and independently selectable. An installed, selected source must provide readable data before item handling resumes.
 - Preserve one exact collection copy of referenced/curated items, level-one equipment, nonmarketable blues (except confirmed ordinary dungeon/normal-raid sources) and special-source equipment. Marketable blues receive no protection from the blue-rarity rule, although all other protection rules still apply. Marketability means whether the item can be traded on the marketboard, independently of available listings or cached prices. Dyes do not affect protection or duplicates. Equipped and gear-set equipment stays protected.
 - Armoire-eligible items are directed to the armoire, including pieces restored from the dresser. For other items, an exact item in the dresser or armoire satisfies collection ownership; surplus copies may be disposed of under AutoRetainer's existing settings. Ordinary unreferenced dungeon/crafted equipment can be unwanted even if uncollected. Unknown acquisition sources stay held. Crafted items are recognized from the game Recipe sheet. Dungeon sources are indexed incrementally through Glamour Log’s existing GetItemsFromContent IPC; missing sources stay conservative and can be overridden in Rules.
 - Exclusions override all handling, including market actions. Both Metallic Silver Dye (8743) and General-purpose Metallic Silver Dye (13116) are excluded once on initial setup, with IDs verified against installed English game data. You can remove either exclusion later; it will not be re-added. Quantity reserves and the explicitly configured experimental silver strategy have their own controls.
@@ -21,7 +21,7 @@ The searchable sidebar separates normal setup from developer diagnostics:
 
 - **Overview:** feature controls, readiness, recovery, manual actions and current inventory decisions.
 - **Sale rules:** ordered category/item rules, quality, price and sales-rate thresholds, stack sizes, pricing preferences, price-cache settings and the current retainer's listing preview. Rules, Pricing, Price data and Listing preview have separate tabs.
-- **Glamour filters:** native plates, Glamaholic, the bundled Eorzea Collection selection, level-one/designed glamour gear, rarity and acquisition-source filters, with category scope for automatic filters.
+- **Glamour filters:** native plates, Glamaholic, Aetherloom, the bundled Eorzea Collection selection, level-one/designed glamour gear, rarity and acquisition-source filters, with category scope for automatic filters.
 - **Storage:** dresser reserve, protected retainer overflow, storage exclusions, non-equipment disposal categories, player alerts and opt-in dresser cleanup/armoire migration. Assign storage destinations only in AutoRetainer.
 - **Item overrides:** exclusions, keep/collection overrides, quantity reserves, non-equipment disposal permissions and acquisition-source corrections.
 - **Integrations:** AutoRetainer connection and guidance to the relevant settings pages.

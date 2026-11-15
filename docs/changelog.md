@@ -1,3 +1,7 @@
+## Optional saved outfit sources
+
+Steward detects Glamaholic and Aetherloom independently. Uninstalled sources are skipped. If an installed, selected source cannot be read, protected actions wait for its data.
+
 ## Aetherloom designs
 
 Add optional Aetherloom designs as a saved-outfit reference alongside Glamaholic. Enable it in Glamour settings to include wardrobe equipment in existing collection protection.

@@ -138,7 +138,7 @@ public sealed unsafe partial class MarketQueue
         ObserveListingWindows(retainer,listings);
         if(!marketPreferencesReady())return new(retainer,view.World,null,[],"Market preferences unavailable; listing proposals held.");
         if(!view.Evidence.ReferencesReady||!view.Evidence.GearsetsReady)
-            return new(retainer,view.World,null,[],"Protection references unavailable; listing proposals held. Load the native glamour plate editor and Glamaholic references; gearset evidence must also be ready.");
+            return new(retainer,view.World,null,[],"Protection references unavailable; listing proposals held. Check gearsets and the enabled, installed outfit sources.");
         var free=Enumerable.Range(0,20).Except(listings.Select(s=>(int)s.Slot)).ToArray();
         var inputs=(config.Features.NewListings?OrderedSaleStock(retainer):[]).Select(s=>SaleInput(s,false)).OfType<ListingInput>()
             .Where(i=>ListingPlanner.CanConsider(i.Item,i.Stock,i.Decision,i.Rule)).ToArray();

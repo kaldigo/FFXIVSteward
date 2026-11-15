@@ -318,7 +318,7 @@ public sealed partial class Plugin
             if(Controls.Switch("connected",enabled)==enabled)return;
             if(enabled)DetachPolicy();else{config.Connected=true;SavePolicy();}
         },Detail:"Applies to this character."){Layout=FieldLayout.Switch},
-        Jump("Glamaholic and native plates",Desk.Glamour),
+        Jump("Saved outfit sources",Desk.Glamour),
         new("pricing","Market Buddy and Universalis",()=>{if(ImGui.Button("Open")){NavigateWorkspace(Desk.Market);workspacePages[Desk.Market].SetCollapsed("pricing",false);workspacePages[Desk.Market].ScrollToGroup("pricing");}}),
         new("allagan","Allagan Tools and Allagan Market",()=>ImGui.TextUnformatted("Read-only"),Detail:"Optional inventory and market observations.")));
 

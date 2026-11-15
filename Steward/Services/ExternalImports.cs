@@ -12,10 +12,13 @@ public sealed class ExternalImports
     private readonly HashSet<uint> bundled=[];
     public string Status { get; private set; } = "Waiting for imports";
     public bool MarketPreferencesReady { get; private set; }
+    private readonly Func<IEnumerable<string>> installedPlugins;
     private readonly Func<uint[]> designItems;
-    public ExternalImports(IDalamudPluginInterface pi,Configuration config,InventoryView view,Func<uint[]> designItems)
+    public bool GlamaholicInstalled { get; private set; }
+    public bool AetherloomInstalled { get; private set; }
+    public ExternalImports(IDalamudPluginInterface pi,Configuration config,InventoryView view,Func<uint[]> designItems,Func<IEnumerable<string>> installedPlugins)
     {
-        this.designItems=designItems;
+        this.designItems=designItems;this.installedPlugins=installedPlugins;
         directory=Directory.GetParent(pi.GetPluginConfigDirectory())!.FullName;this.config=config;this.view=view;
         using var stream=typeof(ExternalImports).Assembly.GetManifestResourceStream("Steward.data.common-glamour.json")??throw new InvalidDataException("Bundled glamour list missing");
         using var doc=JsonDocument.Parse(stream);foreach(var entry in doc.RootElement.GetProperty("items").EnumerateArray())bundled.Add(entry.GetProperty("itemId").GetUInt32());
@@ -37,17 +40,32 @@ public sealed class ExternalImports
         var filters=config.Rules.Glamour;
         var errors=new List<string>();var references=filters.NativePlates?new HashSet<uint>(view.NativeReferences):[];
         view.Evidence.CuratedGlamour=filters.EorzeaCollection?bundled:[];
-        var glamReady=!filters.Glamaholic;
+        view.Evidence.ReferencesReady=false;
+        view.Evidence.References=references;
         view.Evidence.GlamaholicKnown=false;view.Evidence.GlamaholicReferences=[];
+        view.Evidence.AetherloomReferences=null;
         try
         {
-            var path=Path.Combine(directory,"Glamaholic.json");
-            if(File.Exists(path)){var imported=ReadCached(path,Imports.Glamaholic);if(filters.Glamaholic)references.UnionWith(imported);view.Evidence.GlamaholicReferences=imported;view.Evidence.GlamaholicKnown=true;glamReady=true;}
-            else if(filters.Glamaholic)errors.Add("Glamaholic config not found");
+            var installed=installedPlugins().ToHashSet(StringComparer.OrdinalIgnoreCase);
+            GlamaholicInstalled=installed.Contains("Glamaholic");
+            AetherloomInstalled=installed.Contains("Aetherloom");
         }
-        catch(Exception ex){glamReady=!filters.Glamaholic;if(filters.Glamaholic)errors.Add("Glamaholic: "+ex.Message);}
-        view.Evidence.AetherloomReferences=null;
-        if(filters.Aetherloom)
+        catch(Exception ex)
+        {
+            if(filters.Glamaholic||filters.Aetherloom){errors.Add("Installed outfit sources unavailable: "+ex.Message);return errors;}
+        }
+        if(filters.Glamaholic&&GlamaholicInstalled)
+        {
+            try
+            {
+                var imported=ReadCached(Path.Combine(directory,"Glamaholic.json"),Imports.Glamaholic);
+                references.UnionWith(imported);
+                view.Evidence.GlamaholicReferences=imported;
+                view.Evidence.GlamaholicKnown=true;
+            }
+            catch(Exception ex){errors.Add("Glamaholic: "+ex.Message);}
+        }
+        if(filters.Aetherloom&&AetherloomInstalled)
         {
             try
             {
@@ -57,7 +75,7 @@ public sealed class ExternalImports
             }
             catch(Exception ex){errors.Add("Aetherloom: "+ex.Message);}
         }
-        view.Evidence.References=references;view.Evidence.ReferencesReady=GlamourProtection.ReferencesReady(filters,view.NativeReferencesAvailable,glamReady,view.Evidence.AetherloomReferences!=null);
+        view.Evidence.References=references;view.Evidence.ReferencesReady=GlamourProtection.ReferencesReady(filters,view.NativeReferencesAvailable,!GlamaholicInstalled||view.Evidence.GlamaholicKnown,!AetherloomInstalled||view.Evidence.AetherloomReferences!=null);
         return errors;
     }
     public void Refresh()

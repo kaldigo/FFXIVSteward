@@ -120,8 +120,8 @@ public sealed partial class Plugin
         ImGui.TextWrapped(view.Evidence.ReferencesReady?(view.NativeReferencesCached&&config.Rules.Glamour.NativePlates?"Selected glamour references: ready (saved native plates)":"Selected glamour references: ready"):!view.NativeReferencesAvailable&&config.Rules.Glamour.NativePlates?"Waiting for in-game glamour plate data":"Waiting for selected glamour references");
         if(!view.NativeReferencesAvailable&&config.Rules.Glamour.NativePlates)ImGui.TextWrapped("Open the in-game glamour plate editor to load your saved plates.");
         if(view.NativeReferencesCached&&config.Rules.Glamour.NativePlates)ImGui.TextWrapped($"Using saved native plate references from {view.NativeReferencesObservedAt:yyyy-MM-dd HH:mm} UTC. Opening the plate editor refreshes them automatically.");
-        if(config.Rules.Glamour.Aetherloom && view.Evidence.AetherloomReferences==null)ImGui.TextWrapped("Waiting for Aetherloom design references.");
-        if(!view.Evidence.GlamaholicKnown&&config.Rules.Glamour.Glamaholic)ImGui.TextWrapped("Glamaholic is selected but its saved outfits are unavailable. Check that the plugin is installed and configured.");
+        if(imports.AetherloomInstalled && config.Rules.Glamour.Aetherloom && view.Evidence.AetherloomReferences==null)ImGui.TextWrapped("Waiting for Aetherloom design references.");
+        if(imports.GlamaholicInstalled&&!view.Evidence.GlamaholicKnown&&config.Rules.Glamour.Glamaholic)ImGui.TextWrapped("Glamaholic is selected but its saved outfits are unavailable. Check its saved outfit configuration.");
         ImGui.TextWrapped(view.Evidence.DresserKnown?"Glamour dresser: ready":"Glamour dresser: open it to verify current contents");
         ImGui.TextWrapped(view.Evidence.ArmoireKnown?"Armoire: ready":"Armoire: open it to verify current contents");
         Section("Your setup");
@@ -372,7 +372,7 @@ public sealed partial class Plugin
         if(!config.Connected&&ImGui.Button("Connect Steward")){config.Connected=true;SavePolicy();}
         if(config.Connected&&ImGui.Button("Disconnect Steward from this character"))DetachPolicy();
         ImGui.TextWrapped("Without Steward, AutoRetainer can run native entrust, ventures and gil withdrawal. Disposal, automated sales and glamour work stay paused. Saved collection holds remain available when you reconnect.");
-        Section("Glamaholic and native plates");
+        Section("Saved outfit sources");
         ImGui.TextWrapped("Choose which saved outfits protect items on Glamour filters.");if(ImGui.Button("Open glamour filters"))shell.Open(Desk.Glamour);
         Section("Market Buddy and Universalis");
         ImGui.TextWrapped("Pricing preferences, undercutting and cache intervals belong on Sale rules.");if(ImGui.Button("Open sale rules"))shell.Open(Desk.Sales);

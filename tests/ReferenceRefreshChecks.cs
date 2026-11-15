@@ -14,7 +14,9 @@ static class ReferenceRefreshChecks
             var config=new Configuration{ImportMarketBuddy=false};
             var view=new InventoryView{NativeReferencesKnown=true,NativeReferences=[99]};
             uint[]? designItems=[42,72,72];
-            var imports=new ExternalImports(new Interface(root),config,view,()=>designItems??throw new InvalidOperationException());
+            var installed=new HashSet<string>{"Glamaholic","Aetherloom"};
+            var reads=0;
+            var imports=new ExternalImports(new Interface(root),config,view,()=>{reads++;return designItems??throw new InvalidOperationException();},()=>installed);
             imports.Refresh();
             for(var i=0;i<5;i++)
             {
@@ -24,6 +26,15 @@ static class ReferenceRefreshChecks
             config.Rules.Glamour.Aetherloom=true;
             imports.RefreshReferences();
             check(view.Evidence.ReferencesReady && view.Evidence.References.SetEquals(new uint[]{42,72,99}),"Aetherloom adds unique references alongside Glamaholic and native plates");
+            installed.Clear();
+            var before=reads;
+            imports.RefreshReferences();
+            check(reads==before&&view.Evidence.ReferencesReady&&view.Evidence.References.SetEquals([99]),"Both absent: native-only protection, stale config ignored, no IPC call");
+            installed.Add("Aetherloom");imports.RefreshReferences();
+            check(view.Evidence.ReferencesReady&&view.Evidence.References.SetEquals([42,72,99])&&!view.Evidence.GlamaholicKnown,"Aetherloom alone protects its designs");
+            installed.Clear();installed.Add("Glamaholic");imports.RefreshReferences();
+            check(view.Evidence.ReferencesReady&&view.Evidence.References.SetEquals([42,99])&&view.Evidence.AetherloomReferences==null,"Glamaholic alone protects its outfits");
+            installed.Add("Aetherloom");
             designItems=null;imports.RefreshReferences();
             check(!view.Evidence.ReferencesReady && !view.Evidence.References.Contains(72),"Unavailable selected Aetherloom invalidates previous results");
             designItems=[];imports.RefreshReferences();
