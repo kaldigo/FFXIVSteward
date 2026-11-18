@@ -5,13 +5,15 @@ class StorageTravel(unittest.TestCase):
  def test_cleanup_enablement_cannot_force_travel_or_keep_a_run_open(self):
   s=(ROOT/'Plugin.Storage.cs').read_text(encoding='utf-8')
   automatic=s.split('private bool AutomaticStorageWork()')[1].split('private void StartOverflow()')[0]
-  self.assertNotIn('config.CleanDresser',automatic)
+  self.assertNotIn('config.EffectiveCleanDresser',automatic)
   self.assertIn('NeedsCollectionVisit(false)',automatic)
   self.assertIn('NeedsCollectionVisit(true)',automatic)
  def test_explicit_and_collection_visits_still_run_cleanup(self):
   s=(ROOT/'Plugin.cs').read_text(encoding='utf-8')
   self.assertIn('market.CleanupDresser()',s)
-  self.assertIn('operation=="Dresser"&&!config.Features.DresserCollection&&!config.CleanDresser',s)
+  begin=(ROOT/'Plugin.Storage.cs').read_text().split('private void BeginStorageRun')[1].split('private bool CollectionNeeded')[0]
+  self.assertIn('!config.EffectiveCleanDresser',begin)
+  self.assertIn('operation=="Dresser"&&!config.EffectiveFeatures.DresserCollection&&!config.EffectiveCleanDresser',s)
 
  def test_manual_bell_actions_wait_for_release_and_stay_scoped(self):
   bell=(ROOT/'Plugin.ManualBell.cs').read_text(encoding='utf-8')
@@ -33,7 +35,7 @@ class StorageTravel(unittest.TestCase):
   self.assertNotIn('BeginStorageRun',market)
   queue=(ROOT/'Services/MarketQueue.cs').read_text().split('private void StartCore')[1].split('private void Enqueue(')[0]
   self.assertIn('if(scope is null or "Market")EnqueueReturn',queue)
-  self.assertIn('scope!="Reprice" && config.Features.NewListings',queue)
+  self.assertIn('scope!="Reprice" && config.EffectiveFeatures.NewListings',queue)
   self.assertIn('RotationUsed=scope=="List"',queue)
   run=(ROOT/'Plugin.cs').read_text()
   self.assertIn('market.OpenMarketRetainer()!=manualMarketOwner',run)

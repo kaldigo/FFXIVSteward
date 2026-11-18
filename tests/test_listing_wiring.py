@@ -95,7 +95,7 @@ class ListingWiring(unittest.TestCase):
             self.assertIn('config.SalesEnabledFor(retainer)',(root/'Services'/name).read_text())
         queue=(root/'Services/MarketQueue.cs').read_text()
         self.assertIn('decision=marketJudge(expected,retainer,true)',queue)
-        self.assertIn('else if(scope!="List" && config.Features.Repricing)',queue)
+        self.assertIn('else if(scope!="List" && config.EffectiveFeatures.Repricing)',queue)
         self.assertIn('if(cached.NeedsComparison)Enqueue(listing,retainer,true,coordinated)',queue)
         self.assertIn('EnqueueReturn(listing,retainer,coordinated)',queue)
         review=(root/'Plugin.Review.cs').read_text()

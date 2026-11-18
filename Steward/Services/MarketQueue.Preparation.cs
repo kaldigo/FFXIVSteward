@@ -9,7 +9,7 @@ public sealed unsafe partial class MarketQueue
     public bool DresserPreparationReady()
     {
         DresserPreparationStatus=null;
-        if(!config.ExecutionEnabled||!config.Features.DresserCollection)return true;
+        if(!config.ExecutionEnabled||!config.EffectiveFeatures.DresserCollection)return true;
         refreshProtection();
         var candidates=view.Items.ToArray().Where(s=>DresserSource.Category(s.Container)>=0&&
             view.DresserEligible(s.ItemId)&&previewJudge(s).Outcome==Outcome.CollectDresser).ToArray();

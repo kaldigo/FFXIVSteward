@@ -32,8 +32,8 @@ class FeatureWiring(unittest.TestCase):
         self.assertNotIn('view.Items.Where(s=>judge(s)',queue)
     def test_planning_does_not_replace_submission_checks(self):
         queue=(ROOT/'Services/MarketQueue.cs').read_text()
-        self.assertIn('StoragePolicy.PlanWithdrawals(stored,previewJudge,config.Features.Enabled,DisposalSelected,collectionOnly,disposalOnly)',queue)
-        self.assertIn('var decision=judge(stock);if(!config.Features.Enabled(decision.Outcome))',queue)
+        self.assertIn('StoragePolicy.PlanWithdrawals(stored,previewJudge,config.EffectiveFeatures.Enabled,DisposalSelected,collectionOnly,disposalOnly)',queue)
+        self.assertIn('var decision=judge(stock);if(!config.EffectiveFeatures.Enabled(decision.Outcome))',queue)
         self.assertIn('if(InventoryView.ReadSlot(stock.Container,stock.Slot)!=stock)',queue)
         self.assertIn('if(!selected){history(',queue)
         plugin=(ROOT/'Plugin.cs').read_text().split('private string Evaluate')[1].split('private void Update')[0]
@@ -105,7 +105,7 @@ class FeatureWiring(unittest.TestCase):
 
     def test_permissions_and_review_are_gated_without_changing_rules(self):
         plugin=(ROOT/'Plugin.cs').read_text()
-        self.assertIn('config.Features.Allows(action,decision.Outcome)&&ActionPolicy.Allows(',plugin)
+        self.assertIn('config.EffectiveFeatures.Allows(action,decision.Outcome)&&ActionPolicy.Allows(',plugin)
         review=(ROOT/'Plugin.Review.cs').read_text()
         self.assertIn('if(!config.Features.Enabled(decision.Outcome)&&!(decision.Outcome==Outcome.Dispose&&config.LogDisposal))',review)
         self.assertIn('"FeatureDisabled"',review)
@@ -114,13 +114,13 @@ class FeatureWiring(unittest.TestCase):
         queue=(ROOT/'Services/MarketQueue.cs').read_text()
         withdrawal=queue.split('private void WithdrawForOtherActionsCore')[1].split('public void CleanupDresser')[0] if 'private void WithdrawForOtherActionsCore' in queue else queue.split('public void WithdrawForOtherActions')[1].split('public void CleanupDresser')[0]
         self.assertNotIn('SalesEnabledFor',withdrawal)
-        self.assertIn('config.Features.Enabled',withdrawal)
-        self.assertIn('else if(scope!="List" && config.Features.Repricing)',queue)
+        self.assertIn('config.EffectiveFeatures.Enabled',withdrawal)
+        self.assertIn('else if(scope!="List" && config.EffectiveFeatures.Repricing)',queue)
         self.assertIn('if(cached.NeedsComparison)Enqueue(',queue)
-        self.assertIn('if(scope!="Reprice" && config.Features.NewListings)EnqueueListingPump',queue)
-        self.assertIn('config.Features.CanRestore',(ROOT/'Services/MarketQueue.Storage.cs').read_text())
+        self.assertIn('if(scope!="Reprice" && config.EffectiveFeatures.NewListings)EnqueueListingPump',queue)
+        self.assertIn('config.EffectiveFeatures.CanRestore',(ROOT/'Services/MarketQueue.Storage.cs').read_text())
     def test_native_rotation_and_return_recheck_toggles(self):
         rotation=(ROOT/'Services/MarketQueue.Rotation.cs').read_text()
-        self.assertIn('!config.Features.NewListings||!config.Features.Rotation',rotation)
-        self.assertIn('ruleReturn?!config.Features.ListingReturns:!config.Features.Rotation||!config.Features.NewListings',rotation)
-        self.assertIn('!config.Features.ListingReturns',(ROOT/'Services/MarketQueue.Returns.cs').read_text())
+        self.assertIn('!config.EffectiveFeatures.NewListings||!config.EffectiveFeatures.Rotation',rotation)
+        self.assertIn('ruleReturn?!config.EffectiveFeatures.ListingReturns:!config.EffectiveFeatures.Rotation||!config.EffectiveFeatures.NewListings',rotation)
+        self.assertIn('!config.EffectiveFeatures.ListingReturns',(ROOT/'Services/MarketQueue.Returns.cs').read_text())

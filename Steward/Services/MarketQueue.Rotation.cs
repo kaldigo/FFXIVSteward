@@ -36,7 +36,7 @@ public sealed unsafe partial class MarketQueue
     private RotationProposal? FindRotation(ulong retainer,List<Stock> listings)
     {
         if(config.Silver.Owns(retainer))return null;
-        if(!config.Features.NewListings||!config.Features.Rotation||ReturnRetainerFreeSlots()<1||listings.Count!=20||!view.Evidence.ReferencesReady||!view.Evidence.GearsetsReady||!marketPreferencesReady())return null;
+        if(!config.EffectiveFeatures.NewListings||!config.EffectiveFeatures.Rotation||ReturnRetainerFreeSlots()<1||listings.Count!=20||!view.Evidence.ReferencesReady||!view.Evidence.GearsetsReady||!marketPreferencesReady())return null;
         var now=DateTimeOffset.UtcNow;
         foreach(var source in listings.OrderBy(s=>config.ListingWindows.Age(view.Character,view.World,retainer,s)?.Since??DateTimeOffset.MaxValue))
         {
@@ -96,7 +96,7 @@ public sealed unsafe partial class MarketQueue
         Queue.Add(new((ruleReturn?"Return listing outside sale rules ":"Rotate aged listing ")+source.ItemId,()=>
         {
             if(!config.ExecutionEnabled||config.ExecutionReviewRequired||!config.SalesEnabledFor(retainer)||view.Character!=character||view.World!=world||!Owns())return Fail("execution, character, world, retainer scope or control lease changed");
-            if(ruleReturn?!config.Features.ListingReturns:!config.Features.Rotation||!config.Features.NewListings)return Fail("listing-return or rotation feature disabled");
+            if(ruleReturn?!config.EffectiveFeatures.ListingReturns:!config.EffectiveFeatures.Rotation||!config.EffectiveFeatures.NewListings)return Fail("listing-return or rotation feature disabled");
             refreshProtection();
             if(!MarketSnapshot(out var selected,out var listings)||selected!=retainer||!InventoryView.PlayerLoaded())return Fail("market snapshot or player inventory not ready");
             if(phase<2)

@@ -2,6 +2,24 @@ using Steward.Core;
 
 var total=0;
 void Check(bool condition,string name) { total++; if(!condition) throw new Exception(name); }
+{
+    var saved=new FeatureSettings();
+    var duty=WorkflowFilter.Apply(saved,7);
+    Check(duty.OverflowStorage&&!duty.AnyMarket&&!duty.DresserCollection&&!duty.ArmoireStorage&&!duty.Disposal,"AutoDuty preset cannot leak into market, glamour or disposal work");
+    var marketOnly=WorkflowFilter.Apply(saved,8);
+    Check(marketOnly.AnyMarket&&!marketOnly.AnyInventoryWork,"Market-only preset avoids inventory withdrawals and travel");
+    var none=WorkflowFilter.Apply(saved,0);
+    Check(!none.AnyMarket&&!none.AnyInventoryWork,"Failed workflow provider holds all Steward workflows");
+    saved.Repricing=false;
+    Check(!WorkflowFilter.Apply(saved,255).Repricing,"Preset cannot enable a disabled Steward feature");
+    Check(saved.NewListings&&saved.DresserCollection&&saved.Disposal,"Workflow filtering never mutates saved feature switches");
+    var cfg=new Steward.Configuration{Features=saved,CleanDresser=true,ReadWorkflowMask=()=>7};
+    Check(!cfg.EffectiveCleanDresser&&cfg.CleanDresser,"Dresser cleanup selection only narrows runtime execution");
+    var serialized=System.Text.Json.JsonSerializer.Serialize(cfg);
+    Check(!serialized.Contains("ReadWorkflowMask")&&!serialized.Contains("EffectiveFeatures")&&!serialized.Contains("WorkflowMask"),"Runtime workflow state is absent from persisted configuration");
+    cfg.ReadWorkflowMask=null;
+    Check(cfg.EffectiveCleanDresser&&cfg.EffectiveFeatures.NewListings,"Independent manual workflows retain configured features");
+}
 Check(MarketContextOwnership.Matches(129,129,0,0,0,0),"Native context owner validates observed top-level menu without parent/host");
 Check(MarketContextOwnership.Matches(129,129,0,0,14,14),"Native context owner validates later market row");
 Check(!MarketContextOwnership.Matches(129,130,129,129,0,0),"Contradictory native owner cannot be overridden by stale addon linkage");

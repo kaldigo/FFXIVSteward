@@ -120,7 +120,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 history($"Existing listing outside sale rules: item={listing.ItemId}, retainer={retainer}, slot={listing.Slot}; {returnReason}");
                 if(scope is null or "Market")EnqueueReturn(listing,retainer,coordinated);
             }
-            else if(scope!="List" && config.Features.Repricing)
+            else if(scope!="List" && config.EffectiveFeatures.Repricing)
             {
                 var cached=CachedReprice(listing,retainer);
                 history($"Reprice cache check: item={listing.ItemId}, slot={listing.Slot}, target={cached.Target}, cache observed={cached.Quote?.Observed:O}, validity={Math.Clamp(config.Rules.AllaganCacheHours,1,168)}h, {cached.Reason}");
@@ -128,7 +128,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 else history($"Reprice skipped: item={listing.ItemId}, retainer={retainer}, slot={listing.Slot}; {cached.Reason}");
             }
         }
-        if(scope!="Reprice" && config.Features.NewListings)EnqueueListingPump(retainer,coordinated,new ListingPass{RotationUsed=scope=="List"});
+        if(scope!="Reprice" && config.EffectiveFeatures.NewListings)EnqueueListingPump(retainer,coordinated,new ListingPass{RotationUsed=scope=="List"});
         if(!Queue.Running)ReleaseManualCoordination();
     }
     private void Enqueue(Stock expected,ulong retainer,bool reprice,bool coordinated,Action<Stock,bool>? completed=null,bool quoteOnly=false)
@@ -194,7 +194,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
         }
         Queue.Add(new((reprice?"Reprice ":"List ")+expected.ItemId,()=>
         {
-            if(reprice?!config.Features.Repricing:!config.Features.NewListings)return Fail("listing or repricing feature disabled");
+            if(reprice?!config.EffectiveFeatures.Repricing:!config.EffectiveFeatures.NewListings)return Fail("listing or repricing feature disabled");
             var rm=RetainerManager.Instance();
             if(!config.ExecutionEnabled || !config.SalesEnabledFor(retainer) || view.World==0 || view.World!=expectedWorld || rm==null || rm->LastSelectedRetainerId!=retainer)return Fail("execution, world or selected retainer changed");
             if(coordinated && !pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsHandoff").InvokeFunc(view.Character))return Fail("AutoRetainer handoff lost");
@@ -461,7 +461,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
             try{return pi.GetIpcSubscriber<uint,uint,bool>("AutoRetainer.InventoryPolicy.DisposalSelected").InvokeFunc(stock.ItemId,stock.Quantity);}
             catch{return false;}
         }
-        var candidates=StoragePolicy.PlanWithdrawals(stored,previewJudge,config.Features.Enabled,DisposalSelected,collectionOnly,disposalOnly);
+        var candidates=StoragePolicy.PlanWithdrawals(stored,previewJudge,config.EffectiveFeatures.Enabled,DisposalSelected,collectionOnly,disposalOnly);
         history($"Retainer withdrawal planning: retainer={retainer}, live stacks={stored.Count}, candidates={candidates.Length}, collection only={collectionOnly}, free bag slots={InventoryView.FreeBagSlots()}, waiting dresser items={initialWaiting}");
         foreach(var stock in candidates.OrderBy(s=>view.Facts(s.ItemId) is {} f?StoragePolicy.Priority(f,config.Rules,view.Evidence):int.MaxValue).ThenBy(s=>s.ItemId))
         {
@@ -479,7 +479,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     if(!InventoryView.PlayerLoaded())return StepResult.Failed;
                     before=view.Items.Where(s=>s.ItemId==stock.ItemId&&s.Hq==stock.Hq).Sum(s=>(long)s.Quantity);
                     if(InventoryView.ReadSlot(stock.Container,stock.Slot)!=stock)return StepResult.Failed;
-                    var decision=judge(stock);if(!config.Features.Enabled(decision.Outcome))return StepResult.Completed;
+                    var decision=judge(stock);if(!config.EffectiveFeatures.Enabled(decision.Outcome))return StepResult.Completed;
                     if(AutoDutyCoordination.OwnsTravel(pi)&&decision.Outcome is Outcome.CollectArmoire or Outcome.CollectDresser)return StepResult.Completed;
                     if(armoireOnly&&decision.Outcome!=Outcome.CollectArmoire)return StepResult.Completed;
                     if(collectionOnly&&decision.Outcome==Outcome.Dispose)return StepResult.Completed;
@@ -523,7 +523,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
         =>Plan(CleanupDresserCore);
     private void CleanupDresserCore()
     {
-        if(Queue.Running||!config.ExecutionEnabled||!config.CleanDresser||ui.Get("MiragePrismPrismBox")==null)return;
+        if(Queue.Running||!config.ExecutionEnabled||!config.EffectiveCleanDresser||ui.Get("MiragePrismPrismBox")==null)return;
         var mm=MirageManager.Instance();if(mm==null||!mm->PrismBoxRequested||!mm->PrismBoxLoaded)return;
         if(config.ExecutionReviewRequired || !config.Connected || !AcquireManualCoordination())return;
         Queue.Begin();
@@ -547,10 +547,10 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 if(live)refreshProtection();
                 var decision=StoragePolicy.WithoutDresserCopy(view.Evidence,id,view.DresserCopies(id),
                     ()=>(live?judge:previewJudge)(new(id,false,1,uint.MaxValue,(ushort)slot)));
-                return config.Features.CanRestore(decision.Outcome)?decision:new(Outcome.Keep,"Armoire storage is disabled");
+                return config.EffectiveFeatures.CanRestore(decision.Outcome)?decision:new(Outcome.Keep,"Armoire storage is disabled");
             }
             var proposal=WithoutThisCopy(false);
-            if(!StoragePolicy.Restore(proposal.Outcome,config.CleanDresser,facts.ArmoireEligible && !view.Evidence.Armoire.Contains(id)))
+            if(!StoragePolicy.Restore(proposal.Outcome,config.EffectiveCleanDresser,facts.ArmoireEligible && !view.Evidence.Armoire.Contains(id)))
             {retained.Add($"{facts.Name} [{id}]: {proposal.Outcome}, {proposal.Reason}");return;}
             if(view.IsUnique(id)&&InventoryView.CarriesItem(id)==true)
             {
@@ -564,7 +564,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
             Queue.Add(new("Restore dresser item "+id,()=>
             {
                 var live=MirageManager.Instance();
-                if(!sent && !config.CleanDresser)return StepResult.Completed;
+                if(!sent && !config.EffectiveCleanDresser)return StepResult.Completed;
                 if(!config.ExecutionEnabled||view.Character!=cleanupCharacter||manualControl!=cleanupCharacter||
                     !pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsControl").InvokeFunc(cleanupCharacter))
                     throw new InvalidOperationException("Dresser restoration lost execution permission or its owned control lease");
@@ -574,7 +574,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                     if(!retry.Ready(Environment.TickCount64))return StepResult.Waiting;
                     if(ui.Visible("SelectYesno")||ui.Visible("ContextMenu"))return StepResult.Waiting;
                     var decision=WithoutThisCopy();
-                    if(!StoragePolicy.Restore(decision.Outcome,config.CleanDresser,facts.ArmoireEligible && !view.Evidence.Armoire.Contains(id)))
+                    if(!StoragePolicy.Restore(decision.Outcome,config.EffectiveCleanDresser,facts.ArmoireEligible && !view.Evidence.Armoire.Contains(id)))
                     {history($"Dresser cleanup retained {facts.Name} [{id}] after live recheck: {decision.Outcome}, {decision.Reason}");return StepResult.Completed;}
                     slot=DresserRestoration.Find(live->PrismBoxItemIds,raw,slot);
                     if(slot<0)throw new InvalidOperationException($"Dresser source is {(slot==-2?"ambiguous after positions changed":"no longer present")}: item={id}, raw={raw}");
@@ -626,7 +626,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
         =>Plan(DepositOpenDresserCore);
     private void DepositOpenDresserCore()
     {
-        if(Queue.Running||!config.ExecutionEnabled||!config.Features.DresserCollection||ui.Get("MiragePrismPrismBox")==null||view.Evidence.DresserFreeSlots==null)return;
+        if(Queue.Running||!config.ExecutionEnabled||!config.EffectiveFeatures.DresserCollection||ui.Get("MiragePrismPrismBox")==null||view.Evidence.DresserFreeSlots==null)return;
         if(!DresserPreparationReady())return;
         if(config.ExecutionReviewRequired || !config.Connected || !AcquireManualCoordination())return;
         refreshProtection();
@@ -653,7 +653,7 @@ public sealed unsafe partial class MarketQueue : IDisposable
                 }
                 if(live!=source)throw new InvalidOperationException("Dresser source changed before submission: "+source.ItemId);
                 refreshProtection();
-                if(!config.Features.DresserCollection||judge(source).Outcome!=Outcome.CollectDresser)return StepResult.Completed;
+                if(!config.EffectiveFeatures.DresserCollection||judge(source).Outcome!=Outcome.CollectDresser)return StepResult.Completed;
                 if(!view.DresserEligible(source.ItemId)||source.Quantity!=1||DresserSource.Category(source.Container)<0)
                 {notify("Dresser deposit held: unsupported source or item is not dresser eligible. Item "+source.ItemId+" remains protected.");return StepResult.Completed;}
                 var manager=MirageManager.Instance();

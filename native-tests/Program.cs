@@ -56,6 +56,7 @@ namespace Steward
         public bool ExecutionEnabled;
         public bool ExecutionReviewRequired;
         public Features Features=new();
+        public Features EffectiveFeatures=>Features;
     }
     public sealed class Features { public bool DresserCollection; }
 }

@@ -37,6 +37,10 @@ public sealed class Configuration : IPluginConfiguration, IJsonOnDeserialized
     public int ControlsRevision { get; set; }
     public bool CleanDresser { get; set; }
     public FeatureSettings Features { get; set; } = new();
+    [JsonIgnore] internal Func<int>? ReadWorkflowMask { get; set; }
+    [JsonIgnore] internal int WorkflowMask => ReadWorkflowMask?.Invoke() ?? 255;
+    [JsonIgnore] internal FeatureSettings EffectiveFeatures => WorkflowFilter.Apply(Features,WorkflowMask);
+    [JsonIgnore] internal bool EffectiveCleanDresser => CleanDresser && (WorkflowMask&32)!=0;
     public HashSet<ulong> ExcludedSaleRetainers { get; set; } = [];
     public bool SalesEnabledFor(ulong retainer)=>Features.AnyMarket&&retainer!=0&&(!ExcludedSaleRetainers.Contains(retainer)||Silver.Owns(retainer));
     private ListingWindows listingWindows=new();

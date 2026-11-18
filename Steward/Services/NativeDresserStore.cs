@@ -33,7 +33,7 @@ public sealed unsafe class NativeDresserStore
 
     public bool Submit(MirageManager* manager, Stock source, DresserDeposit plan)
     {
-        if(!config.ExecutionEnabled||config.ExecutionReviewRequired||!config.Features.DresserCollection||
+        if(!config.ExecutionEnabled||config.ExecutionReviewRequired||!config.EffectiveFeatures.DresserCollection||
             manager==null||!manager->PrismBoxLoaded||DresserSource.Category(source.Container)<0||source.Quantity!=1)
             return false;
         if(plan.Kind==DresserDepositKind.Ordinary)

@@ -63,7 +63,7 @@ public sealed unsafe partial class MarketQueue
                 cached.Quote.UnitPrice,World:view.World,Retainer:retainer,PriceSource:cached.Quote.Source,PriceObserved:cached.Quote.Observed)];
         }
         List<RepriceProposal> reprices=[];List<ListingProposal> proposals=[];List<string> held=[];
-        foreach(var listing in listings.Where(s=>config.Features.Repricing&&config.Silver.Matches(retainer,s.ItemId)&&!s.Hq))
+        foreach(var listing in listings.Where(s=>config.EffectiveFeatures.Repricing&&config.Silver.Matches(retainer,s.ItemId)&&!s.Hq))
         {
             var eligibility=marketJudge(listing,retainer,false);
             if(eligibility.Outcome!=Outcome.Market){held.Add("Existing dye listing held: "+eligibility.Reason);continue;}
@@ -76,7 +76,7 @@ public sealed unsafe partial class MarketQueue
             if(eligibility.Outcome!=Outcome.Market)held.Add("Dye stock held: "+eligibility.Reason);
         }
         var simulated=listings.ToList();var free=new Queue<int>(Enumerable.Range(0,20).Except(listings.Select(s=>(int)s.Slot)));
-        foreach(var source in AvailableSaleStock().Where(s=>config.Features.NewListings&&config.Silver.Matches(retainer,s.ItemId)&&!s.Hq&&marketJudge(s,retainer,false).Outcome==Outcome.Market))
+        foreach(var source in AvailableSaleStock().Where(s=>config.EffectiveFeatures.NewListings&&config.Silver.Matches(retainer,s.ItemId)&&!s.Hq&&marketJudge(s,retainer,false).Outcome==Outcome.Market))
         {
             var left=source.Quantity;
             while(free.Count>0&&config.Silver.NextQuantity(simulated,left) is uint quantity&&quantity>0)

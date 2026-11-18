@@ -95,7 +95,12 @@ public sealed partial class Plugin : IDalamudPlugin
         historyPath=Path.Combine(pi.GetPluginConfigDirectory(),"history.jsonl");
         reviewJournal=new(historyPath);
         market=new(pi,board,view,config,new(gui),JudgeLive,Record,RefreshProtection,()=>imports.MarketPreferencesReady,HoldExecution,BeginOperation,CompleteOperation,ProtectCollection,Alert,Judge,Save,JudgeMarket,new NativeDresserStore(sigScanner,config),interop);
-        market.DresserRestored+=storageRun.Restored;
+        config.ReadWorkflowMask=ReadWorkflowMask;
+        pi.GetIpcProvider<int>("Steward.Workflow.Version").RegisterFunc(()=>1);
+        pi.GetIpcProvider<bool>("Steward.Workflow.Pending").RegisterFunc(()=>
+            ownsPostprocess||collectionPass||overflowPass||postCleanupEntrustPass||
+            storageRun.Allows(player.ContentId,config.ExecutionEnabled)||market.Queue.Running);
+        market.DresserRestored+=OnWorkflowDresserRestored;
         market.CollectionWithdrawalConfirmed+=storageRun.ConfirmWithdrawal;
         market.DresserDepositConfirmed+=storageRun.ConfirmDeposit;
         var collectionUi=new NativeUi(gui);
@@ -103,7 +108,7 @@ public sealed partial class Plugin : IDalamudPlugin
             ()=>executionFault||config.PendingOperation!=null||market.Queue.Running||market.Queue.HasUnverifiedAction||
                 collectionUi.Visible("SelectYesno")||collectionUi.Visible("MiragePrismPrismSetConvertC")||collectionUi.Visible("InputNumeric"),Record);
         dresserTrace=new(lifecycle,gui,Record,id=>$"item={id}, player quantity={view.Items.Where(s=>s.ItemId==id).Sum(s=>(long)s.Quantity)}, live dresser={view.Evidence.DresserKnown}, dresser owned={view.Evidence.Dresser.Contains(id)}, prisms={view.Items.Where(s=>s.ItemId==21800).Sum(s=>(long)s.Quantity)}");
-        pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.StrategyRetainer").RegisterFunc(r=>config.ExecutionEnabled&&!executionFault&&config.Connected&&attached==player.ContentId&&player.IsLoaded&&config.Features.AnyMarket&&config.Silver.Owns(r));
+        pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.StrategyRetainer").RegisterFunc(r=>config.ExecutionEnabled&&!executionFault&&config.Connected&&attached==player.ContentId&&player.IsLoaded&&config.EffectiveFeatures.AnyMarket&&config.Silver.Owns(r));
         pi.GetIpcProvider<string,string>(Endpoint).RegisterFunc(Evaluate);
         pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.OverflowNeeded").RegisterFunc(OverflowNeeded);
         pi.GetIpcProvider<ulong,string,object>("Steward.InventoryPolicy.Fault").RegisterAction(IntegrationFault);
@@ -257,7 +262,7 @@ public sealed partial class Plugin : IDalamudPlugin
     {
         if(character!=0 && character==player.ContentId){HoldExecution("AutoRetainer: "+reason);StopQueue();}
     }
-    private bool StorageCandidate(Decision decision)=>StoragePolicy.EntrustCandidate(decision,config.Features.OverflowStorage);
+    private bool StorageCandidate(Decision decision)=>StoragePolicy.EntrustCandidate(decision,config.EffectiveFeatures.OverflowStorage);
     private string Evaluate(string request)
     {
         try
@@ -304,7 +309,7 @@ public sealed partial class Plugin : IDalamudPlugin
             if(action is "Store" or "Retrieve" && !config.Storage.RetainerEnabled(target))return "Deny";
             if(action=="Store"&&view.StorageBlock(stock,target)!=null)return "Deny";
             LogPolicyProposal(action,stock,decision);
-            var allow=config.Features.Allows(action,decision.Outcome)&&ActionPolicy.Allows(action,decision.Outcome,config.ExecutionEnabled,config.Connected,executionFault,
+            var allow=config.EffectiveFeatures.Allows(action,decision.Outcome)&&ActionPolicy.Allows(action,decision.Outcome,config.ExecutionEnabled,config.Connected,executionFault,
                 market.Queue.Running||ownsPostprocess,ownsPostprocess);
             var key=$"{id}/{action}/{allow}/{decision.Reason}";
             if(!recentDecisions.TryGetValue(key,out var at)||Environment.TickCount64-at>60000)
@@ -358,7 +363,7 @@ public sealed partial class Plugin : IDalamudPlugin
             if(withdrawing&&!market.Queue.Running)
             {
                 withdrawing=false;market.ReturnToRetainerMenu();
-                if(market.Queue.Status.StartsWith("Stopped")||overflowPass||collectionPass||cleanupActive||!config.Features.AnyMarket){FinishPostprocess();}
+                if(market.Queue.Status.StartsWith("Stopped")||overflowPass||collectionPass||cleanupActive||!config.EffectiveFeatures.AnyMarket){FinishPostprocess();}
                 else{openingMarket=true;marketOpenDeadline=Environment.TickCount64+15000;}
             }
             if(openingMarket)
@@ -430,7 +435,7 @@ public sealed partial class Plugin : IDalamudPlugin
     {
         if(!player.IsLoaded||!config.ExecutionEnabled||executionFault||attached!=player.ContentId||market.Queue.Running)return;
         if(view.RetainerNames.FirstOrDefault(p=>p.Value==retainer).Key is var retainerId && !config.Storage.RetainerEnabled(retainerId)&&!config.SalesEnabledFor(retainerId))return;
-        if(!config.Features.AnyInventoryWork&&!config.Features.AnyMarket)return;
+        if(!config.EffectiveFeatures.AnyInventoryWork&&!config.EffectiveFeatures.AnyMarket)return;
         if(overflowPass && !OverflowNeeded(player.ContentId))return;
         try{pi.GetIpcSubscriber<string,object>("AutoRetainer.RequestPostprocess").InvokeAction("Steward");}
         catch(Exception ex){Record("Postprocess request failed: "+ex.Message);}
@@ -443,9 +448,9 @@ public sealed partial class Plugin : IDalamudPlugin
         if(!config.ExecutionEnabled || executionFault || !config.Connected || attached==0 || attached!=player.ContentId)
         {FinishPostprocess();return;}
         try{Refresh();
-            if(!config.Features.AnyInventoryWork&&!config.Features.AnyMarket){FinishPostprocess();return;}
+            if(!config.EffectiveFeatures.AnyInventoryWork&&!config.EffectiveFeatures.AnyMarket){FinishPostprocess();return;}
             if(!cleanupActive&&!overflowPass)BeginStorageRun(pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsHandoff").InvokeFunc(player.ContentId));
-            openingInventory=config.Features.AnyInventoryWork;openingMarket=!openingInventory&&config.Features.AnyMarket;marketOpenDeadline=Environment.TickCount64+15000;}
+            openingInventory=config.EffectiveFeatures.AnyInventoryWork;openingMarket=!openingInventory&&config.EffectiveFeatures.AnyMarket;marketOpenDeadline=Environment.TickCount64+15000;}
         catch(Exception ex){log.Error(ex,"Retainer postprocess planning failed");HoldExecution("Retainer postprocess planning failed: "+ex.Message);StopQueue();}
     }
     private void FinishPostprocess()
@@ -481,13 +486,13 @@ public sealed partial class Plugin : IDalamudPlugin
     {
         if(AutoDutyCoordination.OwnsTravel(pi))
         {Record("AutoDuty owns travel. Stop its run before requesting Steward storage travel.");return;}
-        if(operation=="Dresser"&&!config.Features.DresserCollection&&!config.CleanDresser||operation=="Armoire"&&!config.Features.ArmoireStorage)
+        if(operation=="Dresser"&&!config.EffectiveFeatures.DresserCollection&&!config.EffectiveCleanDresser||operation=="Armoire"&&!config.EffectiveFeatures.ArmoireStorage)
         {Record(operation+" feature is disabled");return;}
         if(executionFault){Record("Check inventory and clear the stopped run first");return;}
         if(!config.ExecutionEnabled){Record("Dry run: would request AutoRetainer "+operation);return;}
         if(market.Queue.Running){Record("Wait for the current operation to finish");return;}
         if(cleanupActive){Record("Stop full cleanup before starting another operation");return;}
-        if(operation=="Armoire"||operation=="Dresser"&&config.Features.DresserCollection&&!config.CleanDresser)
+        if(operation=="Armoire"||operation=="Dresser"&&config.EffectiveFeatures.DresserCollection&&!config.EffectiveCleanDresser)
         {
             if(attached!=player.ContentId||attached==0){Alert("Glamour storage is waiting for the AutoRetainer connection.");return;}
             BeginStorageRun(true);
@@ -511,6 +516,9 @@ public sealed partial class Plugin : IDalamudPlugin
         {
             collectionSession.Dispose();universalis.Dispose();inventoryMemory.Dispose();reviewJournal.Dispose();
             pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.StrategyRetainer").UnregisterFunc();
+            config.ReadWorkflowMask=null;
+            pi.GetIpcProvider<int>("Steward.Workflow.Version").UnregisterFunc();
+            pi.GetIpcProvider<bool>("Steward.Workflow.Pending").UnregisterFunc();
             pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.CollectionNeeded").UnregisterFunc();
         pi.GetIpcProvider<ulong,ulong,bool>("Steward.InventoryPolicy.CollectionNeededForRetainer").UnregisterFunc();
         pi.GetIpcProvider<ulong,ulong,uint[]?>("Steward.InventoryPolicy.CachedBagStacks").UnregisterFunc();

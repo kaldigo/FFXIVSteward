@@ -62,6 +62,7 @@ public sealed partial class Plugin
     private void BeginStorageRun(bool authorized)
     {
         if(AutoDutyCoordination.OwnsTravel(pi)){storageRun.End();return;}
+        if(!config.EffectiveFeatures.DresserCollection&&!config.EffectiveFeatures.ArmoireStorage&&!config.EffectiveFeatures.OverflowStorage&&!config.EffectiveCleanDresser)return;
         if(authorized&&!storageRun.Allows(player.ContentId,config.ExecutionEnabled))
         {
             finishingStorageRun=false;
@@ -73,7 +74,7 @@ public sealed partial class Plugin
     private bool CollectionNeeded(ulong character)=>CollectionNeededForRetainer(character,0);
     private bool CollectionNeededForRetainer(ulong character,ulong retainer)
     {
-        if(!config.Features.DresserCollection&&!config.Features.ArmoireStorage)return false;
+        if(!config.EffectiveFeatures.DresserCollection&&!config.EffectiveFeatures.ArmoireStorage)return false;
         if(!player.IsLoaded||character==0||character!=player.ContentId||attached!=character||!config.Connected||!config.ExecutionEnabled||executionFault||InventoryView.FreeBagSlots()<2)return false;
         RefreshProtection();
         return CollectionNeededFromView(retainer);
@@ -86,7 +87,7 @@ public sealed partial class Plugin
             if(view.Items.Any(s=>s.ItemId==stock.ItemId))continue;
             var outcome=Judge(stock).Outcome;
             if((!storageRun.ArmoireOnly||outcome==Outcome.CollectArmoire)&&
-                outcome is (Outcome.CollectArmoire or Outcome.CollectDresser)&&config.Features.Enabled(outcome)&&
+                outcome is (Outcome.CollectArmoire or Outcome.CollectDresser)&&config.EffectiveFeatures.Enabled(outcome)&&
                 StoragePolicy.CanWithdraw(outcome,view.Evidence.DresserFreeSlots,config.Rules.DresserEmptySlots,waiting,0))return true;
         }
         return false;
@@ -125,7 +126,7 @@ public sealed partial class Plugin
         }
         if(operation=="Overflow")
         {
-            if(!config.Storage.RetainerEnabled(retainer)||!config.Features.OverflowStorage)return false;
+            if(!config.Storage.RetainerEnabled(retainer)||!config.EffectiveFeatures.OverflowStorage)return false;
             return (bags==null||bags.Count<175)&&view.Items.Any(s=>s.Quantity==1&&Judge(s).Outcome==Outcome.StoreRetainer&&
                 (bags==null||!view.IsUnique(s.ItemId)||!bags.Any(x=>x.ItemId==s.ItemId)));
         }
@@ -133,8 +134,8 @@ public sealed partial class Plugin
         if(!config.SalesEnabledFor(retainer))return false;
         if(listed<0||listed>20)return true;
         if(operation=="Review"||operation=="Reprice")return listed>0;
-        if(operation=="Market"&&listed>0&&(config.Features.Repricing||config.Features.ListingReturns||config.Features.Rotation))return true;
-        if(!config.Features.NewListings||listed>=20)return false;
+        if(operation=="Market"&&listed>0&&(config.EffectiveFeatures.Repricing||config.EffectiveFeatures.ListingReturns||config.EffectiveFeatures.Rotation))return true;
+        if(!config.EffectiveFeatures.NewListings||listed>=20)return false;
         return bags==null||view.Items.Where(s=>s.Container<4).Concat(bags).Any(s=>JudgeForRetainer(s,retainer).Outcome==Outcome.Market);
     }
     private long nextOverflowAttempt;
@@ -144,7 +145,7 @@ public sealed partial class Plugin
     {
         if(!player.IsLoaded||character==0||character!=player.ContentId||attached!=character||!config.Connected||!config.ExecutionEnabled||executionFault)return false;
         RefreshProtection();
-        return config.Features.OverflowStorage&&view.Items.Any(s=>Judge(s).Outcome==Outcome.StoreRetainer);
+        return config.EffectiveFeatures.OverflowStorage&&view.Items.Any(s=>Judge(s).Outcome==Outcome.StoreRetainer);
     }
     private void Alert(string message)=>StorageAlert(message,true);
     private void StorageAlert(string message,bool throttle)
@@ -186,9 +187,9 @@ public sealed partial class Plugin
         if(storageRun.EntrustPending&&nextPostCleanupEntrust>0){TryPostCleanupEntrust();return true;}
         // Existing player/armoury items must not suppress missing-item retainer collection.
         // Deposit a carried batch while the destination is open before closing it for another sweep.
-        if(market.DresserOpen&&!storageRun.ArmoireOnly&&!storageRun.CleanupOnly&&config.Features.DresserCollection&&
+        if(market.DresserOpen&&!storageRun.ArmoireOnly&&!storageRun.CleanupOnly&&config.EffectiveFeatures.DresserCollection&&
             view.Items.Any(stock=>NeedsVisit(stock,false)&&Judge(stock).Outcome==Outcome.CollectDresser))return false;
-        if(!storageRun.CleanupOnly&&(config.Features.DresserCollection||config.Features.ArmoireStorage)&&InventoryView.FreeBagSlots()>=2&&Environment.TickCount64>=nextCollectionAttempt&&CollectionNeededFromView())
+        if(!storageRun.CleanupOnly&&(config.EffectiveFeatures.DresserCollection||config.EffectiveFeatures.ArmoireStorage)&&InventoryView.FreeBagSlots()>=2&&Environment.TickCount64>=nextCollectionAttempt&&CollectionNeededFromView())
         {
             if(!market.CloseDresserForStorage())return true;
             nextCollectionAttempt=Environment.TickCount64+60000;
@@ -213,10 +214,10 @@ public sealed partial class Plugin
         if(storageRun.CleanupOnly && market.DresserOpen) return false;
         // Rules need live cabinet ownership before judging a missing dresser copy.
         // A candidate on a retainer can require this visit even with empty player bags.
-        bool checkCabinet=config.Features.ArmoireStorage&&!storageRun.CleanupOnly&&!storageRun.CheckedArmoire&&!view.Evidence.ArmoireKnown&&
+        bool checkCabinet=config.EffectiveFeatures.ArmoireStorage&&!storageRun.CleanupOnly&&!storageRun.CheckedArmoire&&!view.Evidence.ArmoireKnown&&
             (InventoryView.FreeBagSlots()>=2&&CollectionRetainerStocks().Any(s=>NeedsVisit(s,true))||
-             !storageRun.ArmoireOnly&&config.Features.DresserCollection&&NeedsCollectionVisit(false));
-        if(config.Features.ArmoireStorage&&(checkCabinet||NeedsCollectionVisit(true)))
+             !storageRun.ArmoireOnly&&config.EffectiveFeatures.DresserCollection&&NeedsCollectionVisit(false));
+        if(config.EffectiveFeatures.ArmoireStorage&&(checkCabinet||NeedsCollectionVisit(true)))
         {
             if(!market.CloseDresserForStorage())return true;
             var candidates = ArmoireCandidates().Distinct().ToArray();
@@ -233,8 +234,8 @@ public sealed partial class Plugin
             nextAutomaticWork=Environment.TickCount64+5000;
             return true;
         }
-        if(!storageRun.ArmoireOnly&&!storageRun.CleanupOnly&&config.Features.DresserCollection&&
-            !config.Features.ArmoireStorage&&!view.Evidence.ArmoireKnown&&NeedsCollectionVisit(false))
+        if(!storageRun.ArmoireOnly&&!storageRun.CleanupOnly&&config.EffectiveFeatures.DresserCollection&&
+            !config.EffectiveFeatures.ArmoireStorage&&!view.Evidence.ArmoireKnown&&NeedsCollectionVisit(false))
         {
             Alert("Dresser storage needs current armoire contents. Open the armoire once and retry, or enable armoire storage for automatic visits.");
             storageRun.RequestedStorage=true;
@@ -242,9 +243,9 @@ public sealed partial class Plugin
             return true;
         }
         if(!storageRun.ArmoireOnly&&!storageRun.CleanupOnly&&!market.DresserOpen&&Environment.TickCount64>=nextDresserAttempt&&
-            (config.Features.DresserCollection&&NeedsCollectionVisit(false)))
+            (config.EffectiveFeatures.DresserCollection&&NeedsCollectionVisit(false)))
         {
-            if(config.Features.DresserCollection&&!market.DresserPreparationReady())
+            if(config.EffectiveFeatures.DresserCollection&&!market.DresserPreparationReady())
             {status=market.DresserPreparationStatus!;return true;}
             nextDresserAttempt=Environment.TickCount64+60000;
             if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,"Dresser"))
@@ -252,15 +253,15 @@ public sealed partial class Plugin
             nextDresserAttempt=Environment.TickCount64+5000;
             Alert("Glamour collection is waiting for AutoRetainer's dresser route. Check its travel dependencies; protected items remain safe.");
         }
-        if(!storageRun.ArmoireOnly&&!storageRun.CleanupOnly&&config.Features.OverflowStorage&&view.Items.Any(s=>Judge(s).Outcome==Outcome.StoreRetainer)&&Environment.TickCount64>=nextOverflowAttempt)
+        if(!storageRun.ArmoireOnly&&!storageRun.CleanupOnly&&config.EffectiveFeatures.OverflowStorage&&view.Items.Any(s=>Judge(s).Outcome==Outcome.StoreRetainer)&&Environment.TickCount64>=nextOverflowAttempt)
         {StartOverflow();return overflowPass;}
         return false;
     }
     private bool StorageWorkRemaining()=>
-        !storageRun.CleanupOnly&&(config.Features.ArmoireStorage||config.Features.DresserCollection)&&InventoryView.FreeBagSlots()>=2&&CollectionNeededFromView()||
-        config.Features.ArmoireStorage&&NeedsCollectionVisit(true)||
-        !storageRun.ArmoireOnly&&!storageRun.CleanupOnly&&config.Features.DresserCollection&&NeedsCollectionVisit(false)||
-        !storageRun.ArmoireOnly&&!storageRun.CleanupOnly&&config.Features.OverflowStorage&&view.Items.Any(s=>Judge(s).Outcome==Outcome.StoreRetainer);
+        !storageRun.CleanupOnly&&(config.EffectiveFeatures.ArmoireStorage||config.EffectiveFeatures.DresserCollection)&&InventoryView.FreeBagSlots()>=2&&CollectionNeededFromView()||
+        config.EffectiveFeatures.ArmoireStorage&&NeedsCollectionVisit(true)||
+        !storageRun.ArmoireOnly&&!storageRun.CleanupOnly&&config.EffectiveFeatures.DresserCollection&&NeedsCollectionVisit(false)||
+        !storageRun.ArmoireOnly&&!storageRun.CleanupOnly&&config.EffectiveFeatures.OverflowStorage&&view.Items.Any(s=>Judge(s).Outcome==Outcome.StoreRetainer);
     private IEnumerable<uint> ArmoireCandidates() => view.Items
         .Where(stock => !storageRun.AttemptedArmoireItems.Contains(stock.ItemId) && NeedsVisit(stock,true))
         .Select(stock => stock.ItemId);
@@ -276,7 +277,7 @@ public sealed partial class Plugin
     }
     private void StartOverflow()
     {
-        if(!config.Features.OverflowStorage)return;
+        if(!config.EffectiveFeatures.OverflowStorage)return;
         if(!player.IsLoaded||attached!=player.ContentId||!config.Connected||!config.ExecutionEnabled||executionFault||market.Queue.Running||ownsPostprocess||overflowPass)return;
         nextOverflowAttempt=Environment.TickCount64+60000;
         if(!market.CloseDresserForStorage())

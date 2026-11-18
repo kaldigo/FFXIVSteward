@@ -44,7 +44,9 @@ class CleanupWiring(unittest.TestCase):
   ack=queue.split('Confirmed dresser restoration of ')[1]
   self.assertIn('DresserRestored?.Invoke(view.Character)',ack)
   plugin=(ROOT/'Plugin.cs').read_text()
-  self.assertIn('market.DresserRestored+=storageRun.Restored;',plugin)
+  self.assertIn('market.DresserRestored+=OnWorkflowDresserRestored;',plugin)
+  workflow=(ROOT/'Plugin.Workflow.cs').read_text()
+  self.assertIn('if((config.WorkflowMask&4)!=0)storageRun.Restored(character)',workflow)
   self.assertIn('Post-dresser native entrust pass finished',plugin)
   self.assertIn('FinishStorageRun();',plugin)
   storage=(ROOT/'Plugin.Storage.cs').read_text().split('private void TryPostCleanupEntrust()')[1].split('private readonly StorageRun')[0]

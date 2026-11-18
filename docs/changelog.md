@@ -1,3 +1,7 @@
+# Workflow presets
+
+Respect AutoRetainer normal-run workflow presets for market, collection, storage, dresser cleanup and disposal. Preset restrictions narrow execution only; saved features and collection protections stay unchanged. Preserve the mask through follow-up work and skip post-dresser entrust when excluded.
+
 ## Optional saved outfit sources
 
 Steward detects Glamaholic and Aetherloom independently. Uninstalled sources are skipped. If an installed, selected source cannot be read, protected actions wait for its data.

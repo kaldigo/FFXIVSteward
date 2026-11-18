@@ -20,7 +20,7 @@ public sealed unsafe partial class MarketQueue
     }
     private void RecordCacheChecks(ulong retainer,IEnumerable<Stock> listings)
     {
-        CacheReviewEntries=listings.Where(s=>config.Features.Repricing&&(!config.Silver.Owns(retainer)||config.Silver.Matches(retainer,s.ItemId)&&!s.Hq)).Select(s=>
+        CacheReviewEntries=listings.Where(s=>config.EffectiveFeatures.Repricing&&(!config.Silver.Owns(retainer)||config.Silver.Matches(retainer,s.ItemId)&&!s.Hq)).Select(s=>
         {
             var cached=CachedReprice(s,retainer);
             return new ReviewEntry(view.Character,$"Retainer {retainer}, cache check slot {s.Slot}",s.ItemId,s.Quantity,s.Hq,
@@ -140,11 +140,11 @@ public sealed unsafe partial class MarketQueue
         if(!view.Evidence.ReferencesReady||!view.Evidence.GearsetsReady)
             return new(retainer,view.World,null,[],"Protection references unavailable; listing proposals held. Check gearsets and the enabled, installed outfit sources.");
         var free=Enumerable.Range(0,20).Except(listings.Select(s=>(int)s.Slot)).ToArray();
-        var inputs=(config.Features.NewListings?OrderedSaleStock(retainer):[]).Select(s=>SaleInput(s,false)).OfType<ListingInput>()
+        var inputs=(config.EffectiveFeatures.NewListings?OrderedSaleStock(retainer):[]).Select(s=>SaleInput(s,false)).OfType<ListingInput>()
             .Where(i=>ListingPlanner.CanConsider(i.Item,i.Stock,i.Decision,i.Rule)).ToArray();
         var plan=ListingPlanner.Plan(inputs,free,config.Pricing,view.World,config.Rules.MaximumPriceAgeMinutes,config.Rules.Quality,DateTimeOffset.UtcNow);
         List<RepriceProposal> reprices=[];
-        foreach(var listing in config.Features.Repricing?listings:[])
+        foreach(var listing in config.EffectiveFeatures.Repricing?listings:[])
         {
             var decision=marketJudge(listing,retainer,false);if(ReturnReason(listing,retainer,false)!=null||decision.Rule==null||decision.Outcome is not (Outcome.Market or Outcome.Dispose))continue;
             var cached=CachedReprice(listing,retainer);
@@ -168,7 +168,7 @@ public sealed unsafe partial class MarketQueue
     {
         Queue.Add(new("Fill free market slots",()=>
         {
-            if(!config.ExecutionEnabled||config.ExecutionReviewRequired||!config.Features.NewListings)return StepResult.Failed;
+            if(!config.ExecutionEnabled||config.ExecutionReviewRequired||!config.EffectiveFeatures.NewListings)return StepResult.Failed;
             refreshProtection();
             if(!marketPreferencesReady()||!MarketSnapshot(out var selected,out var listings)||selected!=retainer)return StepResult.Failed;
             if(!config.SalesEnabledFor(retainer))return StepResult.Failed;
