@@ -64,6 +64,7 @@ public sealed partial class Plugin
             Desk.Inventory=>[Body(Desk.Inventory,"Inventory inspection",DrawDecisions),ItemSettings(),
                 new("Disposal","Disposal permissions",new Topic("Eligibility",
                     Toggle("Allow AutoRetainer disposal",config.Features.Disposal,v=>config.Features.Disposal=v),
+                    Toggle("Discard collected surplus as a last resort",config.Features.SurplusDiscard,v=>config.Features.SurplusDiscard=v),
                     Categories("Permitted non-equipment categories",config.Rules.NonEquipmentDisposalCategories,"None allowed","Protection and sale rules take priority.",nonEquipment:true)))],
             Desk.Market=>[Body(Desk.Market,"Selling report",DrawSalePreview),
                 Body(Desk.Sales,"Sale rules",()=>{ImGui.TextWrapped("The first enabled matching rule sets the price and stack limits.");if(ImGui.Button("Add sale rule")){var rule=new SaleRule();config.Rules.Sales.Add(rule);SavePolicy();pages.SetCollapsed(RuleKey(rule),false);}}),

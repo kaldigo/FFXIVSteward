@@ -128,3 +128,5 @@ Skaenwyda's manual item role excludes native entrust and ordinary sales, not ven
 ### Building the settings window
 
 Steward builds AetherglassUI from the sibling `AetherglassUI/Library/AetherglassUI.csproj` in the development workspace. For a standalone checkout, clone the shared source into `.dependencies/AetherglassUI` and check out the revision pinned in `.github/actions/build/action.yml`, or pass the source project path as `-p:AetherglassUIProject=...`. The release contains both Steward.dll and AetherglassUI.dll.
+
+Collected surplus can optionally be discarded at the end of a full cleanup pass. Enable **Discard collected surplus as a last resort** under Inventory / Disposal permissions. It defaults off. It requires a confirmed dresser or armoire copy, a completed GC inspection with no seal reward, no NPC sale value, and no desynthesis support. GC must be enabled for that inspection. Log-only shows the conditional proposal and blocks execution. GC-only, desynthesis-only and vendor-only passes do not discard.

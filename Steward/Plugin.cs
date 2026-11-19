@@ -120,6 +120,7 @@ public sealed partial class Plugin : IDalamudPlugin
         pi.GetIpcProvider<ulong,ulong,uint[]>("Steward.InventoryPolicy.EntrustBlockedItems").RegisterFunc(EntrustBlockedItems);
         pi.GetIpcProvider<ulong,ulong,string,int,bool>("Steward.InventoryPolicy.RetainerVisitNeeded").RegisterFunc(RetainerVisitNeeded);
         pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.CleanupAllowed").RegisterFunc(CleanupAllowed);
+        pi.GetIpcProvider<ulong,uint,bool>("Steward.InventoryPolicy.SurplusDiscardSelected").RegisterFunc(SurplusDiscardSelected);
         pi.GetIpcProvider<ulong,ulong,bool>("Steward.InventoryPolicy.CleanupRetainerAllowed").RegisterFunc(CleanupRetainerAllowed);
         pi.GetIpcProvider<ulong,uint,bool>("Steward.InventoryPolicy.NonEquipmentDisposalSelected").RegisterFunc((character,id)=>
             player.IsLoaded&&character==player.ContentId&&attached==character&&config.Connected&&view.Facts(id) is {} item&&
@@ -309,7 +310,9 @@ public sealed partial class Plugin : IDalamudPlugin
             if(action is "Store" or "Retrieve" && !config.Storage.RetainerEnabled(target))return "Deny";
             if(action=="Store"&&view.StorageBlock(stock,target)!=null)return "Deny";
             LogPolicyProposal(action,stock,decision);
-            var allow=config.EffectiveFeatures.Allows(action,decision.Outcome)&&ActionPolicy.Allows(action,decision.Outcome,config.ExecutionEnabled,config.Connected,executionFault,
+            var discardAllowed=action!="Discard"||view.Facts(id) is {} discardItem&&
+                stock.Container<4&&StoragePolicy.CanDiscardSurplus(discardItem,stock,decision,view.Evidence);
+            var allow=discardAllowed&&config.EffectiveFeatures.Allows(action,decision.Outcome)&&ActionPolicy.Allows(action,decision.Outcome,config.ExecutionEnabled,config.Connected,executionFault,
                 market.Queue.Running||ownsPostprocess,ownsPostprocess);
             var key=$"{id}/{action}/{allow}/{decision.Reason}";
             if(!recentDecisions.TryGetValue(key,out var at)||Environment.TickCount64-at>60000)
@@ -525,6 +528,7 @@ public sealed partial class Plugin : IDalamudPlugin
         pi.GetIpcProvider<ulong,ulong,uint[]>("Steward.InventoryPolicy.EntrustBlockedItems").UnregisterFunc();
         pi.GetIpcProvider<ulong,ulong,string,int,bool>("Steward.InventoryPolicy.RetainerVisitNeeded").UnregisterFunc();
             pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.CleanupAllowed").UnregisterFunc();
+        pi.GetIpcProvider<ulong,uint,bool>("Steward.InventoryPolicy.SurplusDiscardSelected").UnregisterFunc();
             pi.GetIpcProvider<ulong,ulong,bool>("Steward.InventoryPolicy.CleanupRetainerAllowed").UnregisterFunc();
             pi.GetIpcProvider<ulong,uint,bool>("Steward.InventoryPolicy.NonEquipmentDisposalSelected").UnregisterFunc();
             pi.GetIpcProvider<string,string>(Endpoint).UnregisterFunc();

@@ -3,6 +3,15 @@ namespace Steward;
 
 public sealed partial class Plugin
 {
+    private bool SurplusDiscardSelected(ulong character,uint id)
+    {
+        if(!player.IsLoaded||character!=player.ContentId||view.Character!=character||
+            !config.Features.Disposal||!config.Features.SurplusDiscard)return false;
+        RefreshProtection();
+        var item=view.Facts(id);
+        var stock=view.Items.FirstOrDefault(s=>s.ItemId==id)??new Steward.Core.Stock(id,false,1,10000,0);
+        return item!=null&&Steward.Core.StoragePolicy.CanDiscardSurplus(item,stock,Judge(stock),view.Evidence);
+    }
     private bool cleanupActive;
     private ulong cleanupOwner;
     private string cleanupStatus="";

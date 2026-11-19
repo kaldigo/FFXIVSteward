@@ -9,6 +9,7 @@ public sealed class FeatureSettings
     public bool DresserCollection { get; set; }=true;
     public bool ArmoireStorage { get; set; }=true;
     public bool OverflowStorage { get; set; }=true;
+    public bool SurplusDiscard { get; set; }
     public bool Disposal { get; set; }=true;
     public bool AnyMarket=>NewListings||Repricing||ListingReturns;
     public bool AnyInventoryWork=>DresserCollection||ArmoireStorage||OverflowStorage||Disposal;
@@ -20,6 +21,7 @@ public sealed class FeatureSettings
     };
     public bool Allows(string? action,Outcome outcome)=>action switch
     {
+        "Discard"=>Disposal&&SurplusDiscard,
         "Market"=>NewListings,"Vendor" or "Desynth" or "Gc"=>Disposal,
         "Dresser"=>DresserCollection,"Armoire"=>ArmoireStorage,"Store"=>OverflowStorage,
         "Retrieve"=>outcome is Outcome.CollectDresser or Outcome.CollectArmoire or Outcome.Dispose&&Enabled(outcome),

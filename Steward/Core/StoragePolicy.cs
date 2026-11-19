@@ -47,6 +47,9 @@ public static class StoragePolicy
         if(copies==1)evidence.OmittedDresserItem=id;
         try{return judge();}finally{evidence.OmittedDresserItem=previous;}
     }
+    public static bool CanDiscardSurplus(ItemFacts item,Stock stock,Decision decision,Evidence evidence)=>
+        item.Equipment&&!item.Marketable&&stock.Quantity==1&&decision.Outcome==Outcome.Dispose&&
+        evidence.OmittedDresserItem==null&&CollectionConfirmed(item,evidence);
     public static bool CollectionConfirmed(ItemFacts item,Evidence evidence)=>
         evidence.DresserKnown && evidence.ArmoireKnown &&
         (evidence.Armoire.Contains(item.Id)||!item.ArmoireEligible&&evidence.OmittedDresserItem!=item.Id&&evidence.Dresser.Contains(item.Id));

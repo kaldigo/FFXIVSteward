@@ -13,6 +13,7 @@ public static class WorkflowFilter
         DresserCollection=features.DresserCollection&&(mask&16)!=0,
         ArmoireStorage=features.ArmoireStorage&&(mask&16)!=0,
         OverflowStorage=features.OverflowStorage&&(mask&4)!=0,
+        SurplusDiscard=features.SurplusDiscard&&(mask&64)!=0,
         Disposal=features.Disposal&&(mask&64)!=0,
     };
 }

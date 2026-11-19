@@ -98,7 +98,7 @@ static class SafetyChecks
                 check(!ActionPolicy.Allows(action,outcome,true,false,false),$"Disconnected policy blocks {action}/{outcome}");
                 check(!ActionPolicy.Allows(action,outcome,true,true,true),$"Stopped-run hold blocks {action}/{outcome}");
             }
-            check(!ActionPolicy.Allows("Discard",outcome,true,true,false),"Discard always blocked for managed characters");
+            check(ActionPolicy.Allows("Discard",outcome,true,true,false)==(outcome==Outcome.Dispose),"Discard still requires a disposal decision; feature and copy proof are checked separately");
             check(!ActionPolicy.Allows("Unexpected",outcome,true,true,false),"Unknown action always blocked");
         }
         check(ActionPolicy.Allows("Dresser",Outcome.CollectDresser,true,true,false),"Dresser collection remains enabled");

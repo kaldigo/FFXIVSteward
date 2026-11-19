@@ -43,7 +43,7 @@ public sealed partial class Plugin
     }
     private void LogPolicyProposal(string? action,Stock stock,Decision decision)
     {
-        if(!(config.LogOnly||config.LogDisposal)||decision.Outcome!=Outcome.Dispose||action is not ("Vendor" or "Desynth" or "Gc"))return;
+        if(!(config.LogOnly||config.LogDisposal)||decision.Outcome!=Outcome.Dispose||action is not ("Vendor" or "Desynth" or "Gc" or "Discard"))return;
         var key=$"review/{player.ContentId}/{stock.Container}/{stock.Slot}/{stock.ItemId}/{stock.Quantity}/{action}/{decision.Reason}";
         if(recentDecisions.TryGetValue(key,out var at)&&Environment.TickCount64-at<60000)return;
         var entry=new ReviewEntry(player.ContentId,$"Live policy request: container {stock.Container}, slot {stock.Slot}",stock.ItemId,stock.Quantity,stock.Hq,(config.Features.Disposal?"WouldPermit ":"DisabledDisposalCandidate ")+action,decision.Reason,Collection:CopyEvidence(stock.ItemId),RuleName:decision.Rule?.Name);
