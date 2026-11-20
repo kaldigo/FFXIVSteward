@@ -234,7 +234,7 @@ public sealed partial class Plugin
             Toggle("Glamaholic saved outfits",f.Glamaholic,v=>f.Glamaholic=v),
             Toggle("Aetherloom designs",f.Aetherloom,v=>f.Aetherloom=v)),
             new Topic("Equipment",Toggle("Eorzea Collection favourites",f.EorzeaCollection,v=>f.EorzeaCollection=v),
-                Toggle("Level 1 equipment",f.LevelOne,v=>f.LevelOne=v),Toggle("Equipment designed for glamour",f.GlamourDesign,v=>f.GlamourDesign=v),
+                Toggle("Level 1 equipment",f.LevelOne,v=>f.LevelOne=v,"Excludes reviewed, easily replaced starter gear. Other protection filters still apply."),Toggle("Equipment designed for glamour",f.GlamourDesign,v=>f.GlamourDesign=v,"Uses item level 1, excluding reviewed, easily replaced starter gear. Other protection filters still apply."),
                 Toggle("Nonmarketable blue equipment",f.NonmarketableBlue,v=>f.NonmarketableBlue=v,"Normal dungeon and normal raid gear are excluded from this filter."),
                 Toggle("Equipment above blue rarity",f.HigherRarity,v=>f.HigherRarity=v),
                 Categories("Apply automatic filters to",f.Categories,"All equipment categories","Limits automatic filters to these gear types."),

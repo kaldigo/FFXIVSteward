@@ -1,3 +1,7 @@
+## Starter equipment glamour filters
+
+The level-one and item-level-one glamour filters now exclude 100 reviewed ordinary starter pieces, only with verified unrestricted stock in reviewed shops. Saved outfits, common glamour, manual keep/collection, gearsets, pending holds and acquisition protections remain unchanged. No automatic settings changes. Dresser cleanup evaluates the same exception before restoring unprotected pieces.
+
 ## Collected surplus discard
 
 Added an optional final discard stage to the full cleanup pass. Only nonmarketable surplus gear with a verified collection copy can qualify. A completed in-game GC inspection must offer no seals, and the item must have no NPC sale value or desynthesis support. The option defaults off and follows log-only, Demo mode, gearset, keep and other protection rules.

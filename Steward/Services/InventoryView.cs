@@ -17,6 +17,7 @@ public sealed unsafe class InventoryView
     private readonly (uint Row,uint Item)[] cabinet;
     private readonly HashSet<uint> topMateria;
     private readonly HashSet<uint> crafted;
+    private readonly HashSet<uint> repeatableStarters=[];
     private readonly HashSet<uint> fishable;
     private readonly HashSet<uint> repeatableMaterials;
     private readonly HashSet<uint> questRewards;
@@ -104,6 +105,9 @@ public sealed unsafe class InventoryView
         {
             if(entry.Item.RowId==0||!data.GetExcelSheet<Sheets.GilShop>().TryGetRow(entry.RowId,out var shop))continue;
             var item=entry.Item.Value;
+            if(StarterEquipment.ReviewedStock(item.RowId,entry.RowId,shop.FestivalId,shop.Quest.RowId,
+                entry.QuestRequired.Any(q=>q.RowId!=0),entry.AchievementRequired.RowId,entry.StateRequired,item.PriceMid))
+                repeatableStarters.Add(item.RowId);
             if(AcquisitionSources.ReviewedGilMaterial(entry.RowId,item.EquipSlotCategory.RowId!=0,shop.FestivalId,shop.Quest.RowId,
                 entry.QuestRequired.Any(q=>q.RowId!=0),entry.AchievementRequired.RowId,entry.StateRequired,item.PriceMid))
                 repeatableMaterials.Add(entry.Item.RowId);
@@ -161,10 +165,10 @@ public sealed unsafe class InventoryView
             // IsGlamorous means dresser-compatible, not cosmetic-purpose gear.
             facts=new(id,row.Name.ToString(),row.EquipSlotCategory.RowId!=0,row.Rarity,row.LevelEquip,
                 !row.IsUntradable && row.ItemSearchCategory.RowId!=0,cabinetItems.Contains(id),row.IsPvP?SourceKind.Special:SourceKind.Unknown,
-                row.ItemUICategory.RowId,row.PriceLow,row.LevelItem.RowId==1,row.ItemAction.RowId!=0,topMateria.Contains(id));
+                row.ItemUICategory.RowId,row.PriceLow,row.LevelItem.RowId==1,row.ItemAction.RowId!=0,topMateria.Contains(id),repeatableStarters.Contains(id));
             itemMetadata[id]=facts;
         }
-        var source=config.Sources.GetValueOrDefault(id,crafted.Contains(id)||fishable.Contains(id)||repeatableMaterials.Contains(id)?SourceKind.Ordinary:SourceKind.Unknown);
+        var source=config.Sources.GetValueOrDefault(id,repeatableStarters.Contains(id)||crafted.Contains(id)||fishable.Contains(id)||repeatableMaterials.Contains(id)?SourceKind.Ordinary:SourceKind.Unknown);
         if(!facts.Equipment&&source==SourceKind.Unknown)
             source=nonEquipmentDuties.GetValueOrDefault(id,questRewards.Contains(id)?SourceKind.Special:SourceKind.Unknown);
         source=AcquisitionSources.Merge(source,acquisitionSources.GetValueOrDefault(id));

@@ -58,7 +58,7 @@ public static class StoragePolicy
         if(rules.Keep.Contains(item.Id)||rules.CollectionKeep.Contains(item.Id)||evidence.References.Contains(item.Id))return 0;
         if(item.Rarity>3 || item.Rarity==3&&!item.Marketable&&item.Source is not (SourceKind.NormalDungeon or SourceKind.NormalRaid) ||
             item.Source is SourceKind.Special or SourceKind.AllianceRaid or SourceKind.SavageRaid or SourceKind.HighEnd)return 1;
-        if(item.EquipLevel==1||item.DesignedForGlamour||evidence.PendingCollection.Contains(item.Id))return 2;
+        if(((item.EquipLevel==1||item.DesignedForGlamour)&&!StarterEquipment.ExcludeLevelFilters(item))||evidence.PendingCollection.Contains(item.Id))return 2;
         return 3;
     }
     public static int Available(int? free,int reserve)=>free is int n?Math.Max(0,n-Math.Clamp(reserve,0,800)):0;

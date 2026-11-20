@@ -39,8 +39,8 @@ public static class GlamourProtection
         if(item.Source==SourceKind.Unknown)result|=GlamourMatch.Unknown;
         if((f.Categories.Count>0&&!f.Categories.Contains(item.Category))||f.ExcludedCategories.Contains(item.Category))return result;
         if(f.EorzeaCollection&&(rules.CommonGlamour.Contains(item.Id)||e.CuratedGlamour.Contains(item.Id)))result|=GlamourMatch.Common;
-        if(f.LevelOne&&item.EquipLevel==1)result|=GlamourMatch.LevelOne;
-        if(f.GlamourDesign&&item.DesignedForGlamour)result|=GlamourMatch.Design;
+        if(f.LevelOne&&item.EquipLevel==1&&!StarterEquipment.ExcludeLevelFilters(item))result|=GlamourMatch.LevelOne;
+        if(f.GlamourDesign&&item.DesignedForGlamour&&!StarterEquipment.ExcludeLevelFilters(item))result|=GlamourMatch.Design;
         if(f.NonmarketableBlue&&item.Rarity==3&&!item.Marketable&&item.Source is not (SourceKind.NormalDungeon or SourceKind.NormalRaid))result|=GlamourMatch.Blue;
         if(f.HigherRarity&&item.Rarity>3)result|=GlamourMatch.Higher;
         result|=item.Source switch

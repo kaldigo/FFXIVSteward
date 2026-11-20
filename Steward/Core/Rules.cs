@@ -5,7 +5,7 @@ public enum QualityMode { Separate, Combined }
 public enum ItemGroup { Any, Gear, Other }
 public enum SourceKind { Unknown, Ordinary, Special, NormalDungeon, NormalRaid, AllianceRaid, SavageRaid, HighEnd }
 public sealed record ItemFacts(uint Id, string Name, bool Equipment, byte Rarity, int EquipLevel,
-    bool Marketable, bool ArmoireEligible, SourceKind Source, uint Category, uint NpcPrice = 0, bool DesignedForGlamour = false, bool HasItemAction = false, bool IsTopRankMateria = false)
+    bool Marketable, bool ArmoireEligible, SourceKind Source, uint Category, uint NpcPrice = 0, bool DesignedForGlamour = false, bool HasItemAction = false, bool IsTopRankMateria = false, bool RepeatableStarter = false)
 {
     public uint SaleCategory => Category switch
     {

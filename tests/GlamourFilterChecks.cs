@@ -9,6 +9,7 @@ static class GlamourFilterChecks
         GlamourFilters Disabled(){var f=new GlamourFilters();foreach(var p in typeof(GlamourFilters).GetProperties().Where(p=>p.PropertyType==typeof(bool)))p.SetValue(f,false);return f;}
         var ordinary=new ItemFacts(42,"Test equipment",true,1,50,false,false,SourceKind.Ordinary,10);
         var stock=new Stock(42,false,1,0,0);
+        StarterEquipmentChecks.Run(check,now);
         var e=new Evidence{ReferencesReady=true,GearsetsReady=true,DresserKnown=true,ArmoireKnown=true,DresserFreeSlots=100};
         var rules=new RuleSettings();
         var cases=new (string Property,ItemFacts Item)[]

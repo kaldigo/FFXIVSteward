@@ -1,0 +1,611 @@
+{
+  "note": "Installed English game GilShop/GilShopItem export, 2026-11-20. Reviewed starter weapon/tool, tradecraft/fieldcraft and racial gear shops. No festival, quest or achievement requirement; ordinary stock state 100. Hempen underwear cosmetics deliberately excluded. Runtime verifies the same shops and stock gates.",
+  "items": [
+    {
+      "id": 2987,
+      "name": "Lalafellin Tunic",
+      "shop": 262671,
+      "price": 59
+    },
+    {
+      "id": 2988,
+      "name": "Lalafellin Kaftan",
+      "shop": 262671,
+      "price": 59
+    },
+    {
+      "id": 3524,
+      "name": "Lalafellin Wristguards",
+      "shop": 262671,
+      "price": 42
+    },
+    {
+      "id": 3525,
+      "name": "Lalafellin Wristbands",
+      "shop": 262671,
+      "price": 42
+    },
+    {
+      "id": 3300,
+      "name": "Lalafellin Gaskins",
+      "shop": 262671,
+      "price": 45
+    },
+    {
+      "id": 3301,
+      "name": "Lalafellin Bloomers",
+      "shop": 262671,
+      "price": 45
+    },
+    {
+      "id": 3754,
+      "name": "Lalafellin Top Boots",
+      "shop": 262671,
+      "price": 48
+    },
+    {
+      "id": 3755,
+      "name": "Lalafellin Bootees",
+      "shop": 262671,
+      "price": 48
+    },
+    {
+      "id": 2991,
+      "name": "Roegadyn Harness",
+      "shop": 262672,
+      "price": 59
+    },
+    {
+      "id": 2992,
+      "name": "Roegadyn Bodice",
+      "shop": 262672,
+      "price": 59
+    },
+    {
+      "id": 3528,
+      "name": "Roegadyn Bracers",
+      "shop": 262672,
+      "price": 42
+    },
+    {
+      "id": 3529,
+      "name": "Roegadyn Armguards",
+      "shop": 262672,
+      "price": 42
+    },
+    {
+      "id": 3304,
+      "name": "Roegadyn Breeches",
+      "shop": 262672,
+      "price": 45
+    },
+    {
+      "id": 3305,
+      "name": "Roegadyn Legstraps",
+      "shop": 262672,
+      "price": 45
+    },
+    {
+      "id": 3758,
+      "name": "Roegadyn Boots",
+      "shop": 262672,
+      "price": 48
+    },
+    {
+      "id": 3759,
+      "name": "Roegadyn Sandals",
+      "shop": 262672,
+      "price": 48
+    },
+    {
+      "id": 2985,
+      "name": "Elezen Surcoat",
+      "shop": 262673,
+      "price": 59
+    },
+    {
+      "id": 2986,
+      "name": "Elezen Gown",
+      "shop": 262673,
+      "price": 59
+    },
+    {
+      "id": 3522,
+      "name": "Elezen Gloves",
+      "shop": 262673,
+      "price": 42
+    },
+    {
+      "id": 3523,
+      "name": "Elezen Halfgloves",
+      "shop": 262673,
+      "price": 42
+    },
+    {
+      "id": 3298,
+      "name": "Elezen Braccae",
+      "shop": 262673,
+      "price": 45
+    },
+    {
+      "id": 3299,
+      "name": "Elezen Tights",
+      "shop": 262673,
+      "price": 45
+    },
+    {
+      "id": 3752,
+      "name": "Elezen Jackboots",
+      "shop": 262673,
+      "price": 48
+    },
+    {
+      "id": 3753,
+      "name": "Elezen Shoes",
+      "shop": 262673,
+      "price": 48
+    },
+    {
+      "id": 2983,
+      "name": "Hyuran Tunic",
+      "shop": 262674,
+      "price": 59
+    },
+    {
+      "id": 2984,
+      "name": "Hyuran Chemisette",
+      "shop": 262674,
+      "price": 59
+    },
+    {
+      "id": 3520,
+      "name": "Hyuran Gloves",
+      "shop": 262674,
+      "price": 42
+    },
+    {
+      "id": 3521,
+      "name": "Hyuran Halfgloves",
+      "shop": 262674,
+      "price": 42
+    },
+    {
+      "id": 3296,
+      "name": "Hyuran Breeches",
+      "shop": 262674,
+      "price": 45
+    },
+    {
+      "id": 3297,
+      "name": "Hyuran Skirt",
+      "shop": 262674,
+      "price": 45
+    },
+    {
+      "id": 3750,
+      "name": "Hyuran Thighboots",
+      "shop": 262674,
+      "price": 48
+    },
+    {
+      "id": 3751,
+      "name": "Hyuran Longboots",
+      "shop": 262674,
+      "price": 48
+    },
+    {
+      "id": 2989,
+      "name": "Miqo'te Vest",
+      "shop": 262675,
+      "price": 59
+    },
+    {
+      "id": 2990,
+      "name": "Miqo'te Separates",
+      "shop": 262675,
+      "price": 59
+    },
+    {
+      "id": 3526,
+      "name": "Miqo'te Gauntlets",
+      "shop": 262675,
+      "price": 42
+    },
+    {
+      "id": 3527,
+      "name": "Miqo'te Gloves",
+      "shop": 262675,
+      "price": 42
+    },
+    {
+      "id": 3302,
+      "name": "Miqo'te Zouaves",
+      "shop": 262675,
+      "price": 45
+    },
+    {
+      "id": 3303,
+      "name": "Miqo'te Loincloth",
+      "shop": 262675,
+      "price": 45
+    },
+    {
+      "id": 3756,
+      "name": "Miqo'te Longboots",
+      "shop": 262675,
+      "price": 48
+    },
+    {
+      "id": 3757,
+      "name": "Miqo'te Shoes",
+      "shop": 262675,
+      "price": 48
+    },
+    {
+      "id": 9645,
+      "name": "Auri Harness",
+      "shop": 262676,
+      "price": 59
+    },
+    {
+      "id": 9649,
+      "name": "Auri Gown",
+      "shop": 262676,
+      "price": 59
+    },
+    {
+      "id": 9646,
+      "name": "Auri Armguards",
+      "shop": 262676,
+      "price": 42
+    },
+    {
+      "id": 9650,
+      "name": "Auri Halfgloves",
+      "shop": 262676,
+      "price": 42
+    },
+    {
+      "id": 9647,
+      "name": "Auri Breeches",
+      "shop": 262676,
+      "price": 45
+    },
+    {
+      "id": 9651,
+      "name": "Auri Pantalettes",
+      "shop": 262676,
+      "price": 45
+    },
+    {
+      "id": 9648,
+      "name": "Auri Sandals",
+      "shop": 262676,
+      "price": 48
+    },
+    {
+      "id": 9652,
+      "name": "Auri Buskins",
+      "shop": 262676,
+      "price": 48
+    },
+    {
+      "id": 2960,
+      "name": "Hempen Tunic",
+      "shop": 262700,
+      "price": 59
+    },
+    {
+      "id": 2629,
+      "name": "Hempen Coif",
+      "shop": 262705,
+      "price": 47
+    },
+    {
+      "id": 2958,
+      "name": "Hempen Dalmatica",
+      "shop": 262705,
+      "price": 59
+    },
+    {
+      "id": 3274,
+      "name": "Hempen Breeches",
+      "shop": 262705,
+      "price": 45
+    },
+    {
+      "id": 3740,
+      "name": "Leather Duckbills",
+      "shop": 262705,
+      "price": 48
+    },
+    {
+      "id": 1601,
+      "name": "Weathered Shortsword",
+      "shop": 262715,
+      "price": 63
+    },
+    {
+      "id": 1680,
+      "name": "Weathered Hora",
+      "shop": 262715,
+      "price": 89
+    },
+    {
+      "id": 1749,
+      "name": "Weathered War Axe",
+      "shop": 262715,
+      "price": 94
+    },
+    {
+      "id": 1819,
+      "name": "Weathered Spear",
+      "shop": 262715,
+      "price": 109
+    },
+    {
+      "id": 1889,
+      "name": "Weathered Shortbow",
+      "shop": 262715,
+      "price": 89
+    },
+    {
+      "id": 2219,
+      "name": "Square Maple Shield",
+      "shop": 262715,
+      "price": 72
+    },
+    {
+      "id": 7952,
+      "name": "Weathered Daggers",
+      "shop": 262715,
+      "price": 63
+    },
+    {
+      "id": 1995,
+      "name": "Weathered Cane",
+      "shop": 262720,
+      "price": 94
+    },
+    {
+      "id": 2055,
+      "name": "Weathered Scepter",
+      "shop": 262720,
+      "price": 71
+    },
+    {
+      "id": 2142,
+      "name": "Weathered Grimoire",
+      "shop": 262720,
+      "price": 92
+    },
+    {
+      "id": 2219,
+      "name": "Square Maple Shield",
+      "shop": 262720,
+      "price": 72
+    },
+    {
+      "id": 2314,
+      "name": "Weathered Saw",
+      "shop": 262725,
+      "price": 74
+    },
+    {
+      "id": 2340,
+      "name": "Weathered Cross-pein Hammer",
+      "shop": 262725,
+      "price": 71
+    },
+    {
+      "id": 2366,
+      "name": "Weathered Doming Hammer",
+      "shop": 262725,
+      "price": 72
+    },
+    {
+      "id": 2391,
+      "name": "Weathered Chaser Hammer",
+      "shop": 262725,
+      "price": 71
+    },
+    {
+      "id": 2416,
+      "name": "Weathered Head Knife",
+      "shop": 262725,
+      "price": 69
+    },
+    {
+      "id": 2442,
+      "name": "Rusty Needle",
+      "shop": 262725,
+      "price": 50
+    },
+    {
+      "id": 2467,
+      "name": "Weathered Alembic",
+      "shop": 262725,
+      "price": 65
+    },
+    {
+      "id": 2493,
+      "name": "Weathered Skillet",
+      "shop": 262725,
+      "price": 66
+    },
+    {
+      "id": 2519,
+      "name": "Weathered Pickaxe",
+      "shop": 262730,
+      "price": 71
+    },
+    {
+      "id": 2545,
+      "name": "Weathered Hatchet",
+      "shop": 262730,
+      "price": 69
+    },
+    {
+      "id": 2571,
+      "name": "Weathered Fishing Rod",
+      "shop": 262730,
+      "price": 74
+    },
+    {
+      "id": 25208,
+      "name": "Viera Chestwrap",
+      "shop": 263007,
+      "price": 59
+    },
+    {
+      "id": 25209,
+      "name": "Viera Armlets",
+      "shop": 263007,
+      "price": 42
+    },
+    {
+      "id": 25210,
+      "name": "Viera Pantalettes",
+      "shop": 263007,
+      "price": 45
+    },
+    {
+      "id": 25211,
+      "name": "Viera Sandals",
+      "shop": 263007,
+      "price": 48
+    },
+    {
+      "id": 33943,
+      "name": "Viera Harness",
+      "shop": 263007,
+      "price": 59
+    },
+    {
+      "id": 33944,
+      "name": "Viera Armguards",
+      "shop": 263007,
+      "price": 42
+    },
+    {
+      "id": 33945,
+      "name": "Viera Gaskins",
+      "shop": 263007,
+      "price": 45
+    },
+    {
+      "id": 33946,
+      "name": "Viera Sollerets",
+      "shop": 263007,
+      "price": 48
+    },
+    {
+      "id": 25212,
+      "name": "Hrothgar Harness",
+      "shop": 263008,
+      "price": 59
+    },
+    {
+      "id": 25213,
+      "name": "Hrothgar Wristguards",
+      "shop": 263008,
+      "price": 42
+    },
+    {
+      "id": 25214,
+      "name": "Hrothgar Subligar",
+      "shop": 263008,
+      "price": 45
+    },
+    {
+      "id": 25215,
+      "name": "Hrothgar Sandals",
+      "shop": 263008,
+      "price": 48
+    },
+    {
+      "id": 41790,
+      "name": "Hrothgar Vest",
+      "shop": 263008,
+      "price": 59
+    },
+    {
+      "id": 41791,
+      "name": "Hrothgar Vambraces",
+      "shop": 263008,
+      "price": 42
+    },
+    {
+      "id": 41792,
+      "name": "Hrothgar Tights",
+      "shop": 263008,
+      "price": 45
+    },
+    {
+      "id": 41793,
+      "name": "Hrothgar Caligae",
+      "shop": 263008,
+      "price": 48
+    },
+    {
+      "id": 2631,
+      "name": "Leather Calot",
+      "shop": 263263,
+      "price": 47
+    },
+    {
+      "id": 2961,
+      "name": "Hempen Kurta",
+      "shop": 263263,
+      "price": 59
+    },
+    {
+      "id": 3515,
+      "name": "Hempen Halfgloves",
+      "shop": 263263,
+      "price": 42
+    },
+    {
+      "id": 3275,
+      "name": "Hempen Breeches of Crafting",
+      "shop": 263263,
+      "price": 45
+    },
+    {
+      "id": 3742,
+      "name": "Maple Clogs",
+      "shop": 263263,
+      "price": 54
+    },
+    {
+      "id": 2630,
+      "name": "Hempen Coif of Gathering",
+      "shop": 263268,
+      "price": 47
+    },
+    {
+      "id": 2959,
+      "name": "Hempen Dalmatica of Gathering",
+      "shop": 263268,
+      "price": 59
+    },
+    {
+      "id": 3516,
+      "name": "Leather Wristguards",
+      "shop": 263268,
+      "price": 42
+    },
+    {
+      "id": 3276,
+      "name": "Hempen Shepherd's Slops",
+      "shop": 263268,
+      "price": 45
+    },
+    {
+      "id": 3741,
+      "name": "Leather Duckbills of Gathering",
+      "shop": 263268,
+      "price": 48
+    }
+  ]
+}
