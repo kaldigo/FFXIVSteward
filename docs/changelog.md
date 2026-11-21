@@ -1,3 +1,7 @@
+## Materia disposal categories
+
+Disposal permissions now split materia into the top two grades and all other grades, using the same grade classification as sale rules. Existing all-materia permission maps to both selections; no new permissions are enabled by default. Protection and sale eligibility still take priority. Review logs identify the selected tier.
+
 ## Starter equipment glamour filters
 
 The level-one and item-level-one glamour filters now exclude 100 reviewed ordinary starter pieces, only with verified unrestricted stock in reviewed shops. Saved outfits, common glamour, manual keep/collection, gearsets, pending holds and acquisition protections remain unchanged. No automatic settings changes. Dresser cleanup evaluates the same exception before restoring unprotected pieces.

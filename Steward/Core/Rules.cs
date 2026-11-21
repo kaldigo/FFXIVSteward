@@ -7,6 +7,7 @@ public enum SourceKind { Unknown, Ordinary, Special, NormalDungeon, NormalRaid, 
 public sealed record ItemFacts(uint Id, string Name, bool Equipment, byte Rarity, int EquipLevel,
     bool Marketable, bool ArmoireEligible, SourceKind Source, uint Category, uint NpcPrice = 0, bool DesignedForGlamour = false, bool HasItemAction = false, bool IsTopRankMateria = false, bool RepeatableStarter = false)
 {
+    public uint DisposalCategory => Category==SaleRule.Materia ? SaleCategory : Category;
     public uint SaleCategory => Category switch
     {
         SaleRule.OrchestrionRoll => HasItemAction ? SaleRule.FinishedRoll : SaleRule.RollMaterial,
@@ -74,7 +75,7 @@ public sealed class RuleSettings
     public HashSet<uint> NonEquipmentDisposal { get; set; } = [];
     public HashSet<uint> NonEquipmentDisposalCategories { get; set; } = [];
     public bool AllowsNonEquipmentDisposal(ItemFacts item)=>!item.Equipment&&
-        (NonEquipmentDisposal.Contains(item.Id)||NonEquipmentDisposalCategories.Contains(item.Category));
+        (NonEquipmentDisposal.Contains(item.Id)||NonEquipmentDisposalCategories.Contains(item.DisposalCategory)||NonEquipmentDisposalCategories.Contains(item.Category));
     public HashSet<uint> CommonGlamour { get; set; } = [];
     public List<SaleRule> Sales { get; set; } = [];
     public int MaximumPriceAgeMinutes { get; set; } = 30; // Native/imported listing evidence only.

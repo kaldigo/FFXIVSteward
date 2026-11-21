@@ -10,6 +10,7 @@ static class GlamourFilterChecks
         var ordinary=new ItemFacts(42,"Test equipment",true,1,50,false,false,SourceKind.Ordinary,10);
         var stock=new Stock(42,false,1,0,0);
         StarterEquipmentChecks.Run(check,now);
+        MateriaDisposalChecks.Run(check,now);
         var e=new Evidence{ReferencesReady=true,GearsetsReady=true,DresserKnown=true,ArmoireKnown=true,DresserFreeSlots=100};
         var rules=new RuleSettings();
         var cases=new (string Property,ItemFacts Item)[]

@@ -66,6 +66,8 @@ public sealed class Configuration : IPluginConfiguration, IJsonOnDeserialized
         if(ListingWindows==null||SafetyRevision>=7&&!listingWindowsRead)throw new System.Text.Json.JsonException("Missing listing rotation safety state");
         ListingWindows.Validate();
         if(Silver==null||Silver.Enabled&&!Silver.Valid||Storage==null||Storage.ExcludedRetainers==null||Storage.ExcludedItems==null||Storage.ExcludedCategories==null||Storage.Categories==null||Storage.Categories.Any(p=>p.Value==null)||Features==null||ExcludedSaleRetainers==null||Rules.Sales.Any(r=>r.ExcludedRetainers==null))throw new System.Text.Json.JsonException("Invalid retainer filters");
+        if(Rules.NonEquipmentDisposalCategories.Remove(SaleRule.Materia))
+            Rules.NonEquipmentDisposalCategories.UnionWith([SaleRule.TopMateria,SaleRule.OtherMateria]);
         // Preserve legacy single-category rules when opening the multi-category editor.
         foreach(var rule in Rules.Sales)
         {

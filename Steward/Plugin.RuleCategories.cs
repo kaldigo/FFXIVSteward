@@ -22,8 +22,8 @@ public sealed partial class Plugin
     }
     private void DrawCategorySelection(string label,HashSet<uint> selected,string emptyLabel,string description,bool nonEquipmentOnly=false,bool saleCategories=false)
     {
-        var names = saleCategories ? view.SaleCategories : view.Categories;
-        var choices=(saleCategories ? CategoryDisplay.Build(names,view.SaleCategoryDetails) : CategoryDisplay.Build(view.Categories,view.CategoryDetails))
+        var names = saleCategories ? view.SaleCategories : nonEquipmentOnly ? view.DisposalCategories : view.Categories;
+        var choices=(saleCategories ? CategoryDisplay.Build(names,view.SaleCategoryDetails) : nonEquipmentOnly ? CategoryDisplay.Build(view.DisposalCategories,view.DisposalCategoryDetails) : CategoryDisplay.Build(view.Categories,view.CategoryDetails))
             .Where(c=>c.Id!=62&&(c.Id!=39||selected.Contains(39))&&(!nonEquipmentOnly||c.Group is "Items" or "Housing")).ToArray();
         var selectedNames=choices.Where(c=>c.Members.Any(selected.Contains))
             .Select(c=>c.Name+(c.Members.All(selected.Contains)?"":" (partial)")).ToArray();

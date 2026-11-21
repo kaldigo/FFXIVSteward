@@ -40,6 +40,6 @@ public sealed record CollectionCopyEvidence(
             evidence.DresserKnown,evidence.ArmoireKnown,copies,armoire,item.ArmoireEligible,removals,after,confirmed,valid,
             omitted,nativeKnown?nativeReference:null,evidence.GlamaholicKnown?evidence.GlamaholicReferences.Contains(item.Id):null,
             evidence.GearsetsReady,evidence.GearsetsReady?evidence.Gearsets.Contains(item.Id):null,evidence.ReferencesReady,
-            string.Join("; ",matches),rules.AllowsNonEquipmentDisposal(item),item.Source,item.Rarity,item.Marketable,item.Category,item.Equipment,evidence.CachedDresserKnown?evidence.CachedDresser.Contains(item.Id):null,evidence.CachedArmoireKnown?evidence.CachedArmoire.Contains(item.Id):null,NonEquipmentDisposalPermission:rules.AllowsNonEquipmentDisposal(item)?rules.NonEquipmentDisposal.Contains(item.Id)?"Item "+item.Id:"Category "+item.Category:"None");
+            string.Join("; ",matches),rules.AllowsNonEquipmentDisposal(item),item.Source,item.Rarity,item.Marketable,item.Category,item.Equipment,evidence.CachedDresserKnown?evidence.CachedDresser.Contains(item.Id):null,evidence.CachedArmoireKnown?evidence.CachedArmoire.Contains(item.Id):null,NonEquipmentDisposalPermission:rules.AllowsNonEquipmentDisposal(item)?rules.NonEquipmentDisposal.Contains(item.Id)?"Item "+item.Id:"Category "+(rules.NonEquipmentDisposalCategories.Contains(item.DisposalCategory)?item.DisposalCategory:item.Category):"None");
     }
 }

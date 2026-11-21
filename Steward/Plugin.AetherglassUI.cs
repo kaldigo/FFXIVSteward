@@ -98,12 +98,12 @@ public sealed partial class Plugin
         AetherglassUI.Setting BuildCategoryRow()
         {
             if(!categoryChoices.TryGetValue((sale,nonEquipment),out var choices)){
-                choices=(sale?CategoryDisplay.Build(view.SaleCategories,view.SaleCategoryDetails):CategoryDisplay.Build(view.Categories,view.CategoryDetails))
+                choices=(sale?CategoryDisplay.Build(view.SaleCategories,view.SaleCategoryDetails):CategoryDisplay.Build(nonEquipment?view.DisposalCategories:view.Categories,nonEquipment?view.DisposalCategoryDetails:view.CategoryDetails))
                     .Where(c=>c.Id!=62&&(!nonEquipment||c.Group is "Items" or "Housing")).ToArray();
                 categoryChoices[(sale,nonEquipment)]=choices;
             }
             var editor=categoryEditors.GetOrCreateValue(values);
-            var names=sale?view.SaleCategories:view.Categories;
+            var names=sale?view.SaleCategories:nonEquipment?view.DisposalCategories:view.Categories;
             var options=choices.Select(c=>new CategoryOption(c.Name,c.Group,c.Members.Select(m=>m.ToString()).ToArray(),
                 string.Join(" ",c.Members.Select(m=>names[m])),c.Id!=39,
                 editor.Expanded?CategoryIcon(c.Icon):null)).ToArray();

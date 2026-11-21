@@ -38,6 +38,8 @@ public sealed unsafe class InventoryView
     public Dictionary<ulong,string> RetainerNames { get; } = [];
     public uint World { get; set; }
     public uint ItemStackLimit(uint id)=>data.GetExcelSheet<Sheets.Item>().GetRow(id).StackSize;
+    public IReadOnlyDictionary<uint,string> DisposalCategories { get; }
+    public IReadOnlyDictionary<uint,(uint Icon,byte Major,byte Minor)> DisposalCategoryDetails { get; }
     public IReadOnlyDictionary<uint,string> SaleCategories { get; }
     public IReadOnlyDictionary<uint,(uint Icon,byte Major,byte Minor)> SaleCategoryDetails { get; }
     public IReadOnlyDictionary<uint,string> Categories { get; }
@@ -73,6 +75,15 @@ public sealed unsafe class InventoryView
             saleDetails[SaleRule.TopMateria]=(materiaGrades[grades[0]].First().Icon,detail.Major,detail.Minor);
             saleDetails[SaleRule.OtherMateria]=(materiaGrades[grades[^1]].First().Icon,detail.Major,detail.Minor);
         }
+        var disposalNames=new Dictionary<uint,string>(Categories);
+        var disposalDetails=new Dictionary<uint,(uint Icon,byte Major,byte Minor)>(CategoryDetails);
+        if(saleNames.ContainsKey(SaleRule.TopMateria))
+        {
+            disposalNames.Remove(SaleRule.Materia);disposalDetails.Remove(SaleRule.Materia);
+            foreach(var id in new[]{SaleRule.TopMateria,SaleRule.OtherMateria})
+            {disposalNames[id]=saleNames[id];disposalDetails[id]=saleDetails[id];}
+        }
+        DisposalCategories=disposalNames;DisposalCategoryDetails=disposalDetails;
         SaleCategories = saleNames;
         SaleCategoryDetails = saleDetails;
         cabinet=data.GetExcelSheet<Sheets.Cabinet>().Where(r=>r.Item.RowId!=0).Select(r=>(r.RowId,r.Item.RowId)).ToArray();
