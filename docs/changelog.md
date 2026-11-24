@@ -1,3 +1,7 @@
+## Relic weapons and tools
+
+Original equipment in the reviewed Zodiac, Anima, Eureka, Resistance, Manderville, Phantom, Skysteel, Splendorous and Cosmic series is protected from sale, disposal and dresser cleanup. Native retainer plans can store it. The index uses exact item IDs from the installed game Item and ARR Relic sheets, including all 88 Cosmic prototype IDs. Replicas use the regular rules.
+
 ## Verified zero sales
 
 A fresh, resolved Universalis response with an observed zero-sales history now rejects the sale rule and lets eligible items use the configured disposal methods. Combined pricing requires zero sales for both qualities. Missing, stale and incomplete data still hold disposal.

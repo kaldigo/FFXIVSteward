@@ -176,7 +176,7 @@ public sealed unsafe class InventoryView
             // IsGlamorous means dresser-compatible, not cosmetic-purpose gear.
             facts=new(id,row.Name.ToString(),row.EquipSlotCategory.RowId!=0,row.Rarity,row.LevelEquip,
                 !row.IsUntradable && row.ItemSearchCategory.RowId!=0,cabinetItems.Contains(id),row.IsPvP?SourceKind.Special:SourceKind.Unknown,
-                row.ItemUICategory.RowId,row.PriceLow,row.LevelItem.RowId==1,row.ItemAction.RowId!=0,topMateria.Contains(id),repeatableStarters.Contains(id));
+                row.ItemUICategory.RowId,row.PriceLow,row.LevelItem.RowId==1,row.ItemAction.RowId!=0,topMateria.Contains(id),repeatableStarters.Contains(id)){RelicFamily=RelicEquipment.Family(id)};
             itemMetadata[id]=facts;
         }
         var source=config.Sources.GetValueOrDefault(id,repeatableStarters.Contains(id)||crafted.Contains(id)||fishable.Contains(id)||repeatableMaterials.Contains(id)?SourceKind.Ordinary:SourceKind.Unknown);

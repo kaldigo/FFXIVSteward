@@ -20,7 +20,7 @@ public static class StoragePolicy
     // Route planning may request live storage observations; it never grants item-action permission.
     public static bool NeedsCollectionVisit(ItemFacts item,Stock stock,RuleSettings rules,Evidence evidence,bool armoire)
     {
-        if(rules.IsIgnored(item)||rules.Keep.Contains(item.Id)||!evidence.ReferencesReady||!evidence.GearsetsReady||evidence.Gearsets.Contains(item.Id))return false;
+        if(item.RelicFamily!=null||rules.IsIgnored(item)||rules.Keep.Contains(item.Id)||!evidence.ReferencesReady||!evidence.GearsetsReady||evidence.Gearsets.Contains(item.Id))return false;
         if(QuantityReserve.Removable(stock,rules.QuantityReserves.GetValueOrDefault(item.Id),evidence.ReserveStocks) is not >0)return false;
         var matches=GlamourProtection.Match(item,rules,evidence);
         if(matches is GlamourMatch.None or GlamourMatch.Unknown)return false;

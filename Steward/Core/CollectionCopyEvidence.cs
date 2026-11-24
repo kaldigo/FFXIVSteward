@@ -33,6 +33,7 @@ public sealed record CollectionCopyEvidence(
         if(rules.Glamour.NativePlates&&nativeKnown&&nativeReference)matches.Add("Native glamour plate");
         if(rules.Glamour.Glamaholic&&evidence.GlamaholicKnown&&evidence.GlamaholicReferences.Contains(item.Id))matches.Add("Glamaholic");
         if(rules.Glamour.Aetherloom && evidence.AetherloomReferences?.Contains(item.Id)==true)matches.Add("Aetherloom");
+        if(item.RelicFamily is string relic)matches.Add("Relic equipment: "+relic);
         matches.AddRange(GlamourProtection.Describe(GlamourProtection.Match(item,rules,evidence)));
         if(NonEquipmentProtection.Reason(item) is string acquisitionHold)matches.Add(acquisitionHold);
         if(!item.Equipment&&!rules.AllowsNonEquipmentDisposal(item))matches.Add("Non-equipment disposal hold");

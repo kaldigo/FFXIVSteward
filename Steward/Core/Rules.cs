@@ -7,6 +7,7 @@ public enum SourceKind { Unknown, Ordinary, Special, NormalDungeon, NormalRaid, 
 public sealed record ItemFacts(uint Id, string Name, bool Equipment, byte Rarity, int EquipLevel,
     bool Marketable, bool ArmoireEligible, SourceKind Source, uint Category, uint NpcPrice = 0, bool DesignedForGlamour = false, bool HasItemAction = false, bool IsTopRankMateria = false, bool RepeatableStarter = false)
 {
+    public string? RelicFamily { get; init; }
     public uint DisposalCategory => Category==SaleRule.Materia ? SaleCategory : Category;
     public uint SaleCategory => Category switch
     {
@@ -133,6 +134,7 @@ public static class Rules
         if(settings.Keep.Contains(item.Id)) return new(Outcome.Keep, "Explicit keep override");
         if(!evidence.GearsetsReady || !evidence.ReferencesReady) return new(Outcome.Wait, "Glamour references or gear sets are unavailable");
         if(evidence.Gearsets.Contains(item.Id)) return new(Outcome.Keep, "Equipped or referenced by a gear set");
+        if(item.Equipment&&item.RelicFamily is string relic) return new(Outcome.Keep, $"Protected relic equipment ({relic}): eligible for normal retainer storage");
         var nonEquipmentHold=NonEquipmentProtection.Reason(item);
         var removable=QuantityReserve.Removable(stock,settings.QuantityReserves.GetValueOrDefault(item.Id),evidence.ReserveStocks);
         if(removable==null)return new(Outcome.Wait,"Quantity reserve needs live source inventory");
