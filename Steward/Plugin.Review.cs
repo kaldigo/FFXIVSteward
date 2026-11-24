@@ -77,7 +77,9 @@ public sealed partial class Plugin
                     entries.Add(new(player.ContentId,location,stock.ItemId,stock.Quantity,stock.Hq,"FeatureDisabled",$"{view.Facts(stock.ItemId)?.Name}: {decision.Outcome} is disabled; item protections remain active.",Collection:CopyEvidence(stock.ItemId)));
                     return;
                 }
-                var sale=SaleStatistics.Select(view.Evidence,stock.ItemId,stock.Hq,config.Rules.Quality,view.World,DateTimeOffset.UtcNow);
+                var now=DateTimeOffset.UtcNow;
+                var sale=SaleStatistics.NoRecentSales(view.Evidence,stock.ItemId,stock.Hq,config.Rules.Quality,view.World,now,config.Rules.SummaryRefreshHours)
+                    ??SaleStatistics.Select(view.Evidence,stock.ItemId,stock.Hq,config.Rules.Quality,view.World,now);
                 if(decision.Outcome==Outcome.Wait){unavailable++;holdReasons.Add(decision.Reason);}
                 if(decision.Outcome is Outcome.CollectDresser or Outcome.CollectArmoire or Outcome.StoreRetainer or Outcome.Market or Outcome.Wait or Outcome.Keep or Outcome.Ignore)
                     entries.Add(new(player.ContentId,location,stock.ItemId,stock.Quantity,stock.Hq,

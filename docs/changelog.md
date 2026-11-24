@@ -1,3 +1,7 @@
+## Verified zero sales
+
+A fresh, resolved Universalis response with an observed zero-sales history now rejects the sale rule and lets eligible items use the configured disposal methods. Combined pricing requires zero sales for both qualities. Missing, stale and incomplete data still hold disposal.
+
 ## Materia disposal categories
 
 Disposal permissions now split materia into the top two grades and all other grades, using the same grade classification as sale rules. Existing all-materia permission maps to both selections; no new permissions are enabled by default. Protection and sale eligibility still take priority. Review logs identify the selected tier.

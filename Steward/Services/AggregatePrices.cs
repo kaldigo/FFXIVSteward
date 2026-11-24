@@ -115,7 +115,7 @@ public sealed class AggregatePrices : IDisposable
     {
         evidence.StatisticsRequired=enabled;evidence.SaleStatistics.Clear();
         if(!enabled||world==0){Freshness="";return;}
-        foreach(var s in cache.Values.Where(s=>s.World==world&&s.Fetched<=now))evidence.SaleStatistics[(s.ItemId,s.Hq)]=s.HistoryDays==Math.Clamp(historyDays,7,90)?s:s with{DailySales=null,RecentSales=false};
+        foreach(var s in cache.Values.Where(s=>s.World==world&&s.Fetched<=now))evidence.SaleStatistics[(s.ItemId,s.Hq)]=s.HistoryDays==Math.Clamp(historyDays,7,90)?s:s with{DailySales=null,RecentSales=false,NoSalesObserved=false};
         Freshness=$"World {world}: {evidence.SaleStatistics.Values.Count(s=>s.Average>0)} quality-specific average values cached. Refresh every {refreshHours} hours; older known values retained for slow sellers. Requests in flight: {pending.Count}/{MaximumConcurrentRequests}; batch size: {batchSize}; deferred item errors: {errors.Count(p=>p.Key.Item1==world)}. Native comparisons set actual listing prices.";
     }
     private async Task<Result> Fetch(uint world,uint[] ids,DateTimeOffset at,int historyDays,CancellationToken token)
@@ -123,7 +123,7 @@ public sealed class AggregatePrices : IDisposable
         try
         {
             var prefix=ids.Length==1?"":"items.";
-            var fields="itemIDs,worldID,unresolvedItems,"+string.Join(',',new[]{"itemID","worldID","lastUploadTime","averagePriceNQ","averagePriceHQ","nqSaleVelocity","hqSaleVelocity","recentHistoryCount","minPriceNQ","minPriceHQ"}.Select(f=>prefix+f));
+            var fields="itemIDs,worldID,unresolvedItems,"+string.Join(',',new[]{"itemID","worldID","lastUploadTime","hasData","averagePriceNQ","averagePriceHQ","nqSaleVelocity","hqSaleVelocity","recentHistoryCount","minPriceNQ","minPriceHQ"}.Select(f=>prefix+f));
             using var response=await client.GetAsync($"https://universalis.app/api/v2/{world}/{string.Join(',',ids)}?listings=0&entries=500&statsWithin={(long)historyDays*86400000}&entriesWithin={(long)historyDays*86400}&fields={fields}",HttpCompletionOption.ResponseHeadersRead,token).ConfigureAwait(false);
             if(!response.IsSuccessStatusCode)
             {

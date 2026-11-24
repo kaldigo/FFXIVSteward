@@ -49,6 +49,42 @@ static class PersistentObservationChecks
         var full=SaleStatistics.ParseCurrent(Summary(10),83,new HashSet<uint>{42,43},now);
         check(full.Count==4&&full.Single(s=>s.ItemId==42&&!s.Hq).RecentSales,"Compact summaries return valid world/quality data and explicit unknown missing IDs");
         check(full.Where(s=>s.ItemId==43).All(s=>s.Average==null),"Missing items cannot become zero-value disposal evidence");
+        const string noSalesRow="""{"itemID":42,"worldID":83,"hasData":true,"recentHistoryCount":0,"averagePriceNQ":0,"averagePriceHQ":0,"nqSaleVelocity":0,"hqSaleVelocity":0}""";
+        var noSales=SaleStatistics.ParseCurrent(noSalesRow,83,new HashSet<uint>{42},now);
+        check(noSales.All(s=>s.NoSalesObserved&&s.Average==null),"A complete quiet window proves zero sales without inventing a price");
+        const string onlyHq="""{"itemID":42,"worldID":83,"hasData":true,"recentHistoryCount":1,"averagePriceNQ":0,"averagePriceHQ":1000,"nqSaleVelocity":0,"hqSaleVelocity":0.035714}""";
+        var mixed=SaleStatistics.ParseCurrent(onlyHq,83,new HashSet<uint>{42},now);
+        check(mixed.Single(s=>!s.Hq).NoSalesObserved&&mixed.Single(s=>s.Hq).RecentSales,
+            "Sales in one quality do not prove sales in the other");
+        foreach(var response in new[]{
+            noSalesRow.Replace("true","false"),
+            noSalesRow.Replace("recentHistoryCount\":0","recentHistoryCount\":500"),
+            noSalesRow.Replace("recentHistoryCount","missing"),
+            noSalesRow.Replace("nqSaleVelocity","missing"),
+            noSalesRow.Replace("recentHistoryCount\":0","recentHistoryCount\":1"),
+            noSalesRow[..^1]+",\"unresolvedItems\":[42]}"})
+            check(!SaleStatistics.ParseCurrent(response,83,new HashSet<uint>{42},now).First().NoSalesObserved,
+                "Unresolved, inconsistent, partial and nonempty responses cannot prove zero sales");
+        var noSalesEvidence=new Evidence{ReferencesReady=true,GearsetsReady=true,StatisticsRequired=true};
+        foreach(var row in noSales)
+            noSalesEvidence.SaleStatistics[(42,row.Hq)]=SaleStatistics.Merge(row,row with{Average=10000,ValueObserved=now.AddDays(-3),NoSalesObserved=false});
+        var quietItem=item with{Rarity=1,Source=SourceKind.Ordinary,Marketable=true};
+        var quietRules=new RuleSettings{Quality=QualityMode.Combined,Sales=[new(){MinimumUnit=1,MinimumTotal=1,MinimumDailySales=0.1}]};
+        Decision JudgeQuiet()=>Rules.Judge(quietItem,stock,quietRules,noSalesEvidence,83,now);
+        check(JudgeQuiet() is {Outcome:Outcome.Dispose,SaleRejected:true},"Verified no sales rejects the sale rule and allows ordinary disposal despite a retained old average");
+        quietRules.Keep.Add(42);
+        check(JudgeQuiet().Outcome==Outcome.Keep,"Verified no sales cannot override explicit keep");
+        quietRules.Keep.Clear();
+        check(Rules.Judge(quietItem with{Source=SourceKind.Unknown},stock,quietRules,noSalesEvidence,83,now).Outcome!=Outcome.Dispose,
+            "Verified no sales cannot override uncertain acquisition");
+        check(Rules.Judge(quietItem with{Equipment=false},stock,quietRules,noSalesEvidence,83,now).Outcome==Outcome.Keep,
+            "Verified no sales still requires non-equipment permission");
+        check(SaleStatistics.NoRecentSales(noSalesEvidence,42,false,QualityMode.Combined,83,now.AddDays(8),2)==null,
+            "Stale no-sales evidence cannot authorize disposal");
+        noSalesEvidence.SaleStatistics.Remove((42,true));
+        check(SaleStatistics.NoRecentSales(noSalesEvidence,42,false,QualityMode.Combined,83,now,2)==null&&
+            SaleStatistics.NoRecentSales(noSalesEvidence,42,false,QualityMode.Separate,83,now,2)!=null,
+            "Combined requires both quality rows; separate uses the item's quality");
         var truncated=SaleStatistics.ParseCurrent(Summary(500),83,new HashSet<uint>{42},now).First();
         check(truncated.Average==1000&&truncated.DailySales==null&&!truncated.RecentSales&&truncated.HistoryTruncated,"Capped history remains a price estimate but cannot authorize disposal or velocity thresholds");
         evidence=new(){ReferencesReady=true,GearsetsReady=true,StatisticsRequired=true,SaleStatistics=new(){[(42,false)]=truncated}};

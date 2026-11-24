@@ -167,10 +167,14 @@ public static class Rules
         string SaleReason(string reason)=>retainedBy==null ? reason : $"{reason}; verified separate copy on {retainedBy}";
         var rule = settings.Sales.FirstOrDefault(r => r.Matches(item, stock, retainer));
         var saleRejected=false;
+        var noRecentSales=false;
         if(item.Marketable)
         {
             if(world==0)return new(Outcome.Wait,"Current world is unavailable; market valuation is blocked");
-            if(evidence.StatisticsRequired||rule?.MinimumDailySales!=null)
+            noRecentSales=SaleStatistics.NoRecentSales(evidence,item.Id,stock.Hq,settings.Quality,world,now,settings.SummaryRefreshHours)!=null;
+            if(noRecentSales)
+                saleRejected=rule!=null;
+            else if(evidence.StatisticsRequired||rule?.MinimumDailySales!=null)
             {
                 var value=SaleStatistics.Select(evidence,item.Id,stock.Hq,settings.Quality,world,now);
                 if(value==null)return new(Outcome.Wait,"Average sale value unavailable; sale and disposal held",rule);
@@ -186,7 +190,7 @@ public static class Rules
                         return new(Outcome.Market,SaleReason((rule.Priority(value.Average,quantity)>0?"Low-priority sale; fill spare slots: ":"Matches average-value and sales-velocity rule: ")+rule.Name),rule,(uint)Math.Floor(value.Average!.Value),MaximumRemovable:removable);
                     saleRejected=true;
                 }
-                // An old value can propose a sale, but a quiet or truncated history window never permits destruction.
+                // An old value can propose a sale. Without explicit zero-sales evidence, incomplete or stale history holds disposal.
                 if(!current)return new(Outcome.Wait,"Older sale value retained; disposal held without recent sales",rule,SaleRejected:saleRejected);
             }
             else
@@ -207,7 +211,8 @@ public static class Rules
         if(!item.Equipment && !settings.AllowsNonEquipmentDisposal(item))
             return new(Outcome.Keep, "Non-equipment disposal requires explicit item permission",rule,SaleRejected:saleRejected);
         if(removable<stock.Quantity)return new(Outcome.Keep,"Stack contains a quantity reserve; whole-stack disposal blocked",rule);
-        if(retainedBy!=null)return new(Outcome.Dispose,$"Verified separate copy on {retainedBy}; surplus may use AutoRetainer disposal rules",rule,SaleRejected:saleRejected);
-        return new(Outcome.Dispose, collect ? "Exact copy already collected; surplus may use AutoRetainer disposal rules" : "Outside collection rules; use AutoRetainer disposal rules",rule,SaleRejected:saleRejected);
+        string DisposalReason(string reason)=>noRecentSales ? "No sales recorded in the configured market history window; "+reason : reason;
+        if(retainedBy!=null)return new(Outcome.Dispose,DisposalReason($"Verified separate copy on {retainedBy}; surplus may use AutoRetainer disposal rules"),rule,SaleRejected:saleRejected);
+        return new(Outcome.Dispose, DisposalReason(collect ? "Exact copy already collected; surplus may use AutoRetainer disposal rules" : "Outside collection rules; use AutoRetainer disposal rules"),rule,SaleRejected:saleRejected);
     }
 }

@@ -4,7 +4,7 @@ namespace Steward.Core;
 
 // Historical value is deliberately separate from an identified competing listing.
 public sealed record SaleStatistic(uint World,uint ItemId,bool Hq,double? Average,double? DailySales,
-    DateTimeOffset Fetched,DateTimeOffset? ValueObserved,uint? MinimumListing,bool RecentSales,bool HistoryTruncated=false,int HistoryDays=4);
+    DateTimeOffset Fetched,DateTimeOffset? ValueObserved,uint? MinimumListing,bool RecentSales,bool HistoryTruncated=false,int HistoryDays=4,bool NoSalesObserved=false);
 
 public static class SaleStatistics
 {
@@ -23,6 +23,18 @@ public static class SaleStatistics
         return selected with{DailySales=values.All(s=>s.DailySales.HasValue)?values.Sum(s=>s.DailySales!.Value):null,
             RecentSales=values.All(s=>s.RecentSales)};
     }
+    public static SaleStatistic? NoRecentSales(Evidence evidence,uint item,bool hq,QualityMode quality,uint world,DateTimeOffset now,int refreshHours)
+    {
+        bool Confirmed(bool qualityHq,out SaleStatistic? value) =>
+            evidence.SaleStatistics.TryGetValue((item,qualityHq),out value) &&
+            value.ItemId==item&&value.World==world&&value.Hq==qualityHq&&
+            value.NoSalesObserved&&!value.RecentSales&&!value.HistoryTruncated&&value.DailySales==0&&
+            value.Fetched<=now&&now-value.Fetched<TimeSpan.FromHours(Math.Clamp(refreshHours,1,168));
+        if(!Confirmed(hq,out var selected))return null;
+        if(quality==QualityMode.Combined&&!Confirmed(!hq,out _))return null;
+        return selected;
+    }
+
     public static SaleStatistic Merge(SaleStatistic incoming,SaleStatistic? previous)=>
         incoming.Average is >0||previous==null?incoming:incoming with
         {Average=previous.Average,ValueObserved=previous.ValueObserved,RecentSales=false};
@@ -33,24 +45,36 @@ public static class SaleStatistics
         using var doc=JsonDocument.Parse(json);var root=doc.RootElement;
         if(world==0||root.ValueKind!=JsonValueKind.Object||!root.TryGetProperty("worldID",out var scope)||scope.ValueKind!=JsonValueKind.Number||!scope.TryGetUInt32(out var w)||w!=world)
             throw new InvalidDataException("Wrong or missing summary world");
+        HashSet<uint> unresolved=[];
+        if(root.TryGetProperty("unresolvedItems",out var unresolvedRows))
+        {
+            if(unresolvedRows.ValueKind!=JsonValueKind.Array)throw new InvalidDataException("Invalid unresolved summary items");
+            foreach(var row in unresolvedRows.EnumerateArray())unresolved.Add(row.GetUInt32());
+        }
         List<SaleStatistic> values=[];HashSet<uint> seen=[];
         void Row(uint id,JsonElement row)
         {
             if(!requested.Contains(id)||!seen.Add(id))throw new InvalidDataException("Unexpected or duplicate summary item");
-            if(row.ValueKind!=JsonValueKind.Object||!row.TryGetProperty("itemID",out var identity)||identity.ValueKind!=JsonValueKind.Number||!identity.TryGetUInt32(out var item)||item!=id||
+            if(unresolved.Contains(id)||row.ValueKind!=JsonValueKind.Object||!row.TryGetProperty("itemID",out var identity)||identity.ValueKind!=JsonValueKind.Number||!identity.TryGetUInt32(out var item)||item!=id||
                 !row.TryGetProperty("worldID",out var rowWorld)||rowWorld.ValueKind!=JsonValueKind.Number||!rowWorld.TryGetUInt32(out var rw)||rw!=world)return;
             double? Number(string key)=>row.TryGetProperty(key,out var v)&&v.ValueKind==JsonValueKind.Number&&v.TryGetDouble(out var n)&&double.IsFinite(n)&&n>=0?n:null;
             var count=Number("recentHistoryCount");
             var complete=count is >=0 and <500 && count==Math.Floor(count.Value);
             foreach(var hq in new[]{false,true})
             {
-                var average=Number(hq?"averagePriceHQ":"averagePriceNQ");
+                var reportedAverage=Number(hq?"averagePriceHQ":"averagePriceNQ");
+                var average=reportedAverage;
                 if(average is <=0 or >999999999||count is null or <=0)average=null;
                 var daily=complete?Number(hq?"hqSaleVelocity":"nqSaleVelocity"):null;
+                // In a complete response, a nonempty history can also be entirely the other quality.
+                var otherVelocity=Number(hq?"nqSaleVelocity":"hqSaleVelocity");
+                var noSales=complete&&daily==0&&reportedAverage==0&&
+                    (count==0&&otherVelocity==0||count>0&&otherVelocity>0)&&
+                    row.TryGetProperty("hasData",out var data)&&data.ValueKind==JsonValueKind.True;
                 var minimum=Number(hq?"minPriceHQ":"minPriceNQ");
                 values.Add(new(world,id,hq,average,daily,fetched,average.HasValue?fetched:null,
                     minimum is >=1 and <=999999999?(uint)minimum.Value:null,average.HasValue&&daily is >0,
-                    !complete,historyDays));
+                    !complete,historyDays,noSales));
             }
         }
         if(root.TryGetProperty("items",out var rows)&&rows.ValueKind==JsonValueKind.Object)
@@ -61,7 +85,7 @@ public static class SaleStatistics
         else if(root.TryGetProperty("itemID",out var single)&&single.TryGetUInt32(out var singleId))Row(singleId,root);
         else throw new InvalidDataException("Missing summary items");
         foreach(var id in requested)foreach(var hq in new[]{false,true})
-            if(!values.Any(v=>v.ItemId==id&&v.Hq==hq))values.Add(new(world,id,hq,null,null,fetched,null,null,false,false,historyDays));
+            if(!values.Any(v=>v.ItemId==id&&v.Hq==hq))values.Add(new(world,id,hq,null,null,fetched,null,null,false,false,historyDays,false));
         return values;
     }
 
