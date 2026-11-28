@@ -13,7 +13,14 @@ class RepriceRefreshWiring(unittest.TestCase):
   self.assertIn('Pricing.NoRepriceReason',s)
  def test_background_refresh_keeps_running_during_queue(self):
   s=(ROOT/'Plugin.cs').read_text(encoding='utf-8')
-  heartbeat=s.split('if(Environment.TickCount64>=nextHeartbeat)')[1].split('if(ownsPostprocess')[0]
+  heartbeat=(ROOT/'Plugin.Connection.cs').read_text(encoding='utf-8')
+  self.assertIn('var pulseDue=attached==character&&(now>=nextHeartbeat||connectionRequested);',heartbeat)
+  self.assertIn('if(!pulseDue&&!connectionRequested&&!storageRoutingRequested)return;',heartbeat)
+  pulse=heartbeat.split('if(pulseDue)')[1].split('if(connectionRequested)')[0]
+  self.assertNotIn('InventoryPolicy.Version',pulse)
+  self.assertNotIn('MigrateStorageRouting',pulse)
+  self.assertIn('if(connectionRequested)',heartbeat)
+  self.assertIn('.Subscribe(OnConnectionRequested)',s)
   self.assertNotIn('Refresh()',heartbeat)
   self.assertIn('prefilledCharacter!=player.ContentId||prefilledWorld!=world||inventoryRefreshRequested',s)
   self.assertIn('Environment.TickCount64>=nextPricePump)PumpPrices()',s)

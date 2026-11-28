@@ -12,6 +12,11 @@ public sealed partial class Plugin
     private readonly Dictionary<uint,IReadOnlyList<(uint Id,string Name)>> itemSearchResults=[];
     private void SavePolicy()
     {
+        if(config.Connected)
+        {
+            if(attached==0)connectionRequested=true;
+            storageRoutingRequested=true;
+        }
         configuredOverrides = null;
         decisions.Clear();
         market.ReplanPending();

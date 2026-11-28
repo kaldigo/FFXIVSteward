@@ -1,3 +1,7 @@
+## AutoRetainer connection requests
+
+Attach on login, explicit reconnect or AutoRetainer's readiness event. A connected policy still renews its safety lease, independently of inventory scans and review. Version and migration checks run on attachment or configuration changes.
+
 ## Inventory and review scheduling
 
 Read full inventory and imports at login, when Steward is opened, and when a workflow needs a fresh plan. The connection heartbeat keeps running independently. Developer review records one snapshot per request or workflow entry and continues logging decisions at the live policy gate. Price prefetch uses the last known candidate IDs without re-reading inventory.

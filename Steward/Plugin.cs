@@ -37,7 +37,6 @@ public sealed partial class Plugin : IDalamudPlugin
     private readonly List<string> history=[];
     private readonly Dictionary<uint,bool?> protectionSnapshot=[];
     private readonly string historyPath;
-    private long nextHeartbeat;
     private long nextPricePump;
     private ulong prefilledCharacter;
     private uint prefilledWorld;
@@ -45,6 +44,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private bool storageRefreshRequested;
     private uint[] priceCandidates=[];
     private long nextAutomaticWork;
+    private long nextTravelCoordination;
     private ulong attached;
     private bool open=false;
     private bool disposed;
@@ -119,6 +119,7 @@ public sealed partial class Plugin : IDalamudPlugin
         pi.GetIpcProvider<ulong,string,object>("Steward.InventoryPolicy.Fault").RegisterAction(IntegrationFault);
         pi.GetIpcSubscriber<string,object>("AutoRetainer.OnRetainerAdditionalTask").Subscribe(RequestPostprocess);
         pi.GetIpcSubscriber<string,string,object>("AutoRetainer.OnRetainerReadyForPostprocess").Subscribe(Postprocess);
+        pi.GetIpcSubscriber<ulong,object>("AutoRetainer.InventoryPolicy.ConnectionRequested").Subscribe(OnConnectionRequested);
         pi.GetIpcProvider<ulong,bool>("Steward.InventoryPolicy.CollectionNeeded").RegisterFunc(CollectionNeeded);
         pi.GetIpcProvider<ulong,ulong,bool>("Steward.InventoryPolicy.CollectionNeededForRetainer").RegisterFunc(CollectionNeededForRetainer);
         pi.GetIpcProvider<ulong,ulong,uint[]?>("Steward.InventoryPolicy.CachedBagStacks").RegisterFunc(CachedBagStacks);
@@ -337,7 +338,7 @@ public sealed partial class Plugin : IDalamudPlugin
             if(!player.IsLoaded)
             {
                 view.SessionDresser.Invalidate();
-                reviewCharacter=0;collectionObserved=0;
+                reviewCharacter=0;collectionObserved=0;connectionCharacter=attached=0;
                 if(prefilledCharacter!=0||view.Character!=0){prefilledCharacter=0;priceCandidates=[];view.Refresh(0);}
                 StopQueue();return;
             }
@@ -351,23 +352,12 @@ public sealed partial class Plugin : IDalamudPlugin
                 prefilledCharacter=player.ContentId;prefilledWorld=world;inventoryRefreshRequested=false;
             }
             if(prefilledCharacter==player.ContentId&&view.World==world&&Environment.TickCount64>=nextPricePump)PumpPrices();
-            if(Environment.TickCount64>=nextHeartbeat)
+            MaintainConnection();
+            // Expire follow-up permission rather than resuming an old route after AutoDuty stops.
+            if(storageRun.Allows(player.ContentId,config.ExecutionEnabled)&&Environment.TickCount64>=nextTravelCoordination)
             {
-                nextHeartbeat=Environment.TickCount64+500;
-                // Expire follow-up permission rather than resuming an old route after AutoDuty stops.
+                nextTravelCoordination=Environment.TickCount64+500;
                 if(AutoDutyCoordination.OwnsTravel(pi))storageRun.End();
-                if(config.Connected && player.ContentId!=0)
-                {
-                    var version=pi.GetIpcSubscriber<int>("AutoRetainer.InventoryPolicy.Version").InvokeFunc();
-                    if(version!=6)throw new InvalidOperationException("Update both plugins: AutoRetainer integration version 6 is required");
-                    if(pi.GetIpcSubscriber<int>("AutoRetainer.InventoryPolicy.StorageVersion").InvokeFunc()<5)throw new InvalidOperationException("Update AutoRetainer: safe standalone entrust and venture mode is required");
-                    if(attached==player.ContentId)
-                    {if(!pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Heartbeat").InvokeFunc(attached,Endpoint))attached=0;}
-                    if(attached==0 && pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Connect").InvokeFunc(player.ContentId,Endpoint))attached=player.ContentId;
-                    if(attached!=0&&!pi.GetIpcSubscriber<ulong,ulong,bool>("AutoRetainer.InventoryPolicy.MigrateStorageRouting").InvokeFunc(attached,config.Storage.Enabled?config.Storage.NonmarketableRetainer:0))throw new InvalidOperationException("AutoRetainer storage-role migration is not ready");
-                    if(pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.HasFault").InvokeFunc(player.ContentId))HoldExecution("AutoRetainer has an unresolved inventory transaction");
-                    status=attached!=0?(config.LogOnly?"Log only: proposed actions recorded; all item actions blocked":config.ExecutionEnabled?"Enabled features follow AutoRetainer":"Item actions held for review"):"Waiting for AutoRetainer integration";
-                }
             }
             if(ownsPostprocess && !pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsHandoff").InvokeFunc(player.ContentId))
             {HoldExecution("AutoRetainer handoff ownership was lost");StopQueue();return;}
@@ -562,6 +552,7 @@ public sealed partial class Plugin : IDalamudPlugin
             pi.GetIpcProvider<ulong,string,object>("Steward.InventoryPolicy.Fault").UnregisterAction();
             pi.GetIpcSubscriber<string,object>("AutoRetainer.OnRetainerAdditionalTask").Unsubscribe(RequestPostprocess);
             pi.GetIpcSubscriber<string,string,object>("AutoRetainer.OnRetainerReadyForPostprocess").Unsubscribe(Postprocess);
+            pi.GetIpcSubscriber<ulong,object>("AutoRetainer.InventoryPolicy.ConnectionRequested").Unsubscribe(OnConnectionRequested);
             pi.GetIpcProvider<string,ulong,string>("Steward.Bell.Availability").UnregisterFunc();
             pi.GetIpcProvider<object>("Steward.Bell.Stop").UnregisterAction();
             pi.GetIpcProvider<string,object>("Steward.Bell.Start").UnregisterAction();

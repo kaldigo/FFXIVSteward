@@ -73,7 +73,7 @@ class Distribution(unittest.TestCase):
  def test_backend_uncertainty_is_persisted_and_cleared_in_both_plugins(self):
   source=((ROOT/'Steward/Plugin.cs').read_text()+(ROOT/'Steward/Plugin.Settings.cs').read_text())
   self.assertIn('RegisterAction(IntegrationFault)',source)
-  self.assertIn('AutoRetainer.InventoryPolicy.HasFault',source)
+  self.assertIn('AutoRetainer.InventoryPolicy.HasFault',(ROOT/'Steward/Plugin.Connection.cs').read_text())
   self.assertIn('AutoRetainer.InventoryPolicy.ClearFault',source)
   self.assertIn('AutoRetainer.InventoryPolicy.Hold',source)
  def test_native_dresser_does_not_confirm_other_dialogs(self):
