@@ -74,7 +74,7 @@ class ListingWiring(unittest.TestCase):
         plugin=(ROOT/'Steward/Plugin.cs').read_text(encoding='utf-8')
         self.assertIn('UpdateAutomaticMarketPreview();',plugin)
         preview=(ROOT/'Steward/Plugin.MarketPreview.cs').read_text(encoding='utf-8')
-        self.assertIn('if(changed&&config.LogOnly){reviewJournal.Reset();nextReview=0;}',preview)
+        self.assertIn('if(config.LogOnly){reviewJournal.Reset();RequestReviewSnapshot(inventoryAlreadyRead:true);}',preview)
         self.assertNotIn('ImGui.Button("Refresh proposed listings")',preview)
         rotation=(ROOT/'Steward/Services/MarketQueue.Rotation.cs').read_text(encoding='utf-8')
         self.assertLess(rotation.index('QueueReturn('),rotation.index('manager->MoveFromRetainerMarketToRetainerInventory('))

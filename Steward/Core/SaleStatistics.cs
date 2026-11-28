@@ -9,12 +9,12 @@ public sealed record SaleStatistic(uint World,uint ItemId,bool Hq,double? Averag
 public static class SaleStatistics
 {
     public static SaleStatistic? CheapestListing(Evidence evidence,uint item,bool hq,QualityMode quality,uint world,DateTimeOffset now) =>
-        evidence.SaleStatistics.Values.Where(s=>s.ItemId==item&&s.World==world&&s.Fetched<=now&&
+        Quotes(evidence,item,hq,quality).Where(s=>s.ItemId==item&&s.World==world&&s.Fetched<=now&&
             s.MinimumListing is >0 and <=999999999&&(quality==QualityMode.Combined||s.Hq==hq)).MinBy(s=>s.MinimumListing);
 
     public static SaleStatistic? Select(Evidence evidence,uint item,bool hq,QualityMode quality,uint world,DateTimeOffset now)
     {
-        var values=evidence.SaleStatistics.Values.Where(s=>s.ItemId==item&&s.World==world&&s.Fetched<=now&&
+        var values=Quotes(evidence,item,hq,quality).Where(s=>s.ItemId==item&&s.World==world&&s.Fetched<=now&&
             s.ValueObserved<=now&&s.Average is >0&&double.IsFinite(s.Average.Value)&&
             (quality==QualityMode.Combined||s.Hq==hq)).ToArray();
         if(values.Length==0)return null;
@@ -23,6 +23,12 @@ public static class SaleStatistics
         return selected with{DailySales=values.All(s=>s.DailySales.HasValue)?values.Sum(s=>s.DailySales!.Value):null,
             RecentSales=values.All(s=>s.RecentSales)};
     }
+    private static IEnumerable<SaleStatistic> Quotes(Evidence evidence,uint item,bool hq,QualityMode quality)
+    {
+        if(evidence.SaleStatistics.TryGetValue((item,hq),out var own))yield return own;
+        if(quality==QualityMode.Combined&&evidence.SaleStatistics.TryGetValue((item,!hq),out var other))yield return other;
+    }
+
     public static SaleStatistic? NoRecentSales(Evidence evidence,uint item,bool hq,QualityMode quality,uint world,DateTimeOffset now,int refreshHours)
     {
         bool Confirmed(bool qualityHq,out SaleStatistic? value) =>

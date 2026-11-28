@@ -65,6 +65,8 @@ public sealed partial class Plugin
         if(!config.EffectiveFeatures.DresserCollection&&!config.EffectiveFeatures.ArmoireStorage&&!config.EffectiveFeatures.OverflowStorage&&!config.EffectiveCleanDresser)return;
         if(authorized&&!storageRun.Allows(player.ContentId,config.ExecutionEnabled))
         {
+            Refresh();
+            storageRefreshRequested=true;
             finishingStorageRun=false;
             nextPostCleanupEntrust=0;
             nextCollectionAttempt=nextDresserAttempt=nextOverflowAttempt=nextAutomaticWork=0;
@@ -109,6 +111,7 @@ public sealed partial class Plugin
     private uint[] EntrustBlockedItems(ulong character,ulong retainer)
     {
         if(character!=view.Character||!player.IsLoaded||!InventoryView.PlayerLoaded())return [];
+        RefreshProtection();
         return view.Items.GroupBy(s=>s.ItemId)
             .Where(group=>group.All(s=>view.StorageBlock(s,retainer,nativeEntrust:true)!=null||!StorageCandidate(Judge(s))))
             .Select(group=>group.Key).ToArray();
@@ -223,6 +226,7 @@ public sealed partial class Plugin
             var candidates = ArmoireCandidates().Distinct().ToArray();
             if((checkCabinet||candidates.Length>0) && pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,"Armoire"))
             {
+                storageRefreshRequested=true;
                 storageRun.CheckedArmoire=true;
                 storageRun.RequestedStorage=true;
                 storageRun.AttemptedArmoireItems.UnionWith(candidates);
@@ -249,7 +253,7 @@ public sealed partial class Plugin
             {status=market.DresserPreparationStatus!;return true;}
             nextDresserAttempt=Environment.TickCount64+60000;
             if(pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.Run").InvokeFunc(player.ContentId,"Dresser"))
-            {storageRun.RequestedStorage=true;Record("Glamour dresser visit requested");return true;}
+            {storageRefreshRequested=true;storageRun.RequestedStorage=true;Record("Glamour dresser visit requested");return true;}
             nextDresserAttempt=Environment.TickCount64+5000;
             Alert("Glamour collection is waiting for AutoRetainer's dresser route. Check its travel dependencies; protected items remain safe.");
         }
@@ -279,6 +283,7 @@ public sealed partial class Plugin
     {
         if(!config.EffectiveFeatures.OverflowStorage)return;
         if(!player.IsLoaded||attached!=player.ContentId||!config.Connected||!config.ExecutionEnabled||executionFault||market.Queue.Running||ownsPostprocess||overflowPass)return;
+        RefreshProtection();
         nextOverflowAttempt=Environment.TickCount64+60000;
         if(!market.CloseDresserForStorage())
         {Alert("Storage is waiting for the current confirmation window to close; protected items remain safe.");nextOverflowAttempt=Environment.TickCount64+5000;return;}

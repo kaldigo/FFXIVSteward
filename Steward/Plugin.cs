@@ -27,6 +27,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private readonly MarketQueue market;
     private readonly DresserTrace dresserTrace;
     private readonly CollectionSessionObserver collectionSession;
+    private readonly NativeUi collectionUi;
     private readonly TrackedInventories tracked;
     private readonly InventoryMemory inventoryMemory;
     private readonly DungeonSources dungeonSources;
@@ -36,8 +37,12 @@ public sealed partial class Plugin : IDalamudPlugin
     private readonly List<string> history=[];
     private readonly Dictionary<uint,bool?> protectionSnapshot=[];
     private readonly string historyPath;
-    private long nextRefresh;
-    private long nextImports;
+    private long nextHeartbeat;
+    private long nextPricePump;
+    private ulong prefilledCharacter;
+    private uint prefilledWorld;
+    private bool inventoryRefreshRequested;
+    private bool storageRefreshRequested;
     private uint[] priceCandidates=[];
     private long nextAutomaticWork;
     private ulong attached;
@@ -101,9 +106,9 @@ public sealed partial class Plugin : IDalamudPlugin
             ownsPostprocess||collectionPass||overflowPass||postCleanupEntrustPass||
             storageRun.Allows(player.ContentId,config.ExecutionEnabled)||market.Queue.Running);
         market.DresserRestored+=OnWorkflowDresserRestored;
-        market.CollectionWithdrawalConfirmed+=storageRun.ConfirmWithdrawal;
-        market.DresserDepositConfirmed+=storageRun.ConfirmDeposit;
-        var collectionUi=new NativeUi(gui);
+        market.CollectionWithdrawalConfirmed+=()=>{storageRun.ConfirmWithdrawal();storageRefreshRequested=true;};
+        market.DresserDepositConfirmed+=()=>{storageRun.ConfirmDeposit();storageRefreshRequested=true;};
+        collectionUi=new NativeUi(gui);
         collectionSession=new(lifecycle,view,()=>player.IsLoaded?player.ContentId:0,
             ()=>executionFault||config.PendingOperation!=null||market.Queue.Running||market.Queue.HasUnverifiedAction||
                 collectionUi.Visible("SelectYesno")||collectionUi.Visible("MiragePrismPrismSetConvertC")||collectionUi.Visible("InputNumeric"),Record);
@@ -133,7 +138,7 @@ public sealed partial class Plugin : IDalamudPlugin
         pi.UiBuilder.Draw+=Draw;pi.UiBuilder.OpenMainUi+=Open;pi.UiBuilder.OpenConfigUi+=Open;
         framework.Update+=Update;
     }
-    private void Open()=>open=true;
+    private void Open(){open=true;inventoryRefreshRequested=true;}
     private void Command(string _,string args)
     {
         if(args.Trim()=="trace dresser")
@@ -181,21 +186,22 @@ public sealed partial class Plugin : IDalamudPlugin
     {
         var character=player.IsLoaded?player.ContentId:0;
         var world=objects.LocalPlayer?.CurrentWorld.RowId??0;
-        // Prefill on the first loaded frame and after character/world changes, independently of automation or UI.
-        if(view.Character!=character||view.World!=world){nextImports=0;priceCandidates=[];}
         view.World=world;
         view.Refresh(character);
         protectionSnapshot.Clear();
-        if(Environment.TickCount64>=nextImports)
-        {
-            imports.Refresh();tracked.Refresh(view.Character,view.Retainers,inventoryMemory);nextImports=Environment.TickCount64+1000;
-            priceCandidates=market.PriceCandidates().Concat(view.Items).Concat(tracked.Items.Where(r=>view.Retainers.Contains(r.Owner)).Select(r=>r.Stock))
-                .Where(s=>view.Facts(s.ItemId) is {Marketable:true} item&&!config.Rules.IsIgnored(item)&&
-                    (item.Equipment||config.Rules.Sales.Any(r=>r.Matches(item,s))||config.Rules.AllowsNonEquipmentDisposal(item)))
-                .Select(s=>s.ItemId).Distinct().ToArray();
-        }
-        else imports.RefreshReferences(); // Rebuild readiness after every native refresh, even between slower market imports.
+        imports.Refresh();
+        tracked.Refresh(view.Character,view.Retainers,inventoryMemory);
+        priceCandidates=market.PriceCandidates().Concat(view.Items).Concat(tracked.Items.Where(r=>view.Retainers.Contains(r.Owner)).Select(r=>r.Stock))
+            .Where(s=>view.Facts(s.ItemId) is {Marketable:true} item&&!config.Rules.IsIgnored(item)&&
+                (item.Equipment||config.Rules.Sales.Any(r=>r.Matches(item,s))||config.Rules.AllowsNonEquipmentDisposal(item)))
+            .Select(s=>s.ItemId).Distinct().ToArray();
         UpdateCollectionHolds();
+        PumpPrices();
+    }
+    private void PumpPrices()
+    {
+        nextPricePump=Environment.TickCount64+500;
+        // Pump the existing candidate set, including while live market work is waiting.
         universalis.Tick(view.World,priceCandidates,PriceOwners,config.Rules.SummaryRefreshHours,view.Evidence,config.UseUniversalis,DateTimeOffset.UtcNow,config.Rules.SummaryHistoryDays);
     }
     private Decision Judge(Stock stock)=>JudgeForRetainer(stock,0);
@@ -328,11 +334,26 @@ public sealed partial class Plugin : IDalamudPlugin
         {
             PumpReviewLog();
             if(dresserTrace.Active) dresserTrace.Tick(CanTraceDresser());
-            if(!player.IsLoaded){view.SessionDresser.Invalidate();StopQueue();return;}
-            if(attached!=0 && attached!=player.ContentId){Stop();attached=0;}
-            if(Environment.TickCount64>=nextRefresh)
+            if(!player.IsLoaded)
             {
-                nextRefresh=Environment.TickCount64+500;Refresh();
+                view.SessionDresser.Invalidate();
+                reviewCharacter=0;collectionObserved=0;
+                if(prefilledCharacter!=0||view.Character!=0){prefilledCharacter=0;priceCandidates=[];view.Refresh(0);}
+                StopQueue();return;
+            }
+            if(attached!=0 && attached!=player.ContentId){Stop();attached=0;}
+            ObserveOpenedCollections();
+            var world=objects.LocalPlayer?.CurrentWorld.RowId??0;
+            if(world!=0&&InventoryView.PlayerLoaded()&&
+                (prefilledCharacter!=player.ContentId||prefilledWorld!=world||inventoryRefreshRequested))
+            {
+                Refresh();
+                prefilledCharacter=player.ContentId;prefilledWorld=world;inventoryRefreshRequested=false;
+            }
+            if(prefilledCharacter==player.ContentId&&view.World==world&&Environment.TickCount64>=nextPricePump)PumpPrices();
+            if(Environment.TickCount64>=nextHeartbeat)
+            {
+                nextHeartbeat=Environment.TickCount64+500;
                 // Expire follow-up permission rather than resuming an old route after AutoDuty stops.
                 if(AutoDutyCoordination.OwnsTravel(pi))storageRun.End();
                 if(config.Connected && player.ContentId!=0)
@@ -351,7 +372,7 @@ public sealed partial class Plugin : IDalamudPlugin
             if(ownsPostprocess && !pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.OwnsHandoff").InvokeFunc(player.ContentId))
             {HoldExecution("AutoRetainer handoff ownership was lost");StopQueue();return;}
             UpdateAutomaticMarketPreview();
-            ReviewTick();
+            CaptureRequestedReview();
             market.Advance(Environment.TickCount64);
             UpdateManualBellAction();
             UpdateCleanup();
@@ -386,7 +407,7 @@ public sealed partial class Plugin : IDalamudPlugin
             if(ownsPostprocess && !openingInventory && !withdrawing && !openingMarket && !market.Queue.Running)FinishPostprocess();
             if(collectionPass&&!ownsPostprocess&&!market.Queue.Running&&!pi.GetIpcSubscriber<bool>("AutoRetainer.PluginState.IsBusy").InvokeFunc())
             {
-                collectionPass=false;
+                collectionPass=false;storageRefreshRequested=true;
                 storageRun.RetainerSweepStalled=storageRun.Withdrawn==withdrawnAtSweepStart;
                 if(storageRun.RetainerSweepStalled)Alert("No collection withdrawal was confirmed during this retainer visit. Remaining retainer candidates will be checked on your next run.");
                 nextDresserAttempt=0;nextAutomaticWork=0;
@@ -404,6 +425,11 @@ public sealed partial class Plugin : IDalamudPlugin
                     dungeonSources.Tick();
                     if(!cleanupActive&&storageRun.Allows(player.ContentId,config.ExecutionEnabled)&&!executionFault)
                     {
+                        if(storageRefreshRequested)
+                        {
+                            storageRefreshRequested=false;
+                            Refresh();
+                        }
                         var storageStarted=AutomaticStorageWork();
                         if(!storageStarted)
                         {

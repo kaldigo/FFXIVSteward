@@ -1,3 +1,7 @@
+## Inventory and review scheduling
+
+Read full inventory and imports at login, when Steward is opened, and when a workflow needs a fresh plan. The connection heartbeat keeps running independently. Developer review records one snapshot per request or workflow entry and continues logging decisions at the live policy gate. Price prefetch uses the last known candidate IDs without re-reading inventory.
+
 ## Repeatable materia acquisition
 
 Recognize active lower-grade materia from the native materia sheet as repeatable, even when also awarded by a quest. Existing top-grade permissions and sale filters are preserved.

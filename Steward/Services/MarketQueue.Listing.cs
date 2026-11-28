@@ -63,6 +63,21 @@ public sealed unsafe partial class MarketQueue
         return listings.Count<=20&&listings.All(s=>s.Slot<20)&&listings.Select(s=>s.Slot).Distinct().Count()==listings.Count;
     }
     public ulong OpenMarketRetainer()=>MarketSnapshot(out var owner,out _)?owner:0;
+    public ulong OpenMarketRetainer(out int listingStamp)
+    {
+        listingStamp=0;
+        if(!MarketSnapshot(out var owner,out var listings))return 0;
+        var manager=InventoryManager.Instance();
+        if(manager==null)return 0;
+        var stamp=new HashCode();
+        foreach(var listing in listings)
+        {
+            stamp.Add(listing);
+            stamp.Add(manager->GetRetainerMarketPrice((short)listing.Slot));
+        }
+        listingStamp=stamp.ToHashCode();
+        return owner;
+    }
     public IReadOnlyList<Stock> PriceCandidates()
     {
         return MarketSnapshot(out _,out var listings)?listings.Concat(AvailableSaleStock()).Distinct().ToArray():[];

@@ -45,10 +45,16 @@ public sealed class AggregatePrices : IDisposable
         catch(Exception ex)when(ex is IOException or JsonException or InvalidDataException or UnauthorizedAccessException)
         {Status="Price cache unavailable; rebuilding in background: "+ex.Message;}
     }
-    public IReadOnlyList<PublicMarketHold> HeldItems(uint world)=>errors.Where(p=>p.Key.Item1==world)
-        .Select(p=>new PublicMarketHold(p.Key.Item2,p.Value)).Concat(cache.Values.Where(s=>s.World==world&&s.Average==null)
-        .GroupBy(s=>s.ItemId).Where(g=>!errors.ContainsKey((world,g.Key))&&!cache.Values.Any(s=>s.World==world&&s.ItemId==g.Key&&s.Average>0))
-        .Select(g=>new PublicMarketHold(g.Key,"No known average sale value; never treated as zero"))).ToArray();
+    public long Revision { get; private set; }
+    private (Evidence Evidence,uint World,int Days,bool Enabled,long Revision)? applied;
+    public IReadOnlyList<PublicMarketHold> HeldItems(uint world)
+    {
+        var known=cache.Values.Where(s=>s.World==world&&s.Average>0).Select(s=>s.ItemId).ToHashSet();
+        return errors.Where(p=>p.Key.Item1==world).Select(p=>new PublicMarketHold(p.Key.Item2,p.Value))
+            .Concat(cache.Values.Where(s=>s.World==world&&s.Average==null).Select(s=>s.ItemId).Distinct()
+                .Where(id=>!errors.ContainsKey((world,id))&&!known.Contains(id))
+                .Select(id=>new PublicMarketHold(id,"No known average sale value; never treated as zero"))).ToArray();
+    }
     public void Tick(uint world,IEnumerable<uint> items,IReadOnlySet<ulong> own,int refreshHours,Evidence evidence,bool enabled,DateTimeOffset now,int historyDays=28)
     {
         if(disposed)return;
@@ -82,7 +88,7 @@ public sealed class AggregatePrices : IDisposable
                 {var key=(value.World,value.ItemId,value.Hq);cache[key]=SaleStatistics.Merge(value,cache.GetValueOrDefault(key));}
                 foreach(var id in result.Items)
                 {retry.Remove((result.World,id));errors.Remove((result.World,id));}
-                dirty=true;Status=$"Universalis: refreshed {result.Values.Where(v=>v.Average.HasValue).Select(v=>v.ItemId).Distinct().Count()}/{result.Items.Length} item values; successful batches are available immediately";
+                Revision++;dirty=true;Status=$"Universalis: refreshed {result.Values.Where(v=>v.Average.HasValue).Select(v=>v.ItemId).Distinct().Count()}/{result.Items.Length} item values; successful batches are available immediately";
             }
             while(cache.Count>8192)cache.Remove(cache.MinBy(p=>p.Value.Fetched).Key);
             while(retry.Count>8192){var key=retry.MinBy(p=>p.Value).Key;retry.Remove(key);errors.Remove(key);}
@@ -96,7 +102,7 @@ public sealed class AggregatePrices : IDisposable
         {var snapshot=cache.Values.ToArray();dirty=false;saving=Task.Run(()=>AtomicState.Write(path,snapshot));}
         Apply(world,own,refreshHours,evidence,enabled,now,historyDays);
         if(!enabled){Status="Universalis disabled";return;}
-        if(world==0||now<next)return;
+        if(world==0||now<next||pending.Count>=MaximumConcurrentRequests)return;
         while(starts.Count>0&&now-starts.Peek()>=TimeSpan.FromSeconds(1))starts.Dequeue();
         var interval=TimeSpan.FromHours(Math.Clamp(refreshHours,1,168));
         var inFlight=pending.Where(p=>p.World==world).SelectMany(p=>p.Items).ToHashSet();
@@ -113,9 +119,13 @@ public sealed class AggregatePrices : IDisposable
 
     public void Apply(uint world,IReadOnlySet<ulong> own,int refreshHours,Evidence evidence,bool enabled,DateTimeOffset now,int historyDays=28)
     {
+        var days=Math.Clamp(historyDays,7,90);
+        var key=(evidence,world,days,enabled,Revision);
+        if(applied==key)return;
+        applied=key;
         evidence.StatisticsRequired=enabled;evidence.SaleStatistics.Clear();
         if(!enabled||world==0){Freshness="";return;}
-        foreach(var s in cache.Values.Where(s=>s.World==world&&s.Fetched<=now))evidence.SaleStatistics[(s.ItemId,s.Hq)]=s.HistoryDays==Math.Clamp(historyDays,7,90)?s:s with{DailySales=null,RecentSales=false,NoSalesObserved=false};
+        foreach(var s in cache.Values.Where(s=>s.World==world&&s.Fetched<=now))evidence.SaleStatistics[(s.ItemId,s.Hq)]=s.HistoryDays==days?s:s with{DailySales=null,RecentSales=false,NoSalesObserved=false};
         Freshness=$"World {world}: {evidence.SaleStatistics.Values.Count(s=>s.Average>0)} quality-specific average values cached. Refresh every {refreshHours} hours; older known values retained for slow sellers. Requests in flight: {pending.Count}/{MaximumConcurrentRequests}; batch size: {batchSize}; deferred item errors: {errors.Count(p=>p.Key.Item1==world)}. Native comparisons set actual listing prices.";
     }
     private async Task<Result> Fetch(uint world,uint[] ids,DateTimeOffset at,int historyDays,CancellationToken token)

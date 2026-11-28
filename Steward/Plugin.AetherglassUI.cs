@@ -327,7 +327,7 @@ public sealed partial class Plugin
         new("log","Log-only review",()=>{bool value=Controls.Switch("value",config.LogOnly);if(value!=config.LogOnly)SetReviewMode(value);},
             Detail:"Record proposals and block managed item actions."){Layout=FieldLayout.Switch},
         Toggle("Log disposal candidates",config.LogDisposal,v=>config.LogDisposal=v),
-        new("snapshot","Write review snapshot",()=>{if(ImGui.Button("Record")){reviewJournal.Reset();nextReview=0;}},Detail:ReviewPath){
+        new("snapshot","Write review snapshot",()=>{if(ImGui.Button("Record")){reviewJournal.Reset();RequestReviewSnapshot();}},Detail:ReviewPath){
             DisabledReason=()=>config.LogOnly?null:"Enable log-only review first."},
         new("status","Diagnostic status",()=>ImGui.TextWrapped(status)){ExpandedContent=()=>{foreach(var line in new[]{imports.Status,universalis.Status,universalis.Freshness,tracked.Status,dungeonSources.Status})ImGui.TextWrapped(line);}},
         new("history","Diagnostic history",()=>ImGui.TextUnformatted($"{history.Count} events")){ExpandedContent=()=>{foreach(var line in history)ImGui.TextWrapped(line);}}));

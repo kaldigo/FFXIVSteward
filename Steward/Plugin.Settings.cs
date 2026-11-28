@@ -17,7 +17,7 @@ public sealed partial class Plugin
         market.ReplanPending();
         config.GlamaholicExpected=config.Rules.Glamour.Glamaholic;
         config.UseBundledGlamourList=config.Rules.Glamour.EorzeaCollection;
-        config.ControlsRevision=1;Save();nextImports=0;nextReview=0;marketPreview=null;reviewJournal.Reset();
+        config.ControlsRevision=1;Save();marketPreview=null;inventoryRefreshRequested=true;reviewJournal.Reset();
     }
     private void Setting(string title,bool value,Action<bool> update,string? description=null)
     {

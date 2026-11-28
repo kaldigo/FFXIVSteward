@@ -9,16 +9,27 @@ public sealed partial class Plugin
     private ulong previewOwner;
     private uint previewWorld;
     private long nextMarketPreview;
+    private long previewPriceRevision;
+    private int previewListingStamp;
     private void UpdateAutomaticMarketPreview()
     {
         if(Environment.TickCount64<nextMarketPreview)return;
         nextMarketPreview=Environment.TickCount64+500;
-        var owner=market.OpenMarketRetainer();
+        var owner=market.OpenMarketRetainer(out var listingStamp);
         var changed=owner!=previewOwner||view.World!=previewWorld;
         previewOwner=owner;previewWorld=view.World;
         if(owner==0){marketPreview=null;return;}
-        if(changed&&config.LogOnly){reviewJournal.Reset();nextReview=0;}
-        marketPreview=market.PreviewMarket();
+        if(changed)
+        {
+            Refresh();
+            if(config.LogOnly){reviewJournal.Reset();RequestReviewSnapshot(inventoryAlreadyRead:true);}
+        }
+        if(changed||marketPreview==null||previewPriceRevision!=universalis.Revision||previewListingStamp!=listingStamp)
+        {
+            marketPreview=market.PreviewMarket();
+            previewPriceRevision=universalis.Revision;
+            previewListingStamp=listingStamp;
+        }
     }
     private void DrawSalePreview()
     {

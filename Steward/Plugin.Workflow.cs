@@ -3,6 +3,7 @@ public sealed partial class Plugin
 {
     private void OnWorkflowDresserRestored(ulong character)
     {
+        storageRefreshRequested=true;
         if((config.WorkflowMask&4)!=0)storageRun.Restored(character);
         else Record("Dresser restoration completed; entrust is excluded from this workflow, so the item remains in inventory.");
     }

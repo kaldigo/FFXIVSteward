@@ -15,7 +15,27 @@ public sealed partial class Plugin
             foreach(var entry in result.History){history.Insert(0,entry);if(history.Count>300)history.RemoveAt(history.Count-1);}
         }
     }
-    private long nextReview;
+    private int collectionObserved;
+    private void ObserveOpenedCollections()
+    {
+        // Poll readiness flags only. Scan once when an explicitly opened UI supplies its data.
+        var ready=InventoryView.ReadyCollectionData();
+        var visible=(market.DresserOpen?1:0)|(collectionUi.Visible("Cabinet")||collectionUi.Visible("CabinetWithdraw")?2:0)|4;
+        var observed=ready&visible;
+        var opened=observed&~collectionObserved;
+        collectionObserved=observed;
+        if(opened==0)return;
+        if(config.LogOnly&&(opened&3)!=0)RequestReviewSnapshot();
+        else inventoryRefreshRequested=true;
+    }
+    private ulong reviewCharacter;
+    private bool reviewNeedsRefresh;
+    private void RequestReviewSnapshot(bool inventoryAlreadyRead=false)
+    {
+        if(!player.IsLoaded)return;
+        reviewCharacter=player.ContentId;
+        reviewNeedsRefresh=!inventoryAlreadyRead;
+    }
     private string ReviewPath=>Path.Combine(pi.GetPluginConfigDirectory(),"review.jsonl");
     private CollectionCopyEvidence? CopyEvidence(uint id,int removals=0)=>view.Facts(id) is {} item?
         CollectionCopyEvidence.Capture(item,config.Rules,view.Evidence,view.NativeReferencesAvailable,
@@ -32,13 +52,13 @@ public sealed partial class Plugin
         Setting("Log disposal candidates",config.LogDisposal,v=>config.LogDisposal=v,"Records eligibility even while AutoRetainer demo mode blocks disposal. Never enables disposal.");
         ImGui.TextWrapped("Review log: "+ReviewPath);
         if(ImGui.Button("Write review snapshot now"))
-        {if(!config.LogOnly)Record("Enable Log only in Developer tools before recording a review session.");else{reviewJournal.Reset();nextReview=0;}}
+        {if(!config.LogOnly)Record("Enable Log only in Developer tools before recording a review session.");else{reviewJournal.Reset();RequestReviewSnapshot();}}
     }
     private void SetReviewMode(bool enabled)
     {
         // Set the restrictive flag before cancellation/save; changing mode never enables execution.
         config.LogOnly=true;Stop();
-        config.LogOnly=enabled;Save();reviewJournal.Reset();nextReview=0;
+        config.LogOnly=enabled;Save();reviewJournal.Reset();reviewCharacter=0;if(enabled)RequestReviewSnapshot();
         Record(enabled?"Log-only review enabled: all managed item actions blocked":"Log-only review disabled; enabled features resume on the next authorised AutoRetainer run");
     }
     private void LogPolicyProposal(string? action,Stock stock,Decision decision)
@@ -60,18 +80,21 @@ public sealed partial class Plugin
         try{return pi.GetIpcSubscriber<uint,uint,string>("AutoRetainer.InventoryPolicy.DisposalPreview").InvokeFunc(stock.ItemId,stock.Quantity);}
         catch{return "AutoRetainer disposal route unavailable; native approval still required";}
     }
-    private void ReviewTick()
+    private void CaptureRequestedReview()
     {
-        if(!(config.LogOnly||config.LogDisposal)||!player.IsLoaded||reviewJournal.ReviewPending||Environment.TickCount64<nextReview)return;
-        nextReview=Environment.TickCount64+5000;
+        if(reviewCharacter==0||!player.IsLoaded||reviewJournal.ReviewPending)return;
+        var requested=reviewCharacter;
+        reviewCharacter=0;
+        if(requested!=player.ContentId||!(config.LogOnly||config.LogDisposal))return;
         try
         {
-            RefreshProtection();
+            if(reviewNeedsRefresh)Refresh();
             List<ReviewEntry> entries=[];var unavailable=0;HashSet<string> holdReasons=[];
             void Inspect(string location,Stock stock,ulong owner=0)
             {
                 if(owner!=0&&!config.Storage.RetainerEnabled(owner)){entries.Add(new(player.ContentId,location,stock.ItemId,stock.Quantity,stock.Hq,"ExcludedRetainer","Retainer excluded from item handling",Retainer:owner));return;}
                 var decision=Judge(stock);
+                if(!config.LogOnly&&decision.Outcome!=Outcome.Dispose)return;
                 if(!config.Features.Enabled(decision.Outcome)&&!(decision.Outcome==Outcome.Dispose&&config.LogDisposal))
                 {
                     entries.Add(new(player.ContentId,location,stock.ItemId,stock.Quantity,stock.Hq,"FeatureDisabled",$"{view.Facts(stock.ItemId)?.Name}: {decision.Outcome} is disabled; item protections remain active.",Collection:CopyEvidence(stock.ItemId)));
@@ -97,7 +120,7 @@ public sealed partial class Plugin
             var retainerContainers=InventoryView.RetainerTypes().Select(t=>(uint)t).ToHashSet();
             foreach(var (owner,stock) in tracked.Items.Distinct().Where(r=>view.Retainers.Contains(r.Owner)&&(retainerContainers.Contains(r.Stock.Container)||AllaganRetainerPreview.IsPreview(r.Stock.Container))))
                 Inspect($"Retainer {owner}, cached {AllaganRetainerPreview.Location(stock)} (preview only)",stock,owner);
-            if(config.CleanDresser)
+            if(config.LogOnly&&config.CleanDresser)
                 foreach(var candidate in market.DresserCleanupCandidates())
                     entries.Add(new(player.ContentId,"Glamour dresser",candidate.ItemId,(uint)candidate.Quantity,false,
                         candidate.Action=="Restore for armoire migration"?"WouldMoveToArmoire":"WouldRestoreDresser",candidate.Name+": "+candidate.Reason,Collection:CopyEvidence(candidate.ItemId,candidate.Quantity)));
@@ -156,7 +179,7 @@ public sealed partial class Plugin
             var disposals=entries.Count(e=>e.Action=="WouldDispose");var removals=entries.Where(e=>e.Location=="Glamour dresser").Sum(e=>e.Quantity);
             entries.Add(new(player.ContentId,"Review summary",0,0,false,"Snapshot",
                 $"{disposals} disposal candidates (cached retainer observations labelled); {removals} dresser removals. Protected non-equipment stacks: {entries.Count(e=>e.Action=="ProtectedNonEquipment")}. Enabled sale rules: {config.Rules.Sales.Count(r=>r.Enabled)}; quality: {config.Rules.Quality}. Held/unverified stacks: {unavailable} ({string.Join("; ",holdReasons.Order())}). Cleanup enabled: {config.CleanDresser}. References ready: {view.Evidence.ReferencesReady}; native plates known: {view.NativeReferencesKnown}; saved native plates available: {view.NativeReferencesCached}; Glamaholic known: {view.Evidence.GlamaholicKnown}; gearsets ready: {view.Evidence.GearsetsReady}; dresser known: {view.Evidence.DresserKnown}; armoire known: {view.Evidence.ArmoireKnown}. {tracked.Status} {inventoryMemory.Status}"));
-            if(!reviewJournal.Snapshot(ReviewPath,entries))nextReview=0;
+            if(!reviewJournal.Snapshot(ReviewPath,entries))Alert("Review snapshot could not be queued. Request another snapshot when the log is ready.");
         }
         catch(Exception ex){Alert("Review logging could not complete: "+ex.Message+". Log-only mode still blocks all managed item actions.");}
     }

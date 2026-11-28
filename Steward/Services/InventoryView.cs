@@ -213,6 +213,15 @@ public sealed unsafe class InventoryView
         catch{return "AutoRetainer storage plan unavailable";}
     }
 
+    public static int ReadyCollectionData()
+    {
+        var dresser=MirageManager.Instance();
+        var ui=UIState.Instance();
+        return (dresser!=null&&dresser->PrismBoxLoaded?1:0)|
+            (ui!=null&&ui->Cabinet.IsCabinetLoaded()?2:0)|
+            (dresser!=null&&dresser->GlamourPlatesLoaded?4:0);
+    }
+
     public void Refresh(ulong character)
     {
         Evidence.InvalidateLive();
@@ -226,7 +235,7 @@ public sealed unsafe class InventoryView
             SessionDresser.Invalidate();
             Character=character;Evidence.Dresser.Clear();Evidence.Armoire.Clear();Evidence.Prices.Clear();Evidence.PublicOwnPrices.Clear();Evidence.References.Clear();
             Evidence.DresserKnown=Evidence.ArmoireKnown=Evidence.GearsetsReady=Evidence.ReferencesReady=false;
-            NativeReferencesKnown=false;NativeReferences.Clear();Retainers.Clear();
+            NativeReferencesKnown=false;NativeReferences.Clear();Retainers.Clear();RetainerNames.Clear();
             Retainers.UnionWith(memory.Owners(character));
         }
         NativeReferencesCached=memory.TryNativePlates(character,out var savedPlates,out var savedAt);
@@ -295,7 +304,8 @@ public sealed unsafe class InventoryView
             }
         memory.ObserveCollection(character,Evidence);memory.Flush();
     }
-    public static InventoryType[] InventoryTypes() => Enum.GetValues<InventoryType>().Where(t=>t is >= InventoryType.Inventory1 and <= InventoryType.Inventory4 || t.ToString().StartsWith("Armory",StringComparison.Ordinal)).ToArray();
+    public static InventoryType[] InventoryTypes() => playerInventoryTypes;
+    private static readonly InventoryType[] playerInventoryTypes = Enum.GetValues<InventoryType>().Where(t=>t is >= InventoryType.Inventory1 and <= InventoryType.Inventory4 || t.ToString().StartsWith("Armory",StringComparison.Ordinal)).ToArray();
     private string? VerifiedRetainerCopy(Stock source,ulong saleRetainer)
     {
         if(Character==0 || source.Quantity!=1 || !data.GetExcelSheet<Sheets.Item>().TryGetRow(source.ItemId,out var item) || !item.IsUnique)return null;
@@ -329,7 +339,8 @@ public sealed unsafe class InventoryView
         }
         return null;
     }
-    public static InventoryType[] RetainerTypes() => [InventoryType.RetainerPage1,InventoryType.RetainerPage2,InventoryType.RetainerPage3,InventoryType.RetainerPage4,InventoryType.RetainerPage5,InventoryType.RetainerPage6,InventoryType.RetainerPage7];
+    public static InventoryType[] RetainerTypes() => retainerInventoryTypes;
+    private static readonly InventoryType[] retainerInventoryTypes = [InventoryType.RetainerPage1,InventoryType.RetainerPage2,InventoryType.RetainerPage3,InventoryType.RetainerPage4,InventoryType.RetainerPage5,InventoryType.RetainerPage6,InventoryType.RetainerPage7];
     public static void Read(InventoryType type,List<Stock> target)
     {
         var im=InventoryManager.Instance();if(im==null)return;var inv=im->GetInventoryContainer(type);

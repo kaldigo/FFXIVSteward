@@ -30,12 +30,14 @@ public sealed partial class Plugin
         {
             if(pi.GetIpcSubscriber<int>("AutoRetainer.InventoryPolicy.CleanupVersion").InvokeFunc()<1)
                 throw new InvalidOperationException("Update AutoRetainer for batch cleanup");
+            Refresh();
             var started=scope=="RetainersAll"
                 ? pi.GetIpcSubscriber<ulong,bool>("AutoRetainer.InventoryPolicy.StartCleanup").InvokeFunc(player.ContentId)
                 : pi.GetIpcSubscriber<ulong,string,bool>("AutoRetainer.InventoryPolicy.StartScopedCleanup").InvokeFunc(player.ContentId,scope);
             if(!started)
             {cleanupStatus=pi.GetIpcSubscriber<string>("AutoRetainer.InventoryPolicy.CleanupStatus").InvokeFunc();Alert("Full cleanup could not start: "+cleanupStatus);return;}
             cleanupOwner=player.ContentId;cleanupActive=true;storageRun.End();nextCleanupStatus=0;
+            if(config.LogDisposal)RequestReviewSnapshot(inventoryAlreadyRead:true);
             Record("Disposal pass started: "+scope);
         }
         catch(Exception ex){Alert("Full cleanup unavailable: "+ex.Message);}

@@ -11,7 +11,7 @@ class CollectionSessionWiring(unittest.TestCase):
   self.assertIn('view.Evidence.DresserKnown,uncertain()',close)
   plugin=(ROOT/'Plugin.cs').read_text()
   self.assertIn('config.PendingOperation!=null||market.Queue.Running||market.Queue.HasUnverifiedAction',plugin)
-  self.assertIn('if(!player.IsLoaded){view.SessionDresser.Invalidate()',plugin)
+  self.assertIn('view.SessionDresser.Invalidate();',plugin.split('private void Update(IFramework _)')[1].split('var world=')[0])
   self.assertIn('view.SessionDresser.Invalidate()',plugin.split('private void HoldExecution')[1].split('private void IntegrationFault')[0])
  def test_native_read_precedes_session_fallback_and_provenance_is_visible(self):
   view=(ROOT/'Services/InventoryView.cs').read_text()
