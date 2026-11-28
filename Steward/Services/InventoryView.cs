@@ -62,18 +62,18 @@ public sealed unsafe class InventoryView
             saleDetails[SaleRule.RollMaterial] = (25958, roll.Major, roll.Minor);
         }
         var materiaGrades=data.GetExcelSheet<Sheets.Materia>()
-            .SelectMany(row=>row.Item.Select((item,index)=>(Item:item,Grade:index+1)))
+            .SelectMany(row=>row.Item.Select((item,index)=>(Item:item,Grade:index+1,Family:row.RowId)))
             .Where(entry=>entry.Item.RowId!=0 && entry.Item.IsValid && entry.Item.Value.ItemUICategory.RowId==SaleRule.Materia)
-            .ToLookup(entry=>entry.Grade,entry=>entry.Item.Value);
+            .ToLookup(entry=>entry.Grade,entry=>(Item:entry.Item.Value,entry.Family));
         var grades=materiaGrades.Select(group=>group.Key).OrderDescending().ToArray();
-        topMateria=grades.Take(2).SelectMany(grade=>materiaGrades[grade]).Select(item=>item.RowId).ToHashSet();
+        topMateria=grades.Take(2).SelectMany(grade=>materiaGrades[grade]).Select(entry=>entry.Item.RowId).ToHashSet();
         if(grades.Length>=2 && saleNames.Remove(SaleRule.Materia))
         {
             var detail=saleDetails[SaleRule.Materia];
             saleNames[SaleRule.TopMateria]=$"Materia (top two grades: {grades[1]} and {grades[0]})";
             saleNames[SaleRule.OtherMateria]="Materia (all other grades)";
-            saleDetails[SaleRule.TopMateria]=(materiaGrades[grades[0]].First().Icon,detail.Major,detail.Minor);
-            saleDetails[SaleRule.OtherMateria]=(materiaGrades[grades[^1]].First().Icon,detail.Major,detail.Minor);
+            saleDetails[SaleRule.TopMateria]=(materiaGrades[grades[0]].First().Item.Icon,detail.Major,detail.Minor);
+            saleDetails[SaleRule.OtherMateria]=(materiaGrades[grades[^1]].First().Item.Icon,detail.Major,detail.Minor);
         }
         var disposalNames=new Dictionary<uint,string>(Categories);
         var disposalDetails=new Dictionary<uint,(uint Icon,byte Major,byte Minor)>(CategoryDetails);
@@ -103,6 +103,10 @@ public sealed unsafe class InventoryView
         repeatableMaterials=AcquisitionSources.RepeatableMaterials(
             data.GetExcelSheet<Sheets.GatheringItem>().Select(r=>(r.Item.RowId,gatheringRows.Contains(r.RowId))),
             data.GetExcelSheet<Sheets.RetainerTaskNormal>().Select(r=>(r.Item.RowId,normalTasks.Contains(r.RowId))));
+        repeatableMaterials.UnionWith(materiaGrades.SelectMany(grade=>grade)
+            .Where(entry=>AcquisitionSources.RepeatableMateria(entry.Family,entry.Item.ItemUICategory.RowId,
+                !entry.Item.IsUntradable&&entry.Item.ItemSearchCategory.RowId!=0,topMateria.Contains(entry.Item.RowId)))
+            .Select(entry=>entry.Item.RowId));
         var inspectionInputs=repeatableMaterials.Concat(fishable).ToHashSet();
         repeatableMaterials.UnionWith(AcquisitionSources.InspectionOutputs(
             data.GetExcelSheet<Sheets.HWDGathererInspection>().SelectMany(r=>r.HWDGathererInspectionData)

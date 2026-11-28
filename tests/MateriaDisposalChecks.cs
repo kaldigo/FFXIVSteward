@@ -5,6 +5,15 @@ static class MateriaDisposalChecks
 {
     public static void Run(Action<bool,string> check,DateTimeOffset now)
     {
+        foreach(var family in new uint[]{7,14,15,16,17,18,19,20,21,22,23,24,25})
+        {
+            check(AcquisitionSources.RepeatableMateria(family,SaleRule.Materia,true,false),"Active lower-grade materia is repeatable: "+family);
+            check(!AcquisitionSources.RepeatableMateria(family,SaleRule.Materia,true,true),"Existing protection for the top grades is preserved: "+family);
+        }
+        foreach(var family in new uint[]{1,2,8,13,26,28,33})
+            check(!AcquisitionSources.RepeatableMateria(family,SaleRule.Materia,true,false),"Unverified or retired materia stays protected: "+family);
+        check(!AcquisitionSources.RepeatableMateria(15,83,true,false)&&!AcquisitionSources.RepeatableMateria(15,SaleRule.Materia,false,false),
+            "Demimateria and untradeable rows are outside the repeatable materia rule");
         var low=new ItemFacts(42,"Materia",false,1,1,true,false,SourceKind.Ordinary,SaleRule.Materia);
         var high=low with{IsTopRankMateria=true};
         var r=new RuleSettings{NonEquipmentDisposalCategories=[SaleRule.OtherMateria]};

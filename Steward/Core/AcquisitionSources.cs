@@ -10,6 +10,11 @@ public static class AcquisitionSources
         uint achievement,uint state,uint price) => shop is 262174 or 262182 or 262192 or 262202 &&
         !equipment&&festival==0&&shopQuest==0&&!itemQuest&&achievement==0&&state==100&&price>0;
 
+    // Active native materia families produced by extraction. This excludes retired
+    // attribute/elemental materia and unrelated item categories such as demimateria.
+    public static bool RepeatableMateria(uint family,uint category,bool marketable,bool topGrade) =>
+        category==SaleRule.Materia&&marketable&&!topGrade&&(family==7||family is >=14 and <=25);
+
     public static HashSet<uint> InspectionOutputs(IEnumerable<(uint Input,uint Output,uint Quantity)> rows,IReadOnlySet<uint> gathered) =>
         rows.Where(r=>r.Input!=0&&r.Output!=0&&r.Quantity>0&&gathered.Contains(r.Input)).Select(r=>r.Output).ToHashSet();
 

@@ -1,3 +1,7 @@
+## Repeatable materia acquisition
+
+Recognize active lower-grade materia from the native materia sheet as repeatable, even when also awarded by a quest. Existing top-grade permissions and sale filters are preserved.
+
 ## Relic weapons and tools
 
 Original equipment in the reviewed Zodiac, Anima, Eureka, Resistance, Manderville, Phantom, Skysteel, Splendorous and Cosmic series is protected from sale, disposal and dresser cleanup. Native retainer plans can store it. The index uses exact item IDs from the installed game Item and ARR Relic sheets, including all 88 Cosmic prototype IDs. Replicas use the regular rules.
